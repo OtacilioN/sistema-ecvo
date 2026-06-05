@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/tarefas/gerar-aulas-futuras",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/tarefas/lembretes-diarios",
+      "schedule": "0 11 * * *"
+    }
+  ]
+}

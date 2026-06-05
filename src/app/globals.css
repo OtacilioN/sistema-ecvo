@@ -1,0 +1,215 @@
+@import "tailwindcss";
+
+/*
+  Design system ECVO — paleta da marca (paletaSugeridaDeCores.txt):
+  #ef1a1f vermelho   #a8171b vermelho escuro   #010101 preto
+  #f8f7f8 off-white  #b5b4b6 cinza
+*/
+
+:root {
+  --background: #f8f7f8;
+  --foreground: #010101;
+  --card: #ffffff;
+  --card-foreground: #010101;
+  --popover: #ffffff;
+  --popover-foreground: #010101;
+  --primary: #ef1a1f;
+  --primary-foreground: #f8f7f8;
+  --primary-hover: #a8171b;
+  --secondary: #ececec;
+  --secondary-foreground: #010101;
+  --muted: #ececec;
+  --muted-foreground: #6b6a6d;
+  --accent: #f1e9e9;
+  --accent-foreground: #a8171b;
+  --destructive: #a8171b;
+  --destructive-foreground: #f8f7f8;
+  --success: #15803d;
+  --success-foreground: #f8f7f8;
+  --warning: #b45309;
+  --border: #e2e1e3;
+  --input: #d7d6d8;
+  --ring: #ef1a1f;
+  --radius: 0.625rem;
+
+  --font-geist-sans: "ui-sans-serif", "system-ui", -apple-system, "Segoe UI", sans-serif;
+  --font-geist-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  }
+
+.dark {
+  --background: #010101;
+  --foreground: #f8f7f8;
+  --card: #121113;
+  --card-foreground: #f8f7f8;
+  --popover: #121113;
+  --popover-foreground: #f8f7f8;
+  --primary: #ef1a1f;
+  --primary-foreground: #f8f7f8;
+  --primary-hover: #ff3b40;
+  --secondary: #1f1e20;
+  --secondary-foreground: #f8f7f8;
+  --muted: #1f1e20;
+  --muted-foreground: #b5b4b6;
+  --accent: #2a1112;
+  --accent-foreground: #f8f7f8;
+  --destructive: #ef1a1f;
+  --destructive-foreground: #f8f7f8;
+  --success: #22c55e;
+  --success-foreground: #010101;
+  --warning: #f59e0b;
+  --border: #2a282b;
+  --input: #2a282b;
+  --ring: #ef1a1f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+    min-width: 0;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+}
+
+@layer components {
+  @media (max-width: 767px) {
+    .tabela-responsiva {
+      display: block;
+      width: 100%;
+    }
+
+    .tabela-responsiva thead {
+      display: none;
+    }
+
+    .tabela-responsiva tbody {
+      display: grid;
+      gap: 0.75rem;
+      padding: 0.75rem;
+    }
+
+    .tabela-responsiva tr {
+      display: block;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius-md);
+      background: var(--color-card);
+    }
+
+    .tabela-responsiva td {
+      display: block;
+      border: 0;
+      padding: 0.75rem 1rem;
+    }
+
+    .tabela-responsiva td + td {
+      border-top: 1px solid var(--color-border);
+    }
+
+    .tabela-responsiva td[data-label] {
+      display: grid;
+      grid-template-columns: minmax(6.5rem, 36%) minmax(0, 1fr);
+      gap: 0.75rem;
+      align-items: start;
+      text-align: left;
+    }
+
+    .tabela-responsiva td[data-label]::before {
+      content: attr(data-label);
+      color: var(--color-muted-foreground);
+      font-size: 0.75rem;
+      font-weight: 500;
+      line-height: 1.25rem;
+    }
+
+    .tabela-responsiva td[data-label="Ações"] {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .tabela-responsiva td[data-label="Ações"]::before {
+      content: none;
+    }
+  }
+}
+
+/* Animações de overlay (Dialog / Sheet / Menu de ações) */
+@keyframes ecvo-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes ecvo-zoom-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@keyframes ecvo-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes ecvo-slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+.anim-fade {
+  animation: ecvo-fade-in 0.15s ease-out;
+}
+.anim-zoom {
+  animation: ecvo-zoom-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.anim-slide-right {
+  animation: ecvo-slide-in-right 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.anim-slide-left {
+  animation: ecvo-slide-in-left 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-fade,
+  .anim-zoom,
+  .anim-slide-right,
+  .anim-slide-left {
+    animation: none;
+  }
+}

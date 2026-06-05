@@ -1,0 +1,620 @@
+// Sistema ECVO — Escola de Combate
+// Modelo de dados completo (pt-BR). Veja docs/modelo-dados.md e docs/rastreabilidade.md.
+//
+// Princípio central (RN-002/RN-005/RF-030/RF-035): a PRESENÇA é derivada de um
+// Checkin VALIDO; as HORAS são um livro-razão (ledger) append-only em MovimentoHoras.
+// Invalidar/excluir um check-in NÃO apaga horas — lança-se um movimento de ESTORNO
+// (minutos negativos) dentro de uma transação que também grava um LogAuditoria.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ───────────────────────── Enums ─────────────────────────
+
+enum Papel {
+  GESTOR
+  PROFESSOR
+  ALUNO
+}
+
+enum TipoAluno {
+  MENSALISTA
+  WELLHUB
+  TOTALPASS
+  AVULSO
+}
+
+enum StatusAluno {
+  ATIVO
+  INATIVO
+  SUSPENSO
+  CANCELADO
+  INADIMPLENTE
+  TRANCADO
+}
+
+enum StatusCheckin {
+  VALIDO
+  PENDENTE_REVISAO
+  INVALIDADO
+  EXCLUIDO
+}
+
+enum OrigemCheckin {
+  BOTAO
+  QR_CODE
+  LANCADO_GESTOR
+  LANCADO_PROFESSOR
+}
+
+enum StatusComparecimento {
+  CONFIRMADO
+  LISTA_ESPERA
+  CANCELADO_ALUNO
+  CANCELADO_GESTOR
+  CONVERTIDO_CHECKIN
+  AUSENTE
+  NO_SHOW
+}
+
+enum TipoMovimentoHoras {
+  CREDITO
+  ESTORNO
+  AJUSTE_MANUAL
+}
+
+enum Periodicidade {
+  MENSAL
+  TRIMESTRAL
+  SEMESTRAL
+  ANUAL
+}
+
+enum StatusMensalidade {
+  EM_ABERTO
+  PAGA
+  VENCIDA
+  CANCELADA
+  ISENTA
+}
+
+enum TipoPagamento {
+  AULA_UNICA
+  DIARIA
+  PACOTE
+  SEMINARIO
+  EVENTO
+  EXAME
+  PRODUTO
+}
+
+enum Plataforma {
+  WELLHUB
+  TOTALPASS
+}
+
+enum StatusConciliacao {
+  CONCILIADO
+  NAO_ENCONTRADO
+  ALUNO_NAO_IDENTIFICADO
+  DIVERGENCIA_DATA
+  DIVERGENCIA_HORARIO
+  CHECKIN_INVALIDADO
+  DUPLICADO_PLANILHA
+  DUPLICADO_SISTEMA
+  PENDENTE
+}
+
+// Comportamento configurável de bloqueio por inadimplência (RF-051).
+enum BloqueioInadimplencia {
+  APENAS_ALERTAR
+  BLOQUEAR_COMPARECIMENTO
+  BLOQUEAR_CHECKIN
+  SEM_BLOQUEIO
+}
+
+// Política de check-in sem comparecimento prévio (RF-022).
+enum PoliticaCheckinSemComparecimento {
+  PERMITIR
+  BLOQUEAR
+  APENAS_COM_APROVACAO
+}
+
+enum TipoAcaoAudit {
+  CHECKIN_CRIADO
+  CHECKIN_INVALIDADO
+  CHECKIN_EXCLUIDO
+  REGISTRO_RETROATIVO
+  AJUSTE_HORAS
+  ESTORNO_HORAS
+  GRADUACAO
+  PAGAMENTO
+  PLANO
+  TIPO_ALUNO
+  STATUS_ALUNO
+  IMPORTACAO
+  CONCILIACAO_MANUAL
+  COMPARECIMENTO_CANCELADO
+  CONFIGURACAO
+  AULA_CRIADA
+  AULA_ATUALIZADA
+  AULA_CANCELADA
+  COMPARECIMENTO_NO_SHOW
+  COMPARECIMENTO_PROMOVIDO_LISTA_ESPERA
+  GESTOR_CRIADO
+  OBSERVACAO_TECNICA
+  ALUNO_CRIADO
+  PROFESSOR_CRIADO
+  MODALIDADE_CRIADA
+  MODALIDADE_CONFIGURADA
+  TURMA_CRIADA
+  DOCUMENTO_ALUNO_ADICIONADO
+  PROFESSOR_STATUS_ATUALIZADO
+  TURMA_ATUALIZADA
+}
+
+enum TipoNotificacao {
+  COMPARECIMENTO
+  LEMBRETE_TREINO
+  CANCELAMENTO_AULA
+  FINANCEIRO
+  GRADUACAO
+  CHECKIN_INVALIDADO
+  ANIVERSARIO
+}
+
+// ───────────────────────── Identidade ─────────────────────────
+
+model Usuario {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  senhaHash    String
+  nome         String
+  papel        Papel
+  ativo        Boolean        @default(true)
+  aluno        Aluno?
+  professor    Professor?
+  logs         LogAuditoria[] @relation("AutorLog")
+  notificacoes Notificacao[]
+  criadoEm     DateTime       @default(now())
+  atualizadoEm DateTime       @updatedAt
+}
+
+model Aluno {
+  id                  String      @id @default(cuid())
+  usuario             Usuario     @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuarioId           String      @unique
+  tipo                TipoAluno
+  status              StatusAluno @default(ATIVO)
+  cpf                 String?     @unique
+  telefone            String?
+  dataNascimento      DateTime?
+  endereco            String?
+  fotoUrl             String?
+  dataInicio          DateTime?
+  contatoEmergencia   String?
+  // LGPD: campos sensíveis (RNF-005)
+  restricoesMedicas   String?
+  observacoesTecnicas String?
+  observacoesAdmin    String?
+  // Identificador externo para conciliação Wellhub/TotalPass (RF-001.16, RF-059)
+  idExterno           String?
+
+  responsavel         Responsavel?
+  modalidades         Modalidade[]        @relation("AlunoModalidade")
+  comparecimentos     Comparecimento[]
+  checkins            Checkin[]
+  movimentosHoras     MovimentoHoras[]
+  graduacoes          GraduacaoAluno[]
+  mensalidades        Mensalidade[]
+  pagamentos          Pagamento[]
+  inscricoesExame     InscricaoExame[]
+  registrosImportados RegistroImportado[]
+  documentos          DocumentoAluno[]
+  plano               Plano?              @relation(fields: [planoId], references: [id])
+  planoId             String?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([tipo])
+  @@index([status])
+}
+
+model DocumentoAluno {
+  id          String   @id @default(cuid())
+  aluno       Aluno    @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId     String
+  titulo      String
+  categoria   String?
+  url         String
+  observacao  String?
+  criadoPorId String
+  criadoEm    DateTime @default(now())
+
+  @@index([alunoId])
+}
+
+// Responsável por aluno menor de idade (RF-004)
+model Responsavel {
+  id                    String  @id @default(cuid())
+  aluno                 Aluno   @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId               String  @unique
+  nome                  String
+  cpf                   String?
+  telefone              String?
+  email                 String?
+  grauParentesco        String?
+  responsavelFinanceiro Boolean @default(false)
+}
+
+model Professor {
+  id                   String           @id @default(cuid())
+  usuario              Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuarioId            String           @unique
+  cpf                  String?          @unique
+  telefone             String?
+  fotoUrl              String?
+  ativo                Boolean          @default(true)
+  observacoes          String?
+  modalidades          Modalidade[]     @relation("ProfessorModalidade")
+  turmas               Turma[]
+  aulas                Aula[]           @relation("ProfessorAula")
+  graduacoesConcedidas GraduacaoAluno[] @relation("ProfessorGraduacao")
+  exames               Exame[]
+  criadoEm             DateTime         @default(now())
+  atualizadoEm         DateTime         @updatedAt
+}
+
+// ───────────────────────── Modalidade / Turma / Aula ─────────────────────────
+
+model Modalidade {
+  id                               String                            @id @default(cuid())
+  nome                             String                            @unique
+  descricao                        String?
+  duracaoPadraoMin                 Int                               @default(60)
+  ativa                            Boolean                           @default(true)
+  janelaComparecimentoHoras        Int?
+  prazoCancelamentoHoras           Int?
+  exigirComparecimentoParaCheckin  Boolean?
+  politicaCheckinSemComparecimento PoliticaCheckinSemComparecimento?
+  listaEsperaAtiva                 Boolean?
+  professores                      Professor[]                       @relation("ProfessorModalidade")
+  alunos                           Aluno[]                           @relation("AlunoModalidade")
+  graduacoes                       Graduacao[]
+  turmas                           Turma[]
+  movimentosHoras                  MovimentoHoras[]
+  exames                           Exame[]
+  planos                           Plano[]                           @relation("PlanoModalidade")
+  criadoEm                         DateTime                          @default(now())
+  atualizadoEm                     DateTime                          @updatedAt
+}
+
+// Turma = grade recorrente (diaSemana/hora) OU evento único (ehEvento=true) — RF-010/011/012
+model Turma {
+  id           String     @id @default(cuid())
+  modalidade   Modalidade @relation(fields: [modalidadeId], references: [id])
+  modalidadeId String
+  professor    Professor? @relation(fields: [professorId], references: [id])
+  professorId  String?
+  nome         String?
+  diaSemana    Int? // 0=domingo .. 6=sábado ; null em evento único
+  horaInicio   String? // "19:00"
+  horaFim      String? // "20:30"
+  duracaoMin   Int
+  capacidade   Int        @default(0) // 0 = sem limite
+  local        String?
+  nivel        String?
+  ehEvento     Boolean    @default(false)
+  ativa        Boolean    @default(true)
+  aulas        Aula[]
+  criadoEm     DateTime   @default(now())
+  atualizadoEm DateTime   @updatedAt
+
+  @@index([modalidadeId])
+  @@index([diaSemana])
+}
+
+// Aula = ocorrência datada concreta de uma turma — RF-010
+model Aula {
+  id              String           @id @default(cuid())
+  turma           Turma            @relation(fields: [turmaId], references: [id], onDelete: Cascade)
+  turmaId         String
+  // Professor efetivo da aula (pode diferir do da turma — professor substituto, RF-007)
+  professor       Professor?       @relation("ProfessorAula", fields: [professorId], references: [id])
+  professorId     String?
+  inicio          DateTime
+  fim             DateTime
+  duracaoMin      Int
+  cancelada       Boolean          @default(false)
+  comparecimentos Comparecimento[]
+  checkins        Checkin[]
+  criadoEm        DateTime         @default(now())
+
+  @@unique([turmaId, inicio])
+  @@index([inicio])
+}
+
+// ───────────────────────── Loop de treino ─────────────────────────
+
+// Comparecimento = INTENÇÃO de treinar (não gera presença nem horas) — RF-013..018
+model Comparecimento {
+  id           String               @id @default(cuid())
+  aluno        Aluno                @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId      String
+  aula         Aula                 @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+  aulaId       String
+  status       StatusComparecimento @default(CONFIRMADO)
+  criadoEm     DateTime             @default(now())
+  canceladoEm  DateTime?
+  atualizadoEm DateTime             @updatedAt
+
+  @@unique([alunoId, aulaId])
+  @@index([aulaId])
+}
+
+// Checkin = confirmação de participação. VALIDO ⇒ presença + horas (RF-019..030)
+model Checkin {
+  id                  String              @id @default(cuid())
+  aluno               Aluno               @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId             String
+  aula                Aula                @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+  aulaId              String
+  status              StatusCheckin       @default(VALIDO)
+  origem              OrigemCheckin       @default(BOTAO)
+  // Lançamento por terceiro (gestor/professor) e registro retroativo (RF-019/031)
+  lancadoPorId        String?
+  retroativo          Boolean             @default(false)
+  // Invalidação/exclusão (RF-027/028)
+  invalidadoPorId     String?
+  invalidadoEm        DateTime?
+  justificativa       String?
+  movimentos          MovimentoHoras[]
+  registrosImportados RegistroImportado[]
+  criadoEm            DateTime            @default(now())
+  atualizadoEm        DateTime            @updatedAt
+
+  // Sem dupla contagem da mesma aula para o mesmo aluno (RF-039)
+  @@unique([alunoId, aulaId])
+  @@index([status])
+  @@index([aulaId])
+}
+
+// Livro-razão (ledger) de horas — append-only. Total = SUM(minutos) (RF-032..035/038)
+model MovimentoHoras {
+  id                 String             @id @default(cuid())
+  aluno              Aluno              @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId            String
+  modalidade         Modalidade         @relation(fields: [modalidadeId], references: [id])
+  modalidadeId       String
+  checkin            Checkin?           @relation(fields: [checkinId], references: [id], onDelete: Cascade)
+  checkinId          String?
+  tipo               TipoMovimentoHoras
+  minutos            Int // CREDITO > 0 ; ESTORNO < 0 ; AJUSTE_MANUAL ±
+  estornaMovimentoId String? // aponta o crédito revertido
+  motivo             String?
+  autorId            String? // quem lançou (ajuste/estorno manual)
+  criadoEm           DateTime           @default(now())
+
+  @@index([alunoId])
+  @@index([modalidadeId])
+  @@index([checkinId])
+}
+
+// ───────────────────────── Graduação ─────────────────────────
+
+// Catálogo de graduações por modalidade (RF-040). Critérios são opcionais e NUNCA graduam automaticamente (RN-010).
+model Graduacao {
+  id                 String           @id @default(cuid())
+  modalidade         Modalidade       @relation(fields: [modalidadeId], references: [id], onDelete: Cascade)
+  modalidadeId       String
+  nome               String
+  ordem              Int              @default(0)
+  minHoras           Int?
+  minFrequencia      Int?
+  minTempoNoGrauDias Int?
+  historico          GraduacaoAluno[] @relation("GraduacaoConcedida")
+  historicoAnterior  GraduacaoAluno[] @relation("GraduacaoAnterior")
+  resultadosExame    InscricaoExame[] @relation("GraduacaoResultadoExame")
+
+  @@unique([modalidadeId, nome])
+  @@index([modalidadeId])
+}
+
+// Histórico de graduações do aluno (RF-041/042)
+model GraduacaoAluno {
+  id                  String     @id @default(cuid())
+  aluno               Aluno      @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId             String
+  graduacao           Graduacao  @relation("GraduacaoConcedida", fields: [graduacaoId], references: [id])
+  graduacaoId         String
+  graduacaoAnterior   Graduacao? @relation("GraduacaoAnterior", fields: [graduacaoAnteriorId], references: [id])
+  graduacaoAnteriorId String?
+  atual               Boolean    @default(true)
+  concedidaPor        Professor  @relation("ProfessorGraduacao", fields: [concedidaPorId], references: [id])
+  concedidaPorId      String
+  observacao          String?
+  anexoUrl            String?
+  concedidaEm         DateTime   @default(now())
+
+  @@index([alunoId])
+  @@index([graduacaoAnteriorId])
+}
+
+// Exame de graduação (RF-045) — evento avaliativo
+model Exame {
+  id           String           @id @default(cuid())
+  modalidade   Modalidade       @relation(fields: [modalidadeId], references: [id])
+  modalidadeId String
+  professor    Professor        @relation(fields: [professorId], references: [id])
+  professorId  String
+  data         DateTime
+  descricao    String?
+  taxa         Decimal?         @db.Decimal(10, 2)
+  inscricoes   InscricaoExame[]
+  criadoEm     DateTime         @default(now())
+}
+
+model InscricaoExame {
+  id              String     @id @default(cuid())
+  exame           Exame      @relation(fields: [exameId], references: [id], onDelete: Cascade)
+  exameId         String
+  aluno           Aluno      @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId         String
+  aprovado        Boolean?
+  resultado       String?
+  novaGraduacao   Graduacao? @relation("GraduacaoResultadoExame", fields: [novaGraduacaoId], references: [id])
+  novaGraduacaoId String?
+
+  @@unique([exameId, alunoId])
+  @@index([novaGraduacaoId])
+}
+
+// ───────────────────────── Financeiro ─────────────────────────
+
+model Plano {
+  id            String        @id @default(cuid())
+  nome          String
+  valor         Decimal       @db.Decimal(10, 2)
+  periodicidade Periodicidade @default(MENSAL)
+  diaVencimento Int           @default(10)
+  limiteAulas   Int? // null = ilimitado
+  ativo         Boolean       @default(true)
+  modalidades   Modalidade[]  @relation("PlanoModalidade")
+  alunos        Aluno[]
+  mensalidades  Mensalidade[]
+  criadoEm      DateTime      @default(now())
+  atualizadoEm  DateTime      @updatedAt
+}
+
+model Mensalidade {
+  id             String            @id @default(cuid())
+  aluno          Aluno             @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId        String
+  plano          Plano             @relation(fields: [planoId], references: [id])
+  planoId        String
+  competencia    String // "2026-06"
+  valor          Decimal           @db.Decimal(10, 2)
+  vencimento     DateTime
+  status         StatusMensalidade @default(EM_ABERTO)
+  pagoEm         DateTime?
+  formaPagamento String?
+  observacao     String?
+  criadoEm       DateTime          @default(now())
+  atualizadoEm   DateTime          @updatedAt
+
+  @@unique([alunoId, competencia])
+  @@index([status])
+}
+
+model Pagamento {
+  id             String        @id @default(cuid())
+  aluno          Aluno?        @relation(fields: [alunoId], references: [id])
+  alunoId        String?
+  tipo           TipoPagamento
+  valor          Decimal       @db.Decimal(10, 2)
+  descricao      String?
+  formaPagamento String?
+  criadoEm       DateTime      @default(now())
+
+  @@index([alunoId])
+}
+
+// ───────────────────────── Conciliação Wellhub / TotalPass ─────────────────────────
+
+model Importacao {
+  id                  String              @id @default(cuid())
+  plataforma          Plataforma
+  arquivo             String
+  importadoPorId      String
+  totalLinhas         Int                 @default(0)
+  totalConciliados    Int                 @default(0)
+  totalNaoConciliados Int                 @default(0)
+  totalDivergencias   Int                 @default(0)
+  registros           RegistroImportado[]
+  criadoEm            DateTime            @default(now())
+}
+
+model RegistroImportado {
+  id                 String            @id @default(cuid())
+  importacao         Importacao        @relation(fields: [importacaoId], references: [id], onDelete: Cascade)
+  importacaoId       String
+  dadosBrutos        Json
+  valorRepasse       Decimal?          @db.Decimal(10, 2)
+  cpf                String?
+  email              String?
+  nome               String?
+  telefone           String?
+  dataReferencia     DateTime?
+  horarioReferencia  String?
+  aluno              Aluno?            @relation(fields: [alunoId], references: [id])
+  alunoId            String?
+  checkinVinculado   Checkin?          @relation(fields: [checkinVinculadoId], references: [id])
+  checkinVinculadoId String?
+  statusConciliacao  StatusConciliacao @default(PENDENTE)
+  resolvidoPorId     String?
+  resolvidoEm        DateTime?
+  observacao         String?
+
+  @@index([importacaoId])
+  @@index([statusConciliacao])
+}
+
+// ───────────────────────── Configuração / Auditoria / Notificações ─────────────────────────
+
+// Configuração da academia (singleton: id="default") — RF-014/022/051
+model ConfiguracaoAcademia {
+  id                               String                           @id @default("default")
+  janelaComparecimentoHoras        Int                              @default(24)
+  prazoCancelamentoHoras           Int                              @default(2)
+  exigirComparecimentoParaCheckin  Boolean                          @default(false)
+  politicaCheckinSemComparecimento PoliticaCheckinSemComparecimento @default(PERMITIR)
+  bloqueioInadimplencia            BloqueioInadimplencia            @default(APENAS_ALERTAR)
+  listaEsperaAtiva                 Boolean                          @default(false)
+  rankingHorasAtivo                Boolean                          @default(false)
+  notificarComparecimento          Boolean                          @default(true)
+  notificarLembreteTreino          Boolean                          @default(true)
+  notificarCancelamentoAula        Boolean                          @default(true)
+  notificarFinanceiro              Boolean                          @default(true)
+  notificarGraduacao               Boolean                          @default(true)
+  notificarCheckinInvalidado       Boolean                          @default(true)
+  notificarAniversario             Boolean                          @default(true)
+  valorBaseModalidade              Decimal                          @default(100.00) @db.Decimal(10, 2)
+  atualizadoEm                     DateTime                         @default(now()) @updatedAt
+}
+
+model LogAuditoria {
+  id            String        @id @default(cuid())
+  autor         Usuario       @relation("AutorLog", fields: [autorId], references: [id])
+  autorId       String
+  acao          TipoAcaoAudit
+  entidade      String
+  entidadeId    String
+  valorAntigo   Json?
+  valorNovo     Json?
+  justificativa String?
+  criadoEm      DateTime      @default(now())
+
+  @@index([entidade, entidadeId])
+  @@index([criadoEm])
+}
+
+model Notificacao {
+  id        String          @id @default(cuid())
+  usuario   Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuarioId String
+  tipo      TipoNotificacao
+  titulo    String
+  mensagem  String
+  lida      Boolean         @default(false)
+  criadoEm  DateTime        @default(now())
+
+  @@index([usuarioId, lida])
+}

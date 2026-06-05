@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    env:
+      # Valores fictícios — o build não conecta ao banco (rotas autenticadas são dinâmicas).
+      DATABASE_URL: "postgresql://u:p@localhost:5432/db"
+      DIRECT_URL: "postgresql://u:p@localhost:5432/db"
+      SESSION_SECRET: "ci-placeholder-secret-min-32-bytes-long"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build

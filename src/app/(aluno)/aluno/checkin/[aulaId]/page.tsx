@@ -1,0 +1,72 @@
+import { notFound } from "next/navigation"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { exigirAluno } from "@/lib/auth/dal"
+import { db } from "@/lib/db"
+import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
+import { FormCheckinQr } from "./form-checkin-qr"
+
+export const dynamic = "force-dynamic"
+
+export default async function CheckinQrPage({ params }: { params: Promise<{ aulaId: string }> }) {
+  const { alunoId } = await exigirAluno()
+  const { aulaId } = await params
+
+  const aula = await db.aula.findUnique({
+    where: { id: aulaId },
+    select: {
+      id: true,
+      inicio: true,
+      fim: true,
+      cancelada: true,
+      turma: {
+        select: {
+          local: true,
+          modalidade: { select: { nome: true } },
+        },
+      },
+      checkins: { where: { alunoId }, select: { id: true, status: true } },
+    },
+  })
+  if (!aula) notFound()
+
+  const jaPresente = aula.checkins.some((checkin) => checkin.status === "VALIDO")
+  const pendenteRevisao = aula.checkins.some((checkin) => checkin.status === "PENDENTE_REVISAO")
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-xl font-bold tracking-tight">Check-in por QR Code</h1>
+        <p className="text-sm text-muted-foreground">Confirme sua participação nesta aula.</p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{aula.turma.modalidade.nome}</Badge>
+            {aula.cancelada && <Badge variant="destructive">Cancelada</Badge>}
+          </div>
+          <CardTitle className="capitalize">{formatarDataExtenso(aula.inicio)}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {formatarHora(aula.inicio)}-{formatarHora(aula.fim)}
+            {aula.turma.local ? ` · ${aula.turma.local}` : ""}
+          </p>
+
+          {aula.cancelada ? (
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+              Esta aula foi cancelada.
+            </p>
+          ) : (
+            <FormCheckinQr
+              aulaId={aula.id}
+              jaPresente={jaPresente}
+              pendenteRevisao={pendenteRevisao}
+            />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
