@@ -13,9 +13,12 @@ const PREFIXO_POR_PAPEL: Record<string, string> = {
 }
 
 const ROTAS_PUBLICAS = ["/login"]
+const ROTAS_PWA = ["/manifest.webmanifest", "/offline", "/sw.js"]
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
+  if (ROTAS_PWA.includes(pathname)) return NextResponse.next()
+
   const token = req.cookies.get(COOKIE_SESSAO)?.value
   const sessao = await descriptografar(token)
   const ehPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))

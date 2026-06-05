@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next"
+import { PwaRuntime } from "@/components/pwa-runtime"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -29,7 +30,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="pt-BR" className="h-full">
-      <body className="min-h-full font-sans">{children}</body>
+      <body className="min-h-full font-sans">
+        {children}
+        <PwaRuntime />
+      </body>
     </html>
   )
 }

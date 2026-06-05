@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next"
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    id: "/",
     name: "ECVO — Escola de Combate",
     short_name: "ECVO",
     description:
@@ -10,8 +11,11 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
+    orientation: "portrait",
     background_color: "#f8f7f8",
     theme_color: "#ef1a1f",
+    categories: ["education", "sports", "productivity"],
+    prefer_related_applications: false,
     icons: [
       {
         src: "/pwa/icon-192.png",
