@@ -6,15 +6,22 @@ import { exigirPapel, getUsuarioAtual, HOME_POR_PAPEL } from "@/lib/auth/dal"
 import { verificarSenha } from "@/lib/auth/senha"
 import { criarSessao, destruirSessao } from "@/lib/auth/session"
 import { db } from "@/lib/db"
-import { alterarSenhaPropria, redefinirSenhaUsuario } from "@/lib/services/usuario.service"
+import {
+  alterarSenhaPropria,
+  atualizarFotoUsuario,
+  redefinirSenhaUsuario,
+} from "@/lib/services/usuario.service"
 import {
   alterarMinhaSenhaSchema,
+  atualizarFotoUsuarioSchema,
+  atualizarMinhaFotoSchema,
   loginSchema,
   redefinirSenhaUsuarioSchema,
 } from "@/lib/validations/auth"
 
 export type EstadoLogin = { erro?: string } | undefined
 export type EstadoSenha = { erro?: string; ok?: boolean } | undefined
+export type EstadoFoto = { erro?: string; ok?: boolean } | undefined
 
 function primeiroErro(issues: { message: string }[]): string {
   return issues[0]?.message ?? "Dados inválidos."
@@ -91,4 +98,62 @@ export async function acaoRedefinirSenhaUsuario(
   revalidatePath("/gestao/usuarios")
   revalidatePath("/gestao/auditoria")
   return { ok: true }
+}
+
+export async function acaoAtualizarMinhaFoto(
+  _: EstadoFoto,
+  formData: FormData,
+): Promise<EstadoFoto> {
+  const usuario = await getUsuarioAtual()
+  const parsed = atualizarMinhaFotoSchema.safeParse({
+    fotoUrl: formData.get("fotoUrl"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await atualizarFotoUsuario({
+    usuarioId: usuario.id,
+    fotoUrl: parsed.data.fotoUrl,
+    autorId: usuario.id,
+  })
+  if (!resultado.ok) return { erro: resultado.motivo }
+
+  revalidarFotoUsuario(usuario.papel)
+  return { ok: true }
+}
+
+export async function acaoAtualizarFotoUsuario(
+  _: EstadoFoto,
+  formData: FormData,
+): Promise<EstadoFoto> {
+  const gestor = await exigirPapel("GESTOR")
+  const parsed = atualizarFotoUsuarioSchema.safeParse({
+    usuarioId: formData.get("usuarioId"),
+    fotoUrl: formData.get("fotoUrl"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await atualizarFotoUsuario({
+    usuarioId: parsed.data.usuarioId,
+    fotoUrl: parsed.data.fotoUrl,
+    autorId: gestor.id,
+  })
+  if (!resultado.ok) return { erro: resultado.motivo }
+
+  revalidarFotoUsuario()
+  return { ok: true }
+}
+
+function revalidarFotoUsuario(papel?: "GESTOR" | "PROFESSOR" | "ALUNO") {
+  revalidatePath("/gestao/auditoria")
+  revalidatePath("/gestao/usuarios")
+
+  if (!papel || papel === "GESTOR") revalidatePath("/gestao/perfil")
+  if (!papel || papel === "PROFESSOR") {
+    revalidatePath("/professor/perfil")
+    revalidatePath("/gestao/professores")
+  }
+  if (!papel || papel === "ALUNO") {
+    revalidatePath("/aluno/perfil")
+    revalidatePath("/gestao/alunos")
+  }
 }

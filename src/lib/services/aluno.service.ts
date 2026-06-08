@@ -3,7 +3,7 @@ import type { Prisma, StatusAluno, TipoAluno } from "@prisma/client"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
-import { excluirFotoInternaSeExistir } from "@/lib/storage/blob-fotos"
+import { excluirFotosInternasAntigas } from "@/lib/storage/blob-fotos"
 
 // Serviço de ALUNOS (RF-001..004). Criar um aluno cria o Usuario (papel ALUNO) + Aluno,
 // conecta modalidades e, se menor de idade, o responsável.
@@ -23,7 +23,7 @@ export function listarAlunos(opts?: { busca?: string; status?: StatusAluno }) {
     where,
     orderBy: { usuario: { nome: "asc" } },
     include: {
-      usuario: { select: { nome: true, email: true, ativo: true } },
+      usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
       responsavel: true,
       plano: { select: { nome: true } },
@@ -36,7 +36,7 @@ export function obterAluno(alunoId: string) {
   return db.aluno.findUnique({
     where: { id: alunoId },
     include: {
-      usuario: { select: { nome: true, email: true } },
+      usuario: { select: { nome: true, email: true, fotoUrl: true } },
       modalidades: { select: { id: true, nome: true } },
       responsavel: true,
       plano: true,
@@ -80,6 +80,7 @@ export async function criarAluno(
         nome: params.nome,
         email: params.email,
         senhaHash,
+        fotoUrl: params.fotoUrl ?? null,
         papel: "ALUNO",
         aluno: {
           create: {
@@ -168,7 +169,7 @@ export async function atualizarAluno(
       idExterno: true,
       diaVencimento: true,
       responsavel: true,
-      usuario: { select: { nome: true } },
+      usuario: { select: { nome: true, fotoUrl: true } },
       modalidades: { select: { id: true, nome: true } },
     },
   })
@@ -205,7 +206,16 @@ export async function atualizarAluno(
     const aluno = await tx.aluno.update({
       where: { id: atual.id },
       data: {
-        ...(params.nome !== undefined ? { usuario: { update: { nome: params.nome } } } : {}),
+        ...(params.nome !== undefined || params.fotoUrl !== undefined
+          ? {
+              usuario: {
+                update: {
+                  ...(params.nome !== undefined ? { nome: params.nome } : {}),
+                  ...(params.fotoUrl !== undefined ? { fotoUrl: params.fotoUrl } : {}),
+                },
+              },
+            }
+          : {}),
         ...(params.tipo !== undefined ? { tipo: params.tipo } : {}),
         ...(params.status !== undefined ? { status: params.status } : {}),
         ...(params.cpf !== undefined ? { cpf: params.cpf } : {}),
@@ -233,7 +243,7 @@ export async function atualizarAluno(
           : {}),
       },
       include: {
-        usuario: { select: { nome: true } },
+        usuario: { select: { nome: true, fotoUrl: true } },
         modalidades: { select: { id: true, nome: true } },
         responsavel: true,
       },
@@ -304,8 +314,11 @@ export async function atualizarAluno(
     return aluno
   })
 
-  if (params.fotoUrl !== undefined && atual.fotoUrl !== atualizado.fotoUrl) {
-    await excluirFotoInternaSeExistir(atual.fotoUrl)
+  if (
+    params.fotoUrl !== undefined &&
+    (atual.fotoUrl !== atualizado.fotoUrl || atual.usuario.fotoUrl !== atualizado.usuario.fotoUrl)
+  ) {
+    await excluirFotosInternasAntigas([atual.fotoUrl, atual.usuario.fotoUrl], atualizado.fotoUrl)
   }
 
   return { ok: true as const, aluno: atualizado }
@@ -316,7 +329,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
     where: { id: params.alunoId },
     select: {
       id: true,
-      usuario: { select: { id: true, nome: true, email: true } },
+      usuario: { select: { id: true, nome: true, email: true, fotoUrl: true } },
       tipo: true,
       status: true,
       cpf: true,
@@ -377,7 +390,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
     )
   })
 
-  await excluirFotoInternaSeExistir(aluno.fotoUrl)
+  await excluirFotosInternasAntigas([aluno.fotoUrl, aluno.usuario.fotoUrl], null)
 
   return { ok: true as const, alunoId: aluno.id }
 }

@@ -30,7 +30,7 @@ export default async function ProfessoresPage() {
           ativo: p.ativo && p.usuario.ativo,
           cpf: p.cpf,
           telefone: p.telefone,
-          fotoUrl: p.fotoUrl,
+          fotoUrl: p.usuario.fotoUrl ?? p.fotoUrl,
           observacoes: p.observacoes,
           modalidades: p.modalidades.map((m) => m.id),
           modalidadeNomes: p.modalidades.map((m) => m.nome),

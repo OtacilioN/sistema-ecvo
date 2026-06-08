@@ -9,6 +9,7 @@ import type {
 import { FormMinhaSenha } from "@/components/auth/form-minha-senha"
 import { Badge, type BadgeProps } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { FormMinhaFoto } from "@/components/usuarios/form-foto-usuario"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
@@ -93,7 +94,7 @@ export default async function Page() {
     db.aluno.findUnique({
       where: { id: alunoId },
       include: {
-        usuario: { select: { nome: true, email: true, ativo: true } },
+        usuario: { select: { id: true, nome: true, email: true, fotoUrl: true, ativo: true } },
         modalidades: { select: { id: true, nome: true } },
         responsavel: true,
         plano: { select: { nome: true, valor: true } },
@@ -232,12 +233,13 @@ export default async function Page() {
   )
   const tipoSomenteExterno =
     !temMensalidadeInterna && (aluno.tipo === "WELLHUB" || aluno.tipo === "TOTALPASS")
+  const fotoPerfilUrl = aluno.usuario.fotoUrl ?? aluno.fotoUrl
 
   return (
     <div className="space-y-6">
       <div>
         <div className="flex items-center gap-3">
-          <FotoPerfil nome={aluno.usuario.nome} fotoUrl={aluno.fotoUrl} />
+          <FotoPerfil nome={aluno.usuario.nome} fotoUrl={fotoPerfilUrl} />
           <div>
             <h1 className="text-xl font-bold tracking-tight">Meu perfil</h1>
             <p className="text-sm text-muted-foreground">
@@ -286,7 +288,7 @@ export default async function Page() {
             <Campo rotulo="E-mail" valor={aluno.usuario.email} />
             <Campo rotulo="CPF" valor={aluno.cpf ? formatarCPF(aluno.cpf) : null} />
             <Campo rotulo="Telefone" valor={aluno.telefone} />
-            <Campo rotulo="Foto" valor={aluno.fotoUrl ? "Informada" : null} />
+            <Campo rotulo="Foto" valor={fotoPerfilUrl ? "Informada" : null} />
             <Campo
               rotulo="Nascimento"
               valor={aluno.dataNascimento ? formatarData(aluno.dataNascimento) : null}
@@ -315,6 +317,22 @@ export default async function Page() {
         </Card>
 
         <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Foto do perfil</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FormMinhaFoto
+                usuario={{
+                  id: aluno.usuario.id,
+                  nome: aluno.usuario.nome,
+                  papel: "ALUNO",
+                  fotoUrl: fotoPerfilUrl,
+                }}
+              />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle>Modalidades</CardTitle>

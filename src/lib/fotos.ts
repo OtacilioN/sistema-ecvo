@@ -1,4 +1,4 @@
-export const FOTO_ENTIDADES = ["alunos", "professores"] as const
+export const FOTO_ENTIDADES = ["alunos", "professores", "usuarios"] as const
 export type FotoEntidade = (typeof FOTO_ENTIDADES)[number]
 
 export const FOTO_CONTENT_TYPES = ["image/jpeg", "image/png", "image/webp"] as const

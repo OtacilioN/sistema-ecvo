@@ -1,7 +1,7 @@
 "use client"
 
 import type { Papel, StatusAluno } from "@prisma/client"
-import { KeyRound } from "lucide-react"
+import { ImagePlus, KeyRound } from "lucide-react"
 import { useMemo, useState } from "react"
 import { FormRedefinirSenhaUsuario } from "@/components/auth/form-redefinir-senha-usuario"
 import { Badge, type BadgeProps } from "@/components/ui/badge"
@@ -9,12 +9,14 @@ import { CampoBusca } from "@/components/ui/campo-busca"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog } from "@/components/ui/dialog"
 import { ItemMenu, MenuAcoes } from "@/components/ui/menu-acoes"
+import { FormFotoUsuarioGestor } from "@/components/usuarios/form-foto-usuario"
 import { formatarData } from "@/lib/utils/datas"
 
 export type UsuarioAcessoLinha = {
   id: string
   nome: string
   email: string
+  fotoUrl: string | null
   papel: Papel
   ativo: boolean
   criadoEm: Date
@@ -46,6 +48,7 @@ function detalheOperacional(usuario: UsuarioAcessoLinha) {
 export function TabelaUsuarios({ usuarios }: { usuarios: UsuarioAcessoLinha[] }) {
   const [busca, setBusca] = useState("")
   const [usuarioSenha, setUsuarioSenha] = useState<UsuarioAcessoLinha | null>(null)
+  const [usuarioFoto, setUsuarioFoto] = useState<UsuarioAcessoLinha | null>(null)
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
@@ -96,6 +99,9 @@ export function TabelaUsuarios({ usuarios }: { usuarios: UsuarioAcessoLinha[] })
                     <td className="p-4" data-label="Usuário">
                       <span className="font-medium">{usuario.nome}</span>
                       <span className="block text-xs text-muted-foreground">{usuario.email}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Foto: {usuario.fotoUrl ? "informada" : "não informada"}
+                      </span>
                     </td>
                     <td className="p-4" data-label="Papel">
                       <Badge variant={VARIANTE_PAPEL[usuario.papel]}>
@@ -117,15 +123,26 @@ export function TabelaUsuarios({ usuarios }: { usuarios: UsuarioAcessoLinha[] })
                       <div className="flex justify-end">
                         <MenuAcoes rotulo={`Ações de ${usuario.nome}`}>
                           {(fecharMenu) => (
-                            <ItemMenu
-                              icone={KeyRound}
-                              onClick={() => {
-                                fecharMenu()
-                                setUsuarioSenha(usuario)
-                              }}
-                            >
-                              Redefinir senha
-                            </ItemMenu>
+                            <>
+                              <ItemMenu
+                                icone={ImagePlus}
+                                onClick={() => {
+                                  fecharMenu()
+                                  setUsuarioFoto(usuario)
+                                }}
+                              >
+                                Alterar foto
+                              </ItemMenu>
+                              <ItemMenu
+                                icone={KeyRound}
+                                onClick={() => {
+                                  fecharMenu()
+                                  setUsuarioSenha(usuario)
+                                }}
+                              >
+                                Redefinir senha
+                              </ItemMenu>
+                            </>
                           )}
                         </MenuAcoes>
                       </div>
@@ -146,6 +163,18 @@ export function TabelaUsuarios({ usuarios }: { usuarios: UsuarioAcessoLinha[] })
           </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        aberto={Boolean(usuarioFoto)}
+        aoFechar={() => setUsuarioFoto(null)}
+        variante="centro"
+        titulo="Alterar foto"
+        descricao={usuarioFoto?.nome}
+      >
+        {usuarioFoto && (
+          <FormFotoUsuarioGestor usuario={usuarioFoto} aoConcluir={() => setUsuarioFoto(null)} />
+        )}
+      </Dialog>
 
       <Dialog
         aberto={Boolean(usuarioSenha)}

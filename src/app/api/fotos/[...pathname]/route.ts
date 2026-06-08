@@ -42,6 +42,7 @@ async function podeAcessarFoto(fotoUrl: string) {
       id: true,
       papel: true,
       ativo: true,
+      fotoUrl: true,
       aluno: { select: { id: true } },
       professor: { select: { id: true } },
     },
@@ -49,6 +50,7 @@ async function podeAcessarFoto(fotoUrl: string) {
 
   if (!usuario?.ativo) return false
   if (usuario.papel === "GESTOR") return true
+  if (usuario.fotoUrl === fotoUrl) return true
 
   if (usuario.papel === "ALUNO" && usuario.aluno) {
     const fotoDoAluno = await db.aluno.count({ where: { id: usuario.aluno.id, fotoUrl } })

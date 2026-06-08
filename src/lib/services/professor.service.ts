@@ -2,7 +2,7 @@ import "server-only"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
-import { excluirFotoInternaSeExistir } from "@/lib/storage/blob-fotos"
+import { excluirFotosInternasAntigas } from "@/lib/storage/blob-fotos"
 
 // Serviço de PROFESSORES (RF-005/006). Criar um professor cria o Usuario (papel PROFESSOR)
 // e o Professor vinculado, conectando as modalidades habilitadas.
@@ -11,7 +11,7 @@ export function listarProfessores() {
   return db.professor.findMany({
     orderBy: { usuario: { nome: "asc" } },
     include: {
-      usuario: { select: { nome: true, email: true, ativo: true } },
+      usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
       _count: { select: { turmas: true } },
     },
@@ -36,6 +36,7 @@ export async function criarProfessor(params: {
         nome: params.nome,
         email: params.email,
         senhaHash,
+        fotoUrl: params.fotoUrl ?? null,
         papel: "PROFESSOR",
         professor: {
           create: {
@@ -95,7 +96,7 @@ export async function atualizarProfessor(
       fotoUrl: true,
       observacoes: true,
       ativo: true,
-      usuario: { select: { nome: true, email: true, ativo: true } },
+      usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
     },
   })
@@ -105,7 +106,16 @@ export async function atualizarProfessor(
     const professor = await tx.professor.update({
       where: { id: atual.id },
       data: {
-        ...(params.nome !== undefined ? { usuario: { update: { nome: params.nome } } } : {}),
+        ...(params.nome !== undefined || params.fotoUrl !== undefined
+          ? {
+              usuario: {
+                update: {
+                  ...(params.nome !== undefined ? { nome: params.nome } : {}),
+                  ...(params.fotoUrl !== undefined ? { fotoUrl: params.fotoUrl } : {}),
+                },
+              },
+            }
+          : {}),
         ...(params.cpf !== undefined ? { cpf: params.cpf } : {}),
         ...(params.telefone !== undefined ? { telefone: params.telefone } : {}),
         ...(params.fotoUrl !== undefined ? { fotoUrl: params.fotoUrl } : {}),
@@ -116,7 +126,7 @@ export async function atualizarProfessor(
           : {}),
       },
       include: {
-        usuario: { select: { nome: true, email: true, ativo: true } },
+        usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
         modalidades: { select: { id: true, nome: true } },
       },
     })
@@ -161,8 +171,11 @@ export async function atualizarProfessor(
     return professor
   })
 
-  if (params.fotoUrl !== undefined && atual.fotoUrl !== resultado.fotoUrl) {
-    await excluirFotoInternaSeExistir(atual.fotoUrl)
+  if (
+    params.fotoUrl !== undefined &&
+    (atual.fotoUrl !== resultado.fotoUrl || atual.usuario.fotoUrl !== resultado.usuario.fotoUrl)
+  ) {
+    await excluirFotosInternasAntigas([atual.fotoUrl, atual.usuario.fotoUrl], resultado.fotoUrl)
   }
 
   return { ok: true as const, professor: resultado }
@@ -178,6 +191,7 @@ export async function excluirProfessor(params: { professorId: string; autorId: s
           id: true,
           nome: true,
           email: true,
+          fotoUrl: true,
           ativo: true,
         },
       },
@@ -222,7 +236,7 @@ export async function excluirProfessor(params: { professorId: string; autorId: s
     )
   })
 
-  await excluirFotoInternaSeExistir(professor.fotoUrl)
+  await excluirFotosInternasAntigas([professor.fotoUrl, professor.usuario.fotoUrl], null)
 
   return { ok: true as const, professorId: professor.id }
 }
