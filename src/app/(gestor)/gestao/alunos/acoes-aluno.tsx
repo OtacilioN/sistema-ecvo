@@ -17,6 +17,15 @@ type Modalidade = { id: string; nome: string }
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
 type StatusAluno = "ATIVO" | "INATIVO" | "SUSPENSO" | "CANCELADO" | "INADIMPLENTE" | "TRANCADO"
 
+type ResponsavelAluno = {
+  nome: string
+  cpf: string | null
+  telefone: string | null
+  email: string | null
+  grauParentesco: string | null
+  responsavelFinanceiro: boolean
+} | null
+
 export type AlunoLinha = {
   id: string
   nome: string
@@ -34,6 +43,7 @@ export type AlunoLinha = {
   observacoesAdmin: string | null
   idExterno: string | null
   modalidades: string[]
+  responsavel: ResponsavelAluno
 }
 
 /** Botão primário de cabeçalho que abre o painel de cadastro de aluno. */

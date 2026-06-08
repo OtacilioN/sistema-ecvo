@@ -192,16 +192,6 @@ function rotuloPolitica(politica: string) {
   return rotulos[politica] ?? politica
 }
 
-function criteriosGraduacao(graduacao: {
-  minHoras: number | null
-  minFrequencia: number | null
-  minTempoNoGrauDias: number | null
-}) {
-  const criterios = [
-    graduacao.minHoras !== null ? `${graduacao.minHoras}h` : null,
-    graduacao.minFrequencia !== null ? `${graduacao.minFrequencia}%` : null,
-    graduacao.minTempoNoGrauDias !== null ? `${graduacao.minTempoNoGrauDias}d` : null,
-  ].filter(Boolean)
-
-  return criterios.length > 0 ? ` · ${criterios.join(" · ")}` : ""
+function criteriosGraduacao(graduacao: { minHoras: number | null }) {
+  return graduacao.minHoras !== null ? ` · ${graduacao.minHoras}h` : ""
 }

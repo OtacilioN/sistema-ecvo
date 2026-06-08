@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest"
 import {
+  diasSemanaDaTurma,
   duracaoEntreHoras,
   gerarOcorrencias,
+  gerarOcorrenciasDaGrade,
+  normalizarDiasSemana,
   parseHoraMin,
   validarDuracaoAula,
 } from "./turma.service"
@@ -54,6 +57,30 @@ describe("gerarOcorrencias", () => {
       ate: new Date("2026-06-03T23:59:59Z"), // quarta
     })
     expect(ocorrencias).toHaveLength(0)
+  })
+})
+
+describe("grade recorrente com múltiplos dias", () => {
+  it("normaliza dias repetidos e inválidos", () => {
+    expect(normalizarDiasSemana([5, 1, 3, 3, 8, -1])).toEqual([1, 3, 5])
+  })
+
+  it("usa diasSemana e mantém fallback para diaSemana antigo", () => {
+    expect(diasSemanaDaTurma({ diasSemana: [1, 3, 5], diaSemana: 1 })).toEqual([1, 3, 5])
+    expect(diasSemanaDaTurma({ diasSemana: [], diaSemana: 2 })).toEqual([2])
+  })
+
+  it("gera ocorrências em todos os dias da grade", () => {
+    const ocorrencias = gerarOcorrenciasDaGrade({
+      diasSemana: [1, 3, 5],
+      horaInicio: "20:00",
+      horaFim: "21:00",
+      de: new Date("2026-06-01T00:00:00Z"),
+      ate: new Date("2026-06-07T23:59:59Z"),
+    })
+
+    expect(ocorrencias).toHaveLength(3)
+    expect(ocorrencias.map((oc) => oc.inicio.getUTCDay())).toEqual([1, 3, 5])
   })
 })
 

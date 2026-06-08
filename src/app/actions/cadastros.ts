@@ -23,7 +23,7 @@ import {
   criarProfessor,
   excluirProfessor,
 } from "@/lib/services/professor.service"
-import { atualizarDadosTurmaRecorrente, criarTurmaRecorrente } from "@/lib/services/turma.service"
+import { atualizarDadosTurmaRecorrente, criarTurmasRecorrentes } from "@/lib/services/turma.service"
 import {
   alunoSchema,
   dadosAlunoSchema,
@@ -72,6 +72,20 @@ function graduacoesDoFormData(formData: FormData) {
       remover: Boolean(id && removerIds.has(id)),
     }
   })
+}
+
+function responsavelDoFormData(formData: FormData) {
+  const nome = (formData.get("respNome") as string | null)?.trim()
+  if (!nome) return null
+
+  return {
+    nome,
+    cpf: formData.get("respCpf"),
+    telefone: formData.get("respTelefone"),
+    email: formData.get("respEmail"),
+    grauParentesco: formData.get("respParentesco"),
+    responsavelFinanceiro: formData.get("respFinanceiro") === "on",
+  }
 }
 
 export async function acaoCriarModalidade(_: EstadoForm, formData: FormData): Promise<EstadoForm> {
@@ -318,7 +332,7 @@ export async function acaoAtualizarStatusProfessor(
 
 export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise<EstadoForm> {
   const usuario = await exigirPapel("GESTOR")
-  const nomeResp = (formData.get("respNome") as string | null)?.trim()
+  const responsavel = responsavelDoFormData(formData)
   const parsed = alunoSchema.safeParse({
     nome: formData.get("nome"),
     email: formData.get("email"),
@@ -337,16 +351,7 @@ export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise
     observacoesAdmin: formData.get("observacoesAdmin"),
     idExterno: formData.get("idExterno"),
     modalidadeIds: formData.getAll("modalidadeIds"),
-    responsavel: nomeResp
-      ? {
-          nome: nomeResp,
-          cpf: formData.get("respCpf"),
-          telefone: formData.get("respTelefone"),
-          email: formData.get("respEmail"),
-          grauParentesco: formData.get("respParentesco"),
-          responsavelFinanceiro: formData.get("respFinanceiro") === "on",
-        }
-      : undefined,
+    responsavel: responsavel ?? undefined,
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
@@ -382,6 +387,7 @@ export async function acaoAtualizarDadosAluno(
     observacoesAdmin: formData.get("observacoesAdmin"),
     idExterno: formData.get("idExterno"),
     modalidadeIds: formData.getAll("modalidadeIds"),
+    responsavel: responsavelDoFormData(formData),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
@@ -402,6 +408,7 @@ export async function acaoAtualizarDadosAluno(
     observacoesAdmin: parsed.data.observacoesAdmin,
     idExterno: parsed.data.idExterno,
     modalidadeIds: parsed.data.modalidadeIds,
+    responsavel: parsed.data.responsavel,
   })
   if (!resultado.ok) return { erro: resultado.motivo }
 
@@ -475,7 +482,7 @@ export async function acaoCriarTurma(_: EstadoForm, formData: FormData): Promise
     modalidadeId: formData.get("modalidadeId"),
     professorId: formData.get("professorId"),
     nome: formData.get("nome"),
-    diaSemana: formData.get("diaSemana"),
+    diasSemana: formData.getAll("diasSemana"),
     horaInicio: formData.get("horaInicio"),
     horaFim: formData.get("horaFim"),
     capacidade: formData.get("capacidade"),
@@ -485,7 +492,7 @@ export async function acaoCriarTurma(_: EstadoForm, formData: FormData): Promise
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
   try {
-    const resultado = await criarTurmaRecorrente({ ...parsed.data, autorId: usuario.id })
+    const resultado = await criarTurmasRecorrentes({ ...parsed.data, autorId: usuario.id })
     if (!resultado.ok) return { erro: resultado.motivo }
   } catch {
     return { erro: "Não foi possível criar a turma." }
@@ -502,8 +509,12 @@ export async function acaoAtualizarDadosTurma(
   const usuario = await exigirPapel("GESTOR")
   const parsed = dadosTurmaSchema.safeParse({
     turmaId: formData.get("turmaId"),
+    modalidadeId: formData.get("modalidadeId"),
     professorId: formData.get("professorId"),
     nome: formData.get("nome"),
+    diasSemana: formData.getAll("diasSemana"),
+    horaInicio: formData.get("horaInicio"),
+    horaFim: formData.get("horaFim"),
     capacidade: formData.get("capacidade"),
     local: formData.get("local"),
     nivel: formData.get("nivel"),

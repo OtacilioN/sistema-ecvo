@@ -38,8 +38,6 @@ export function FormGraduacaoModalidade({
       </div>
       <CampoNumero id="ordem" rotulo="Ordem" padrao={0} />
       <CampoNumero id="minHoras" rotulo="Horas mín." />
-      <CampoNumero id="minFrequencia" rotulo="Freq. mín. (%)" />
-      <CampoNumero id="minTempoNoGrauDias" rotulo="Dias no grau" />
       {estado?.erro && <p className="text-sm text-destructive sm:col-span-2">{estado.erro}</p>}
       <div className="flex justify-end sm:col-span-2">
         <BotaoEnviar>

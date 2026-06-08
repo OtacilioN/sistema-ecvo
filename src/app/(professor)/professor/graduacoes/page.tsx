@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge"
+import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirProfessor } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
@@ -9,8 +10,7 @@ import {
 } from "@/lib/services/graduacao.service"
 import { formatarData, formatarDataHora, minutosParaHoras } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
-import { FormExame } from "./form-exame"
-import { FormGraduacao } from "./form-graduacao"
+import { AcoesGraduacoesProfessor } from "./acoes-graduacoes"
 import { FormResultadoExame } from "./form-resultado-exame"
 
 export const dynamic = "force-dynamic"
@@ -170,17 +170,16 @@ export default async function Page() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Graduações</h1>
-        <p className="text-muted-foreground">
-          Registro manual, histórico por modalidade e exames sob sua responsabilidade.
-        </p>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
-        <FormGraduacao alunos={alunosOpcao} graduacoes={graduacoes} />
-        <FormExame modalidades={professor.modalidades.map((m) => ({ id: m.id, nome: m.nome }))} />
-      </div>
+      <CabecalhoPagina
+        titulo="Graduações"
+        descricao="Histórico por modalidade, elegibilidade e exames sob sua responsabilidade."
+      >
+        <AcoesGraduacoesProfessor
+          alunos={alunosOpcao}
+          graduacoes={graduacoes}
+          modalidades={professor.modalidades.map((m) => ({ id: m.id, nome: m.nome }))}
+        />
+      </CabecalhoPagina>
 
       <Card>
         <CardHeader>

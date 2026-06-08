@@ -93,10 +93,10 @@ export function Dialog({
         aria-describedby={descricao ? descricaoId : undefined}
         tabIndex={-1}
         className={cn(
-          "relative z-10 flex flex-col bg-card shadow-lg outline-none",
+          "z-10 flex flex-col bg-card shadow-lg outline-none",
           ehLateral
-            ? "anim-slide-right ml-auto h-dvh w-full max-w-xl border-l border-border"
-            : "anim-zoom m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg rounded-lg border border-border",
+            ? "anim-slide-right fixed inset-y-0 right-0 h-dvh w-full max-w-xl border-l border-border"
+            : "anim-zoom relative m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg rounded-lg border border-border",
           className,
         )}
       >

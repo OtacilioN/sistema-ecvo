@@ -65,7 +65,7 @@ erDiagram
 
 ## Notas
 
-- **Turma** modela tanto a grade recorrente (`diaSemana`/`horaInicio`/`horaFim`) quanto eventos únicos
+- **Turma** modela tanto a grade recorrente (`diasSemana`/`horaInicio`/`horaFim`) quanto eventos únicos
   (`ehEvento = true`, sem dia da semana). **Aula** é a ocorrência datada concreta.
 - **Comparecimento** pode ficar em `LISTA_ESPERA` quando a capacidade da aula foi atingida e a configuração
   de lista de espera está ativa. Ao cancelar um comparecimento `CONFIRMADO`, o primeiro registro em lista de

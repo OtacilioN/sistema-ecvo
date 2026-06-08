@@ -21,6 +21,10 @@ const urlOpcional = z
   .union([z.url("Informe uma URL válida"), z.literal(""), z.null(), z.undefined()])
   .transform((v) => (typeof v === "string" && v.length > 0 ? v : null))
 
+const emailOpcional = z
+  .union([z.email("E-mail inválido").trim().toLowerCase(), z.literal(""), z.null(), z.undefined()])
+  .transform((v) => (typeof v === "string" && v.length > 0 ? v : null))
+
 const numeroInteiroOpcional = (min: number, max?: number) =>
   z
     .preprocess(
@@ -149,9 +153,9 @@ const responsavelSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome do responsável"),
   cpf: cpfOpcional,
   telefone: textoOpcional,
-  email: z.union([z.email(), z.literal("")]).optional(),
+  email: emailOpcional,
   grauParentesco: textoOpcional,
-  responsavelFinanceiro: z.coerce.boolean().optional(),
+  responsavelFinanceiro: z.coerce.boolean().optional().default(false),
 })
 
 export const alunoSchema = z.object({
@@ -195,6 +199,7 @@ export const dadosAlunoSchema = z.object({
   observacoesAdmin: textoOpcional,
   idExterno: textoOpcional,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
+  responsavel: responsavelSchema.nullable().optional(),
 })
 export type DadosAlunoInput = z.infer<typeof dadosAlunoSchema>
 
@@ -224,11 +229,16 @@ export const excluirModalidadeSchema = z.object({
 
 const HORA_RE = /^([01]?\d|2[0-3]):[0-5]\d$/
 
+const diasSemanaSchema = z
+  .array(z.coerce.number().int().min(0).max(6))
+  .min(1, "Selecione ao menos um dia da semana")
+  .transform((dias) => [...new Set(dias)].sort((a, b) => a - b))
+
 export const turmaRecorrenteSchema = z.object({
   modalidadeId: z.string().min(1, "Selecione a modalidade"),
   professorId: textoOpcional,
   nome: textoOpcional,
-  diaSemana: z.coerce.number().int().min(0).max(6),
+  diasSemana: diasSemanaSchema,
   horaInicio: z.string().regex(HORA_RE, "Hora inválida (HH:mm)"),
   horaFim: z.string().regex(HORA_RE, "Hora inválida (HH:mm)"),
   capacidade: z.coerce.number().int().min(0).default(0),
@@ -239,8 +249,12 @@ export type TurmaRecorrenteInput = z.infer<typeof turmaRecorrenteSchema>
 
 export const dadosTurmaSchema = z.object({
   turmaId: z.string().min(1, "Selecione a turma"),
+  modalidadeId: z.string().min(1, "Selecione a modalidade"),
   professorId: textoOpcional,
   nome: textoOpcional,
+  diasSemana: diasSemanaSchema,
+  horaInicio: z.string().regex(HORA_RE, "Hora inválida (HH:mm)"),
+  horaFim: z.string().regex(HORA_RE, "Hora inválida (HH:mm)"),
   capacidade: z.coerce.number().int().min(0).default(0),
   local: textoOpcional,
   nivel: textoOpcional,

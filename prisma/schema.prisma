@@ -297,7 +297,7 @@ model Modalidade {
   atualizadoEm                     DateTime                          @updatedAt
 }
 
-// Turma = grade recorrente (diaSemana/hora) OU evento único (ehEvento=true) — RF-010/011/012
+// Turma = grade recorrente (diasSemana/hora) OU evento único (ehEvento=true) — RF-010/011/012
 model Turma {
   id           String     @id @default(cuid())
   modalidade   Modalidade @relation(fields: [modalidadeId], references: [id])
@@ -305,7 +305,8 @@ model Turma {
   professor    Professor? @relation(fields: [professorId], references: [id])
   professorId  String?
   nome         String?
-  diaSemana    Int? // 0=domingo .. 6=sábado ; null em evento único
+  diaSemana    Int? // primeiro dia da grade, usado para ordenação/compatibilidade; null em evento único
+  diasSemana   Int[]      @default([]) // 0=domingo .. 6=sábado
   horaInicio   String? // "19:00"
   horaFim      String? // "20:30"
   duracaoMin   Int

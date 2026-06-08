@@ -30,6 +30,14 @@ type AlunoParaEdicao = {
   observacoesAdmin: string | null
   idExterno: string | null
   modalidades: string[]
+  responsavel: {
+    nome: string
+    cpf: string | null
+    telefone: string | null
+    email: string | null
+    grauParentesco: string | null
+    responsavelFinanceiro: boolean
+  } | null
 }
 
 const TIPOS: TipoAluno[] = ["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]
@@ -181,6 +189,60 @@ export function FormDadosAluno({
           defaultValue={aluno?.observacoesTecnicas ?? ""}
         />
       </div>
+
+      <fieldset className="space-y-3 rounded-md border border-border p-4 sm:col-span-2">
+        <legend className="px-1 text-sm font-medium text-muted-foreground">
+          Responsável (se menor de idade)
+        </legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="respNome-aluno">Nome do responsável</Label>
+            <Input
+              id="respNome-aluno"
+              name="respNome"
+              defaultValue={aluno.responsavel?.nome ?? ""}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="respCpf-aluno">CPF do responsável</Label>
+            <Input id="respCpf-aluno" name="respCpf" defaultValue={aluno.responsavel?.cpf ?? ""} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="respTelefone-aluno">Telefone</Label>
+            <Input
+              id="respTelefone-aluno"
+              name="respTelefone"
+              defaultValue={aluno.responsavel?.telefone ?? ""}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="respEmail-aluno">E-mail</Label>
+            <Input
+              id="respEmail-aluno"
+              name="respEmail"
+              type="email"
+              defaultValue={aluno.responsavel?.email ?? ""}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="respParentesco-aluno">Parentesco</Label>
+            <Input
+              id="respParentesco-aluno"
+              name="respParentesco"
+              defaultValue={aluno.responsavel?.grauParentesco ?? ""}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="respFinanceiro"
+              defaultChecked={aluno.responsavel?.responsavelFinanceiro ?? false}
+              className="accent-primary"
+            />
+            Responsável financeiro
+          </label>
+        </div>
+      </fieldset>
 
       <div className="flex items-center gap-3 sm:col-span-2">
         <BotaoEnviar>Salvar aluno</BotaoEnviar>

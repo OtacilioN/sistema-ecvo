@@ -14,8 +14,12 @@ type Opcao = { id: string; nome: string }
 type TurmaDados = {
   id: string
   rotulo: string
+  modalidadeId: string
   nome: string | null
   professorId: string | null
+  diasSemana: number[]
+  horaInicio: string | null
+  horaFim: string | null
   capacidade: number
   local: string | null
   nivel: string | null
@@ -82,7 +86,15 @@ export function BotaoAulaAvulsa({
   )
 }
 
-export function AcoesTurma({ turma, professores }: { turma: TurmaDados; professores: Opcao[] }) {
+export function AcoesTurma({
+  turma,
+  modalidades,
+  professores,
+}: {
+  turma: TurmaDados
+  modalidades: Opcao[]
+  professores: Opcao[]
+}) {
   const [editar, setEditar] = useState(false)
   return (
     <>
@@ -108,6 +120,7 @@ export function AcoesTurma({ turma, professores }: { turma: TurmaDados; professo
       >
         <FormDadosTurma
           turma={turma}
+          modalidades={modalidades}
           professores={professores}
           aoConcluir={() => setEditar(false)}
         />

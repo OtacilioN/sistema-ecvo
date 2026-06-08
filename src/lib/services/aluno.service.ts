@@ -24,6 +24,7 @@ export function listarAlunos(opts?: { busca?: string; status?: StatusAluno }) {
     include: {
       usuario: { select: { nome: true, email: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
+      responsavel: true,
       plano: { select: { nome: true } },
       _count: { select: { documentos: true } },
     },
@@ -161,6 +162,7 @@ export async function atualizarAluno(
       observacoesTecnicas: true,
       observacoesAdmin: true,
       idExterno: true,
+      responsavel: true,
       usuario: { select: { nome: true } },
       modalidades: { select: { id: true, nome: true } },
     },
@@ -168,6 +170,33 @@ export async function atualizarAluno(
   if (!atual) return { ok: false as const, motivo: "Aluno não encontrado." }
 
   const atualizado = await db.$transaction(async (tx) => {
+    if (params.responsavel !== undefined) {
+      if (params.responsavel) {
+        await tx.responsavel.upsert({
+          where: { alunoId: atual.id },
+          create: {
+            alunoId: atual.id,
+            nome: params.responsavel.nome,
+            cpf: params.responsavel.cpf ?? null,
+            telefone: params.responsavel.telefone ?? null,
+            email: params.responsavel.email ?? null,
+            grauParentesco: params.responsavel.grauParentesco ?? null,
+            responsavelFinanceiro: params.responsavel.responsavelFinanceiro ?? false,
+          },
+          update: {
+            nome: params.responsavel.nome,
+            cpf: params.responsavel.cpf ?? null,
+            telefone: params.responsavel.telefone ?? null,
+            email: params.responsavel.email ?? null,
+            grauParentesco: params.responsavel.grauParentesco ?? null,
+            responsavelFinanceiro: params.responsavel.responsavelFinanceiro ?? false,
+          },
+        })
+      } else {
+        await tx.responsavel.deleteMany({ where: { alunoId: atual.id } })
+      }
+    }
+
     const aluno = await tx.aluno.update({
       where: { id: atual.id },
       data: {
@@ -200,6 +229,7 @@ export async function atualizarAluno(
       include: {
         usuario: { select: { nome: true } },
         modalidades: { select: { id: true, nome: true } },
+        responsavel: true,
       },
     })
 
@@ -219,6 +249,7 @@ export async function atualizarAluno(
       observacoesAdmin: atual.observacoesAdmin,
       idExterno: atual.idExterno,
       modalidades: atual.modalidades.map((modalidade) => modalidade.nome),
+      responsavel: atual.responsavel,
     })
     const valorNovo = serializarAluno({
       nome: aluno.usuario.nome,
@@ -236,6 +267,7 @@ export async function atualizarAluno(
       observacoesAdmin: aluno.observacoesAdmin,
       idExterno: aluno.idExterno,
       modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
+      responsavel: aluno.responsavel,
     })
 
     if (JSON.stringify(valorAntigo) !== JSON.stringify(valorNovo)) {
@@ -277,6 +309,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       observacoesTecnicas: true,
       observacoesAdmin: true,
       idExterno: true,
+      responsavel: true,
       modalidades: { select: { id: true, nome: true } },
     },
   })
@@ -314,6 +347,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
           observacoesAdmin: aluno.observacoesAdmin,
           idExterno: aluno.idExterno,
           modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
+          responsavel: aluno.responsavel,
         }),
       },
       tx,
@@ -339,6 +373,14 @@ function serializarAluno(dados: {
   observacoesAdmin: string | null
   idExterno: string | null
   modalidades: string[]
+  responsavel?: {
+    nome: string
+    cpf: string | null
+    telefone: string | null
+    email: string | null
+    grauParentesco: string | null
+    responsavelFinanceiro: boolean
+  } | null
 }) {
   return {
     nome: dados.nome,
@@ -356,6 +398,16 @@ function serializarAluno(dados: {
     observacoesAdmin: dados.observacoesAdmin,
     idExterno: dados.idExterno,
     modalidades: dados.modalidades,
+    responsavel: dados.responsavel
+      ? {
+          nome: dados.responsavel.nome,
+          cpf: dados.responsavel.cpf,
+          telefone: dados.responsavel.telefone,
+          email: dados.responsavel.email,
+          grauParentesco: dados.responsavel.grauParentesco,
+          responsavelFinanceiro: dados.responsavel.responsavelFinanceiro,
+        }
+      : null,
   }
 }
 

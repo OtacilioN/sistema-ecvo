@@ -1,7 +1,7 @@
 "use client"
 
 import { Plus, RotateCcw, Trash2 } from "lucide-react"
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,6 +29,10 @@ export function CamposGraduacoesModalidade({ graduacoes = [] }: { graduacoes?: G
     [graduacoes],
   )
   const [linhas, setLinhas] = useState<LinhaGraduacao[]>(iniciais)
+
+  useEffect(() => {
+    setLinhas(iniciais)
+  }, [iniciais])
 
   const adicionar = () => {
     const maiorOrdem = linhas.reduce((maior, linha) => Math.max(maior, linha.ordem), 0)
@@ -71,7 +75,7 @@ export function CamposGraduacoesModalidade({ graduacoes = [] }: { graduacoes?: G
           <div
             key={linha.chave}
             className={cn(
-              "grid gap-3 rounded-md border border-border p-3 sm:grid-cols-[minmax(0,1fr)_5rem_6.5rem_6.5rem_6.5rem_auto]",
+              "grid gap-3 rounded-md border border-border p-3 sm:grid-cols-[minmax(14rem,1fr)_5rem_7rem_auto]",
               linha.remover && "border-destructive/50 bg-destructive/5 opacity-75",
             )}
           >
@@ -94,22 +98,9 @@ export function CamposGraduacoesModalidade({ graduacoes = [] }: { graduacoes?: G
             />
             <CampoNumero
               id={`graduacao-horas-${linha.chave}`}
-              label="Horas"
+              label="Horas mín."
               name="graduacaoMinHoras"
               defaultValue={linha.minHoras}
-            />
-            <CampoNumero
-              id={`graduacao-frequencia-${linha.chave}`}
-              label="Freq. %"
-              name="graduacaoMinFrequencia"
-              defaultValue={linha.minFrequencia}
-              max={100}
-            />
-            <CampoNumero
-              id={`graduacao-dias-${linha.chave}`}
-              label="Dias"
-              name="graduacaoMinTempoNoGrauDias"
-              defaultValue={linha.minTempoNoGrauDias}
             />
 
             <div className="flex items-end justify-end">

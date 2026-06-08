@@ -205,6 +205,7 @@ async function main() {
       modalidadeId: jiu.id,
       professorId,
       diaSemana: 1,
+      diasSemana: [1],
       horaInicio: "19:00",
       horaFim: "20:30",
       duracaoMin: 90,

@@ -17,7 +17,10 @@ export default async function AlunoAgenda() {
       where: { id: alunoId },
       select: { modalidades: { select: { id: true } } },
     }),
-    db.configuracaoAcademia.findUnique({ where: { id: "default" } }),
+    db.configuracaoAcademia.findUnique({
+      where: { id: "default" },
+      select: { janelaComparecimentoHoras: true },
+    }),
   ])
   const modalidadeIds = aluno?.modalidades.map((m) => m.id) ?? []
   const agora = new Date()

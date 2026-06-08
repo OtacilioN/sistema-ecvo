@@ -1,3 +1,5 @@
+import { addDays, format } from "date-fns"
+import { fromZonedTime } from "date-fns-tz"
 import { Badge } from "@/components/ui/badge"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent } from "@/components/ui/card"
@@ -5,16 +7,32 @@ import { exigirPapel } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { listarModalidades } from "@/lib/services/modalidade.service"
 import { listarProfessores } from "@/lib/services/professor.service"
-import { formatarDataHora, formatarMinutos, rotuloDiaSemana } from "@/lib/utils/datas"
+import {
+  formatarDataExtenso,
+  formatarDataHora,
+  formatarMinutos,
+  paraFusoAcademia,
+  rotuloDiaSemana,
+  TIMEZONE,
+} from "@/lib/utils/datas"
 import { AcoesAula, AcoesTurma, BotaoAulaAvulsa, BotaoNovaTurma } from "./acoes-turma"
 
 export const dynamic = "force-dynamic"
 
+function rotuloDiasSemana(diasSemana: number[], diaSemana: number | null): string {
+  const dias = diasSemana.length > 0 ? diasSemana : diaSemana === null ? [] : [diaSemana]
+  if (dias.length === 0) return "—"
+  return dias.map(rotuloDiaSemana).join(", ")
+}
+
 export default async function TurmasPage() {
   await exigirPapel("GESTOR")
   const agora = new Date()
-  const inicioJanelaOperacional = new Date(agora)
-  inicioJanelaOperacional.setDate(inicioJanelaOperacional.getDate() - 14)
+  const hojeAcademia = paraFusoAcademia(agora)
+  const chaveHoje = format(hojeAcademia, "yyyy-MM-dd")
+  const chaveAmanha = format(addDays(hojeAcademia, 1), "yyyy-MM-dd")
+  const inicioHoje = fromZonedTime(`${chaveHoje}T00:00:00`, TIMEZONE)
+  const inicioAmanha = fromZonedTime(`${chaveAmanha}T00:00:00`, TIMEZONE)
   const [turmas, aulas, modalidades, professores] = await Promise.all([
     db.turma.findMany({
       where: { ehEvento: false },
@@ -26,9 +44,8 @@ export default async function TurmasPage() {
       },
     }),
     db.aula.findMany({
-      where: { inicio: { gte: inicioJanelaOperacional } },
+      where: { inicio: { gte: inicioHoje, lt: inicioAmanha } },
       orderBy: { inicio: "asc" },
-      take: 40,
       include: {
         professor: { select: { usuario: { select: { nome: true } } } },
         turma: {
@@ -77,62 +94,72 @@ export default async function TurmasPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {turmas.map((t) => (
-                    <tr
-                      key={t.id}
-                      className="border-b border-border transition-colors last:border-0 hover:bg-muted/40"
-                    >
-                      <td className="p-4 font-medium" data-label="Turma">
-                        {t.nome ?? "—"}
-                        {t.local && (
-                          <span className="block text-xs font-normal text-muted-foreground">
-                            {t.local}
+                  {turmas.map((t) => {
+                    const diasSemana = rotuloDiasSemana(t.diasSemana, t.diaSemana)
+                    return (
+                      <tr
+                        key={t.id}
+                        className="border-b border-border transition-colors last:border-0 hover:bg-muted/40"
+                      >
+                        <td className="p-4 font-medium" data-label="Turma">
+                          {t.nome ?? "—"}
+                          {t.local && (
+                            <span className="block text-xs font-normal text-muted-foreground">
+                              {t.local}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-4" data-label="Modalidade">
+                          <Badge variant="outline">{t.modalidade.nome}</Badge>
+                        </td>
+                        <td className="p-4" data-label="Dia / horário">
+                          {diasSemana} · {t.horaInicio}–{t.horaFim}
+                          <span className="block text-xs text-muted-foreground">
+                            {formatarMinutos(t.duracaoMin)}
+                            {t.capacidade > 0 ? ` · ${t.capacidade} vagas` : " · sem limite"}
                           </span>
-                        )}
-                      </td>
-                      <td className="p-4" data-label="Modalidade">
-                        <Badge variant="outline">{t.modalidade.nome}</Badge>
-                      </td>
-                      <td className="p-4" data-label="Dia / horário">
-                        {t.diaSemana !== null ? rotuloDiaSemana(t.diaSemana) : "—"} · {t.horaInicio}
-                        –{t.horaFim}
-                        <span className="block text-xs text-muted-foreground">
-                          {formatarMinutos(t.duracaoMin)}
-                          {t.capacidade > 0 ? ` · ${t.capacidade} vagas` : " · sem limite"}
-                        </span>
-                      </td>
-                      <td className="p-4" data-label="Professor">
-                        {t.professor?.usuario.nome ?? "—"}
-                      </td>
-                      <td className="p-4 text-center tabular-nums" data-label="Aulas">
-                        {t._count.aulas}
-                      </td>
-                      <td className="p-4" data-label="Status">
-                        <Badge variant={t.ativa ? "success" : "secondary"}>
-                          {t.ativa ? "Ativa" : "Inativa"}
-                        </Badge>
-                      </td>
-                      <td className="p-4" data-label="Ações">
-                        <div className="flex justify-end">
-                          <AcoesTurma
-                            professores={professoresOpcao}
-                            turma={{
-                              id: t.id,
-                              rotulo: `${t.modalidade.nome} · ${
-                                t.diaSemana !== null ? rotuloDiaSemana(t.diaSemana) : "sem dia"
-                              } ${t.horaInicio ?? ""}`,
-                              nome: t.nome,
-                              professorId: t.professorId,
-                              capacidade: t.capacidade,
-                              local: t.local,
-                              nivel: t.nivel,
-                              ativa: t.ativa,
-                            }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="p-4" data-label="Professor">
+                          {t.professor?.usuario.nome ?? "—"}
+                        </td>
+                        <td className="p-4 text-center tabular-nums" data-label="Aulas">
+                          {t._count.aulas}
+                        </td>
+                        <td className="p-4" data-label="Status">
+                          <Badge variant={t.ativa ? "success" : "secondary"}>
+                            {t.ativa ? "Ativa" : "Inativa"}
+                          </Badge>
+                        </td>
+                        <td className="p-4" data-label="Ações">
+                          <div className="flex justify-end">
+                            <AcoesTurma
+                              modalidades={modalidadesOpcao}
+                              professores={professoresOpcao}
+                              turma={{
+                                id: t.id,
+                                rotulo: `${t.modalidade.nome} · ${diasSemana} ${t.horaInicio ?? ""}`,
+                                modalidadeId: t.modalidadeId,
+                                nome: t.nome,
+                                professorId: t.professorId,
+                                diasSemana:
+                                  t.diasSemana.length > 0
+                                    ? t.diasSemana
+                                    : t.diaSemana === null
+                                      ? []
+                                      : [t.diaSemana],
+                                horaInicio: t.horaInicio,
+                                horaFim: t.horaFim,
+                                capacidade: t.capacidade,
+                                local: t.local,
+                                nivel: t.nivel,
+                                ativa: t.ativa,
+                              }}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                   {turmas.length === 0 && (
                     <tr>
                       <td colSpan={7} className="p-10 text-center text-muted-foreground">
@@ -147,8 +174,14 @@ export default async function TurmasPage() {
         </Card>
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-muted-foreground">Aulas recentes e futuras</h2>
+      <section className="mt-10 space-y-4 border-t border-border pt-8">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Aulas de hoje</h2>
+            <p className="text-sm text-muted-foreground">{formatarDataExtenso(agora)}</p>
+          </div>
+          <Badge variant="secondary">{aulas.length} aula(s)</Badge>
+        </div>
         <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -215,7 +248,7 @@ export default async function TurmasPage() {
                   {aulas.length === 0 && (
                     <tr>
                       <td colSpan={6} className="p-10 text-center text-muted-foreground">
-                        Nenhuma aula recente ou futura gerada.
+                        Nenhuma aula gerada para hoje.
                       </td>
                     </tr>
                   )}

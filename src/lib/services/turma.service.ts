@@ -72,6 +72,41 @@ export function gerarOcorrencias(params: {
   return ocorrencias
 }
 
+export function normalizarDiasSemana(diasSemana: number[]): number[] {
+  return [...new Set(diasSemana)]
+    .filter((dia) => Number.isInteger(dia) && dia >= 0 && dia <= 6)
+    .sort((a, b) => a - b)
+}
+
+export function diasSemanaDaTurma(turma: {
+  diasSemana?: number[]
+  diaSemana: number | null
+}): number[] {
+  const diasSemana = normalizarDiasSemana(turma.diasSemana ?? [])
+  if (diasSemana.length > 0) return diasSemana
+  return turma.diaSemana === null ? [] : [turma.diaSemana]
+}
+
+export function gerarOcorrenciasDaGrade(params: {
+  diasSemana: number[]
+  horaInicio: string
+  horaFim: string
+  de: Date
+  ate: Date
+}): Ocorrencia[] {
+  return params.diasSemana
+    .flatMap((diaSemana) =>
+      gerarOcorrencias({
+        diaSemana,
+        horaInicio: params.horaInicio,
+        horaFim: params.horaFim,
+        de: params.de,
+        ate: params.ate,
+      }),
+    )
+    .sort((a, b) => a.inicio.getTime() - b.inicio.getTime())
+}
+
 export function validarDuracaoAula(params: { inicio: Date; fim: Date }):
   | {
       ok: true
@@ -108,6 +143,11 @@ function serializarDadosTurma(turma: {
   modalidadeId: string
   professorId: string | null
   nome: string | null
+  diaSemana?: number | null
+  diasSemana?: number[]
+  horaInicio?: string | null
+  horaFim?: string | null
+  duracaoMin?: number
   capacidade: number
   local: string | null
   nivel: string | null
@@ -117,6 +157,13 @@ function serializarDadosTurma(turma: {
     modalidadeId: turma.modalidadeId,
     professorId: turma.professorId,
     nome: turma.nome,
+    diasSemana: diasSemanaDaTurma({
+      diasSemana: turma.diasSemana,
+      diaSemana: turma.diaSemana ?? null,
+    }),
+    horaInicio: turma.horaInicio ?? null,
+    horaFim: turma.horaFim ?? null,
+    duracaoMin: turma.duracaoMin ?? null,
     capacidade: turma.capacidade,
     local: turma.local,
     nivel: turma.nivel,
@@ -140,6 +187,38 @@ export async function criarTurmaRecorrente(params: {
   nivel?: string | null
   semanas?: number
 }) {
+  const resultado = await criarTurmasRecorrentes({
+    ...params,
+    diasSemana: [params.diaSemana],
+  })
+  if (!resultado.ok) return resultado
+
+  return {
+    ok: true as const,
+    turma: resultado.turmas[0],
+    aulasCriadas: resultado.aulasCriadas,
+  }
+}
+
+/** Cria grades recorrentes iguais para múltiplos dias da semana e gera aulas futuras. */
+export async function criarTurmasRecorrentes(params: {
+  modalidadeId: string
+  professorId?: string | null
+  autorId: string
+  nome?: string | null
+  diasSemana: number[]
+  horaInicio: string
+  horaFim: string
+  capacidade?: number
+  local?: string | null
+  nivel?: string | null
+  semanas?: number
+}) {
+  const diasSemana = normalizarDiasSemana(params.diasSemana)
+  if (diasSemana.length === 0) {
+    return { ok: false as const, motivo: "Selecione ao menos um dia da semana." }
+  }
+
   const habilitado = await professorHabilitadoNaModalidade(params.professorId, params.modalidadeId)
   if (!habilitado) {
     return { ok: false as const, motivo: "Professor não habilitado nesta modalidade." }
@@ -152,7 +231,8 @@ export async function criarTurmaRecorrente(params: {
         modalidadeId: params.modalidadeId,
         professorId: params.professorId ?? null,
         nome: params.nome ?? null,
-        diaSemana: params.diaSemana,
+        diaSemana: diasSemana[0],
+        diasSemana,
         horaInicio: params.horaInicio,
         horaFim: params.horaFim,
         duracaoMin,
@@ -178,7 +258,7 @@ export async function criarTurmaRecorrente(params: {
           modalidade: criada.modalidade.nome,
           professorId: criada.professorId,
           professor: criada.professor?.usuario.nome ?? null,
-          diaSemana: criada.diaSemana,
+          diasSemana: criada.diasSemana,
           horaInicio: criada.horaInicio,
           horaFim: criada.horaFim,
           duracaoMin: criada.duracaoMin,
@@ -192,20 +272,31 @@ export async function criarTurmaRecorrente(params: {
 
     return criada
   })
-  const criadas = await gerarAulasFuturas(turma.id, params.semanas ?? 8)
-  return { ok: true as const, turma, aulasCriadas: criadas }
+
+  const aulasCriadas = await gerarAulasFuturas(turma.id, params.semanas ?? 8)
+
+  return { ok: true as const, turmas: [turma], turma, aulasCriadas }
 }
 
 export async function atualizarDadosTurmaRecorrente(params: {
   turmaId: string
+  modalidadeId: string
   professorId?: string | null
   autorId: string
   nome?: string | null
+  diasSemana: number[]
+  horaInicio: string
+  horaFim: string
   capacidade: number
   local?: string | null
   nivel?: string | null
   ativa: boolean
 }) {
+  const diasSemana = normalizarDiasSemana(params.diasSemana)
+  if (diasSemana.length === 0) {
+    return { ok: false as const, motivo: "Selecione ao menos um dia da semana." }
+  }
+
   const atual = await db.turma.findUnique({
     where: { id: params.turmaId },
     select: {
@@ -213,26 +304,63 @@ export async function atualizarDadosTurmaRecorrente(params: {
       modalidadeId: true,
       professorId: true,
       nome: true,
+      horaInicio: true,
+      horaFim: true,
+      duracaoMin: true,
       capacidade: true,
       local: true,
       nivel: true,
       ativa: true,
       ehEvento: true,
+      diaSemana: true,
+      diasSemana: true,
     },
   })
   if (!atual || atual.ehEvento) return { ok: false as const, motivo: "Turma não encontrada." }
 
-  const habilitado = await professorHabilitadoNaModalidade(params.professorId, atual.modalidadeId)
+  const habilitado = await professorHabilitadoNaModalidade(params.professorId, params.modalidadeId)
   if (!habilitado) {
     return { ok: false as const, motivo: "Professor não habilitado nesta modalidade." }
   }
 
+  const duracaoMin = duracaoEntreHoras(params.horaInicio, params.horaFim)
+  const diasAtuais = diasSemanaDaTurma(atual)
+  const gradeAlterada =
+    atual.modalidadeId !== params.modalidadeId ||
+    atual.horaInicio !== params.horaInicio ||
+    atual.horaFim !== params.horaFim ||
+    diasAtuais.join(",") !== diasSemana.join(",")
+  const professorAlterado = atual.professorId !== (params.professorId ?? null)
+  const agora = new Date()
+
   const turma = await db.$transaction(async (tx) => {
+    const aulasFuturasSemRegistros = {
+      turmaId: atual.id,
+      inicio: { gte: agora },
+      comparecimentos: { none: {} },
+      checkins: { none: {} },
+    }
+
+    if (gradeAlterada || !params.ativa) {
+      await tx.aula.deleteMany({ where: aulasFuturasSemRegistros })
+    } else if (professorAlterado) {
+      await tx.aula.updateMany({
+        where: aulasFuturasSemRegistros,
+        data: { professorId: params.professorId ?? null },
+      })
+    }
+
     const atualizada = await tx.turma.update({
       where: { id: atual.id },
       data: {
+        modalidadeId: params.modalidadeId,
         professorId: params.professorId ?? null,
         nome: params.nome ?? null,
+        diaSemana: diasSemana[0],
+        diasSemana,
+        horaInicio: params.horaInicio,
+        horaFim: params.horaFim,
+        duracaoMin,
         capacidade: params.capacidade,
         local: params.local ?? null,
         nivel: params.nivel ?? null,
@@ -243,10 +371,15 @@ export async function atualizarDadosTurmaRecorrente(params: {
         modalidadeId: true,
         professorId: true,
         nome: true,
+        horaInicio: true,
+        horaFim: true,
+        duracaoMin: true,
         capacidade: true,
         local: true,
         nivel: true,
         ativa: true,
+        diaSemana: true,
+        diasSemana: true,
       },
     })
 
@@ -264,6 +397,10 @@ export async function atualizarDadosTurmaRecorrente(params: {
 
     return atualizada
   })
+
+  if (params.ativa && (gradeAlterada || !atual.ativa)) {
+    await gerarAulasFuturas(turma.id)
+  }
 
   return { ok: true as const, turma }
 }
@@ -356,16 +493,18 @@ export async function gerarAulasFuturas(turmaId: string, semanas = 8): Promise<n
     !turma?.ativa ||
     !turma.modalidade.ativa ||
     turma.ehEvento ||
-    turma.diaSemana === null ||
     !turma.horaInicio ||
     !turma.horaFim
   ) {
     return 0
   }
+  const diasSemana = diasSemanaDaTurma(turma)
+  if (diasSemana.length === 0) return 0
+
   const de = new Date()
   const ate = new Date(de.getTime() + semanas * 7 * 24 * 60 * 60 * 1000)
-  const ocorrencias = gerarOcorrencias({
-    diaSemana: turma.diaSemana,
+  const ocorrencias = gerarOcorrenciasDaGrade({
+    diasSemana,
     horaInicio: turma.horaInicio,
     horaFim: turma.horaFim,
     de,
