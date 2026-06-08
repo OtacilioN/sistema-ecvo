@@ -7,7 +7,7 @@ import { Button, type ButtonProps } from "@/components/ui/button"
 export function BotaoEnviar({ children, ...props }: ButtonProps) {
   const { pending } = useFormStatus()
   return (
-    <Button type="submit" disabled={pending} {...props}>
+    <Button type="submit" {...props} disabled={pending || props.disabled}>
       {pending ? "Aguarde…" : children}
     </Button>
   )

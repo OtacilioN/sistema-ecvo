@@ -31,7 +31,7 @@ export default async function AlunosPage() {
           status: a.status,
           cpf: a.cpf,
           telefone: a.telefone,
-          fotoUrl: a.fotoUrl,
+          fotoUrl: a.usuario.fotoUrl ?? a.fotoUrl,
           dataNascimento: a.dataNascimento,
           dataInicio: a.dataInicio,
           endereco: a.endereco,

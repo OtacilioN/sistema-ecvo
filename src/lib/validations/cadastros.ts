@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { fotoPathnameDeUrl, pathnameFotoValido } from "@/lib/fotos"
 import { cpfValido } from "@/lib/utils/formato"
 
 // Schemas de validação dos cadastros da Fase 1 (RF-001..012).
@@ -17,8 +18,17 @@ const textoOpcional = z
   .optional()
   .transform((v) => (v && v.length > 0 ? v : null))
 
-const urlOpcional = z
-  .union([z.url("Informe uma URL válida"), z.literal(""), z.null(), z.undefined()])
+const fotoUrlOpcional = z
+  .union([
+    z.url("Informe uma URL válida"),
+    z.string().refine((url) => {
+      const pathname = fotoPathnameDeUrl(url)
+      return Boolean(pathname && pathnameFotoValido(pathname))
+    }, "Informe uma foto válida"),
+    z.literal(""),
+    z.null(),
+    z.undefined(),
+  ])
   .transform((v) => (typeof v === "string" && v.length > 0 ? v : null))
 
 const emailOpcional = z
@@ -120,7 +130,7 @@ export const professorSchema = z.object({
   senha: z.string().min(6, "Senha de no mínimo 6 caracteres"),
   cpf: cpfOpcional,
   telefone: textoOpcional,
-  fotoUrl: urlOpcional,
+  fotoUrl: fotoUrlOpcional,
   observacoes: textoOpcional,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
 })
@@ -131,7 +141,7 @@ export const dadosProfessorSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome"),
   cpf: cpfOpcional,
   telefone: textoOpcional,
-  fotoUrl: urlOpcional,
+  fotoUrl: fotoUrlOpcional,
   observacoes: textoOpcional,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
 })
@@ -173,7 +183,7 @@ export const alunoSchema = z.object({
     .optional(),
   cpf: cpfOpcional,
   telefone: textoOpcional,
-  fotoUrl: urlOpcional,
+  fotoUrl: fotoUrlOpcional,
   dataNascimento: z.coerce.date().optional(),
   dataInicio: z.coerce.date().optional(),
   endereco: textoOpcional,
@@ -195,7 +205,7 @@ export const dadosAlunoSchema = z.object({
   status: z.enum(["ATIVO", "INATIVO", "SUSPENSO", "CANCELADO", "INADIMPLENTE", "TRANCADO"]),
   cpf: cpfOpcional,
   telefone: textoOpcional,
-  fotoUrl: urlOpcional,
+  fotoUrl: fotoUrlOpcional,
   dataNascimento: z.coerce.date().optional(),
   dataInicio: z.coerce.date().optional(),
   endereco: textoOpcional,

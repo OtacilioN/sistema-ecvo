@@ -1,7 +1,8 @@
 "use client"
 
-import { useActionState, useEffect } from "react"
+import { useActionState, useEffect, useState } from "react"
 import { acaoAtualizarDadosProfessor, type EstadoForm } from "@/app/actions/cadastros"
+import { CampoUploadFoto } from "@/components/campo-upload-foto"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -33,6 +34,7 @@ export function FormDadosProfessor({
     undefined,
   )
   const modalidadeIds = new Set(professor.modalidades)
+  const [uploadPendente, setUploadPendente] = useState(false)
 
   useEffect(() => {
     if (estado?.ok) aoConcluir?.()
@@ -53,15 +55,13 @@ export function FormDadosProfessor({
         <Label htmlFor="telefone-professor">Telefone</Label>
         <Input id="telefone-professor" name="telefone" defaultValue={professor?.telefone ?? ""} />
       </div>
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label htmlFor="fotoUrl-professor">URL da foto</Label>
-        <Input
-          id="fotoUrl-professor"
-          name="fotoUrl"
-          type="url"
-          defaultValue={professor?.fotoUrl ?? ""}
-        />
-      </div>
+      <CampoUploadFoto
+        id="fotoUrl-professor"
+        entidade="professores"
+        registroId={professor.id}
+        valorInicial={professor.fotoUrl}
+        onPendenteChange={setUploadPendente}
+      />
 
       <div className="space-y-1.5 sm:col-span-2">
         <Label>Modalidades</Label>
@@ -98,7 +98,7 @@ export function FormDadosProfessor({
       </div>
 
       <div className="flex items-center gap-3 sm:col-span-2">
-        <BotaoEnviar>Salvar professor</BotaoEnviar>
+        <BotaoEnviar disabled={uploadPendente}>Salvar professor</BotaoEnviar>
         {estado?.erro && <p className="text-sm text-destructive">{estado.erro}</p>}
       </div>
     </form>

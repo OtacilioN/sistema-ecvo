@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { fotoPathnameDeUrl, pathnameFotoValido } from "@/lib/fotos"
 
 export const loginSchema = z.object({
   email: z.email("E-mail inválido").trim().toLowerCase(),
@@ -44,3 +45,26 @@ export const redefinirSenhaUsuarioSchema = z
     path: ["confirmarSenha"],
   })
 export type RedefinirSenhaUsuarioInput = z.infer<typeof redefinirSenhaUsuarioSchema>
+
+const fotoUrlOpcional = z
+  .union([
+    z.url("Informe uma URL válida"),
+    z.string().refine((url) => {
+      const pathname = fotoPathnameDeUrl(url)
+      return Boolean(pathname && pathnameFotoValido(pathname))
+    }, "Informe uma foto válida"),
+    z.literal(""),
+    z.null(),
+    z.undefined(),
+  ])
+  .transform((v) => (typeof v === "string" && v.length > 0 ? v : null))
+
+export const atualizarMinhaFotoSchema = z.object({
+  fotoUrl: fotoUrlOpcional,
+})
+export type AtualizarMinhaFotoInput = z.infer<typeof atualizarMinhaFotoSchema>
+
+export const atualizarFotoUsuarioSchema = atualizarMinhaFotoSchema.extend({
+  usuarioId: z.string().min(1, "Selecione o usuário"),
+})
+export type AtualizarFotoUsuarioInput = z.infer<typeof atualizarFotoUsuarioSchema>

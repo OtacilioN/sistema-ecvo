@@ -38,6 +38,7 @@ export const getUsuarioAtual = cache(async () => {
       id: true,
       nome: true,
       email: true,
+      fotoUrl: true,
       papel: true,
       ativo: true,
       aluno: { select: { id: true } },

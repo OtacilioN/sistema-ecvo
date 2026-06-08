@@ -1,7 +1,8 @@
 "use client"
 
-import { useActionState, useEffect } from "react"
+import { useActionState, useEffect, useState } from "react"
 import { acaoAtualizarDadosAluno, type EstadoForm } from "@/app/actions/cadastros"
+import { CampoUploadFoto } from "@/components/campo-upload-foto"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -62,6 +63,7 @@ export function FormDadosAluno({
 }) {
   const [estado, acao] = useActionState<EstadoForm, FormData>(acaoAtualizarDadosAluno, undefined)
   const modalidadeIds = new Set(aluno.modalidades)
+  const [uploadPendente, setUploadPendente] = useState(false)
 
   useEffect(() => {
     if (estado?.ok) aoConcluir?.()
@@ -113,10 +115,13 @@ export function FormDadosAluno({
           defaultValue={aluno.diaVencimento}
         />
       </div>
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label htmlFor="fotoUrl-aluno">URL da foto</Label>
-        <Input id="fotoUrl-aluno" name="fotoUrl" type="url" defaultValue={aluno?.fotoUrl ?? ""} />
-      </div>
+      <CampoUploadFoto
+        id="fotoUrl-aluno"
+        entidade="alunos"
+        registroId={aluno.id}
+        valorInicial={aluno.fotoUrl}
+        onPendenteChange={setUploadPendente}
+      />
       <div className="space-y-1.5">
         <Label htmlFor="dataNascimento-aluno">Data de nascimento</Label>
         <Input
@@ -257,7 +262,7 @@ export function FormDadosAluno({
       </fieldset>
 
       <div className="flex items-center gap-3 sm:col-span-2">
-        <BotaoEnviar>Salvar aluno</BotaoEnviar>
+        <BotaoEnviar disabled={uploadPendente}>Salvar aluno</BotaoEnviar>
         {estado?.erro && <p className="text-sm text-destructive">{estado.erro}</p>}
       </div>
     </form>

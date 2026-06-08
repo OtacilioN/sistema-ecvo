@@ -21,6 +21,7 @@ export default async function UsuariosPage() {
           id: usuario.id,
           nome: usuario.nome,
           email: usuario.email,
+          fotoUrl: usuario.fotoUrl,
           papel: usuario.papel,
           ativo: usuario.ativo,
           criadoEm: usuario.criadoEm,

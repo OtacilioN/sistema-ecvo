@@ -1,7 +1,8 @@
 "use client"
 
-import { useActionState, useEffect, useRef } from "react"
+import { useActionState, useEffect, useRef, useState } from "react"
 import { acaoCriarProfessor, type EstadoForm } from "@/app/actions/cadastros"
+import { CampoUploadFoto } from "@/components/campo-upload-foto"
 import { SeletorModalidades } from "@/components/seletor-modalidades"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
@@ -17,10 +18,13 @@ export function FormProfessor({
 }) {
   const [estado, acao] = useActionState<EstadoForm, FormData>(acaoCriarProfessor, undefined)
   const ref = useRef<HTMLFormElement>(null)
+  const [uploadPendente, setUploadPendente] = useState(false)
+  const [fotoKey, setFotoKey] = useState(0)
 
   useEffect(() => {
     if (estado?.ok) {
       ref.current?.reset()
+      setFotoKey((key) => key + 1)
       aoConcluir?.()
     }
   }, [estado?.ok, aoConcluir])
@@ -39,10 +43,12 @@ export function FormProfessor({
         <Label htmlFor="cpf">CPF</Label>
         <Input id="cpf" name="cpf" inputMode="numeric" placeholder="000.000.000-00" />
       </div>
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label htmlFor="fotoUrl">URL da foto</Label>
-        <Input id="fotoUrl" name="fotoUrl" type="url" placeholder="https://..." />
-      </div>
+      <CampoUploadFoto
+        key={fotoKey}
+        id="fotoUrl"
+        entidade="professores"
+        onPendenteChange={setUploadPendente}
+      />
       <div className="space-y-1.5">
         <Label htmlFor="email">E-mail (login)</Label>
         <Input id="email" name="email" type="email" required />
@@ -59,7 +65,7 @@ export function FormProfessor({
         <Textarea id="observacoes" name="observacoes" />
       </div>
       <div className="flex items-center gap-3 sm:col-span-2">
-        <BotaoEnviar>Cadastrar professor</BotaoEnviar>
+        <BotaoEnviar disabled={uploadPendente}>Cadastrar professor</BotaoEnviar>
         {estado?.erro && <p className="text-sm text-destructive">{estado.erro}</p>}
       </div>
     </form>

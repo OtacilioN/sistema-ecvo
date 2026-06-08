@@ -177,6 +177,7 @@ model Usuario {
   email        String         @unique
   senhaHash    String
   nome         String
+  fotoUrl      String?
   papel        Papel
   ativo        Boolean        @default(true)
   aluno        Aluno?
