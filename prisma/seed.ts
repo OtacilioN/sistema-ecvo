@@ -96,16 +96,13 @@ async function main() {
     })
   })
 
-  await db.modalidade.upsert({
-    where: { nome: "Muay Thai" },
-    update: {},
-    create: { nome: "Muay Thai", duracaoPadraoMin: 60 },
-  })
-  await db.modalidade.upsert({
-    where: { nome: "Boxe" },
-    update: {},
-    create: { nome: "Boxe", duracaoPadraoMin: 60 },
-  })
+  for (const nome of ["Muay Thai Oyama", "Muay Thai Dimitri", "Boxe Rodrigo", "Boxe Sauro"]) {
+    await db.modalidade.upsert({
+      where: { nome },
+      update: {},
+      create: { nome, duracaoPadraoMin: 60 },
+    })
+  }
 
   // ─── Gestor ───
   await db.usuario.upsert({
