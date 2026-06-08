@@ -144,7 +144,7 @@ export async function realizarCheckin(params: {
         status: true,
         tipo: true,
         modalidades: { select: { id: true } },
-        plano: { select: { modalidades: { select: { id: true } } } },
+        modalidadesPlano: { select: { modalidadeId: true } },
       },
     }),
     db.aula.findUnique({
@@ -196,8 +196,8 @@ export async function realizarCheckin(params: {
 
   const regras = resolverRegrasTreino(config, aula.turma.modalidade)
   const lancadoPorTerceiro = Boolean(params.lancadoPorId)
-  const mensalidadeInternaNaModalidade = aluno.plano?.modalidades.some(
-    (modalidade) => modalidade.id === aula.turma.modalidadeId,
+  const mensalidadeInternaNaModalidade = aluno.modalidadesPlano.some(
+    (modalidade) => modalidade.modalidadeId === aula.turma.modalidadeId,
   )
   const ocupacaoAula = new Set([
     ...aula.comparecimentos.map((item) => item.alunoId),

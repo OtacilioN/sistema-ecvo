@@ -26,7 +26,7 @@ export default async function GestaoInicio() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {cards.map(({ rotulo, valor, icone: Icone }) => (
           <Card key={rotulo}>
-            <CardContent className="flex items-center gap-4 py-6">
+            <CardContent className="flex items-center gap-4 px-4 pb-5 pt-5 sm:px-5 sm:pb-6 sm:pt-6">
               <div className="flex size-11 items-center justify-center rounded-md bg-accent text-accent-foreground">
                 <Icone className="size-5" />
               </div>

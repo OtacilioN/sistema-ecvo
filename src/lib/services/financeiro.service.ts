@@ -239,9 +239,7 @@ export async function criarPlano(params: {
   nome: string
   valor: number
   periodicidade: Periodicidade
-  diaVencimento: number
   limiteAulas?: number | null
-  modalidadeIds: string[]
   autorId: string
 }) {
   const plano = await db.plano.create({
@@ -249,9 +247,7 @@ export async function criarPlano(params: {
       nome: params.nome,
       valor: params.valor,
       periodicidade: params.periodicidade,
-      diaVencimento: params.diaVencimento,
       limiteAulas: params.limiteAulas ?? null,
-      modalidades: { connect: params.modalidadeIds.map((id) => ({ id })) },
     },
   })
 
@@ -264,28 +260,109 @@ export async function criarPlano(params: {
       nome: plano.nome,
       valor: Number(plano.valor),
       periodicidade: plano.periodicidade,
-      diaVencimento: plano.diaVencimento,
     },
   })
 
   return plano
 }
 
+export async function atualizarPlano(params: {
+  planoId: string
+  nome: string
+  valor: number
+  periodicidade: Periodicidade
+  limiteAulas?: number | null
+  ativo: boolean
+  autorId: string
+}) {
+  const anterior = await db.plano.findUnique({
+    where: { id: params.planoId },
+    select: {
+      id: true,
+      nome: true,
+      valor: true,
+      periodicidade: true,
+      limiteAulas: true,
+      ativo: true,
+    },
+  })
+  if (!anterior) return { ok: false as const, motivo: "Plano não encontrado." }
+
+  const plano = await db.$transaction(async (tx) => {
+    const atualizado = await tx.plano.update({
+      where: { id: params.planoId },
+      data: {
+        nome: params.nome,
+        valor: params.valor,
+        periodicidade: params.periodicidade,
+        limiteAulas: params.limiteAulas ?? null,
+        ativo: params.ativo,
+      },
+    })
+
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "PLANO",
+        entidade: "Plano",
+        entidadeId: atualizado.id,
+        valorAntigo: serializarPlano(anterior),
+        valorNovo: serializarPlano(atualizado),
+      },
+      tx,
+    )
+
+    return atualizado
+  })
+
+  return { ok: true as const, plano }
+}
+
 export async function vincularPlanoMensalista(params: {
   alunoId: string
   planoId: string
+  diaVencimento: number
+  modalidadeIds: string[]
   autorId: string
 }) {
   const anterior = await db.aluno.findUnique({
     where: { id: params.alunoId },
-    select: { tipo: true, planoId: true },
+    select: {
+      tipo: true,
+      planoId: true,
+      diaVencimento: true,
+      modalidades: { select: { id: true } },
+      modalidadesPlano: { select: { modalidadeId: true } },
+    },
   })
   if (!anterior) return { ok: false as const, motivo: "Aluno não encontrado." }
+
+  const modalidadeIds = Array.from(new Set(params.modalidadeIds))
+  const modalidadesDoAluno = new Set(anterior.modalidades.map((modalidade) => modalidade.id))
+  const modalidadeInvalida = modalidadeIds.some((id) => !modalidadesDoAluno.has(id))
+  if (modalidadeInvalida) {
+    return {
+      ok: false as const,
+      motivo: "Selecione apenas modalidades vinculadas ao cadastro do aluno.",
+    }
+  }
 
   const aluno = await db.$transaction(async (tx) => {
     const atualizado = await tx.aluno.update({
       where: { id: params.alunoId },
-      data: { tipo: tipoAposVinculoPlano(anterior.tipo), planoId: params.planoId },
+      data: {
+        tipo: tipoAposVinculoPlano(anterior.tipo),
+        planoId: params.planoId,
+        diaVencimento: params.diaVencimento,
+      },
+    })
+
+    await tx.alunoPlanoModalidade.deleteMany({ where: { alunoId: params.alunoId } })
+    await tx.alunoPlanoModalidade.createMany({
+      data: modalidadeIds.map((modalidadeId) => ({
+        alunoId: params.alunoId,
+        modalidadeId,
+      })),
     })
 
     await registrarLog(
@@ -294,8 +371,16 @@ export async function vincularPlanoMensalista(params: {
         acao: "PLANO",
         entidade: "Aluno",
         entidadeId: params.alunoId,
-        valorAntigo: serializarVinculo(anterior),
-        valorNovo: serializarVinculo({ tipo: atualizado.tipo, planoId: atualizado.planoId }),
+        valorAntigo: serializarVinculo({
+          ...anterior,
+          modalidadeIds: anterior.modalidadesPlano.map((modalidade) => modalidade.modalidadeId),
+        }),
+        valorNovo: serializarVinculo({
+          tipo: atualizado.tipo,
+          planoId: atualizado.planoId,
+          diaVencimento: atualizado.diaVencimento,
+          modalidadeIds,
+        }),
       },
       tx,
     )
@@ -313,7 +398,10 @@ export async function gerarMensalidade(params: {
 }) {
   const aluno = await db.aluno.findUnique({
     where: { id: params.alunoId },
-    include: { plano: true },
+    include: {
+      plano: true,
+      modalidadesPlano: { select: { modalidadeId: true } },
+    },
   })
 
   if (!aluno) return { ok: false as const, motivo: "Aluno não encontrado." }
@@ -321,6 +409,12 @@ export async function gerarMensalidade(params: {
     return {
       ok: false as const,
       motivo: "Mensalidade interna exige plano vinculado ao aluno.",
+    }
+  }
+  if (aluno.modalidadesPlano.length === 0) {
+    return {
+      ok: false as const,
+      motivo: "Mensalidade interna exige ao menos uma modalidade contratada no vínculo do aluno.",
     }
   }
   const plano = aluno.plano
@@ -334,7 +428,7 @@ export async function gerarMensalidade(params: {
         planoId: plano.id,
         competencia: params.competencia,
         valor: plano.valor,
-        vencimento: vencimentoDaCompetencia(params.competencia, plano.diaVencimento),
+        vencimento: vencimentoDaCompetencia(params.competencia, aluno.diaVencimento),
       },
     })
 
@@ -348,6 +442,8 @@ export async function gerarMensalidade(params: {
           alunoId: aluno.id,
           competencia: criada.competencia,
           valor: Number(criada.valor),
+          diaVencimento: aluno.diaVencimento,
+          modalidadeIds: aluno.modalidadesPlano.map((modalidade) => modalidade.modalidadeId),
           vencimento: criada.vencimento.toISOString(),
           status: criada.status,
         },
@@ -699,11 +795,34 @@ function formatarBRL(valor: number): string {
   return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
 }
 
+function serializarPlano(plano: {
+  nome: string
+  valor: Prisma.Decimal | number
+  periodicidade: Periodicidade
+  limiteAulas: number | null
+  ativo: boolean
+}): Prisma.InputJsonObject {
+  return {
+    nome: plano.nome,
+    valor: Number(plano.valor),
+    periodicidade: plano.periodicidade,
+    limiteAulas: plano.limiteAulas,
+    ativo: plano.ativo,
+  }
+}
+
 function serializarVinculo(vinculo: {
   tipo: TipoAluno
   planoId: string | null
+  diaVencimento: number
+  modalidadeIds: string[]
 }): Prisma.InputJsonObject {
-  return { tipo: vinculo.tipo, planoId: vinculo.planoId }
+  return {
+    tipo: vinculo.tipo,
+    planoId: vinculo.planoId,
+    diaVencimento: vinculo.diaVencimento,
+    modalidadeIds: vinculo.modalidadeIds,
+  }
 }
 
 function tipoAposVinculoPlano(tipo: TipoAluno): TipoAluno {

@@ -163,6 +163,10 @@ RN-015 CPF tem prioridade na identificação · RN-016 check-in invalidado deve 
 RN-017 repasse de mensalidade interna usa cascata: professores até o teto por modalidade, depois sócios ·
 RN-018 repasse Wellhub/TotalPass divide o valor repassado diretamente em 60/20/20.
 
+RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 como padrão inicial.
+RN-020 plano é um pacote comercial disponível para qualquer modalidade; as modalidades contratadas são
+definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno.
+
 ## 8. Requisitos não funcionais (RNF)
 
 RNF-001 web responsivo · RNF-002 experiência mobile do aluno · RNF-003 performance em telas críticas ·

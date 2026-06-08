@@ -57,6 +57,7 @@ type DadosAluno = {
   observacoesTecnicas?: string | null
   observacoesAdmin?: string | null
   idExterno?: string | null
+  diaVencimento?: number
   modalidadeIds: string[]
   responsavel?: {
     nome: string
@@ -94,6 +95,7 @@ export async function criarAluno(
             observacoesTecnicas: params.observacoesTecnicas ?? null,
             observacoesAdmin: params.observacoesAdmin ?? null,
             idExterno: params.idExterno ?? null,
+            diaVencimento: params.diaVencimento ?? 10,
             modalidades: { connect: params.modalidadeIds.map((id) => ({ id })) },
             ...(params.responsavel
               ? {
@@ -127,6 +129,7 @@ export async function criarAluno(
           email: usuario.email,
           tipo: usuario.aluno?.tipo,
           status: usuario.aluno?.status,
+          diaVencimento: usuario.aluno?.diaVencimento,
           modalidadeIds: params.modalidadeIds,
           responsavelInformado: Boolean(params.responsavel),
           cpfInformado: Boolean(params.cpf),
@@ -162,6 +165,7 @@ export async function atualizarAluno(
       observacoesTecnicas: true,
       observacoesAdmin: true,
       idExterno: true,
+      diaVencimento: true,
       responsavel: true,
       usuario: { select: { nome: true } },
       modalidades: { select: { id: true, nome: true } },
@@ -222,6 +226,7 @@ export async function atualizarAluno(
           ? { observacoesAdmin: params.observacoesAdmin }
           : {}),
         ...(params.idExterno !== undefined ? { idExterno: params.idExterno } : {}),
+        ...(params.diaVencimento !== undefined ? { diaVencimento: params.diaVencimento } : {}),
         ...(params.modalidadeIds
           ? { modalidades: { set: params.modalidadeIds.map((id) => ({ id })) } }
           : {}),
@@ -232,6 +237,15 @@ export async function atualizarAluno(
         responsavel: true,
       },
     })
+
+    if (params.modalidadeIds) {
+      await tx.alunoPlanoModalidade.deleteMany({
+        where: {
+          alunoId: atual.id,
+          modalidadeId: { notIn: params.modalidadeIds },
+        },
+      })
+    }
 
     const valorAntigo = serializarAluno({
       nome: atual.usuario.nome,
@@ -248,6 +262,7 @@ export async function atualizarAluno(
       observacoesTecnicas: atual.observacoesTecnicas,
       observacoesAdmin: atual.observacoesAdmin,
       idExterno: atual.idExterno,
+      diaVencimento: atual.diaVencimento,
       modalidades: atual.modalidades.map((modalidade) => modalidade.nome),
       responsavel: atual.responsavel,
     })
@@ -266,6 +281,7 @@ export async function atualizarAluno(
       observacoesTecnicas: aluno.observacoesTecnicas,
       observacoesAdmin: aluno.observacoesAdmin,
       idExterno: aluno.idExterno,
+      diaVencimento: aluno.diaVencimento,
       modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
       responsavel: aluno.responsavel,
     })
@@ -309,6 +325,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       observacoesTecnicas: true,
       observacoesAdmin: true,
       idExterno: true,
+      diaVencimento: true,
       responsavel: true,
       modalidades: { select: { id: true, nome: true } },
     },
@@ -346,6 +363,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
           observacoesTecnicas: aluno.observacoesTecnicas,
           observacoesAdmin: aluno.observacoesAdmin,
           idExterno: aluno.idExterno,
+          diaVencimento: aluno.diaVencimento,
           modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
           responsavel: aluno.responsavel,
         }),
@@ -372,6 +390,7 @@ function serializarAluno(dados: {
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
   idExterno: string | null
+  diaVencimento: number
   modalidades: string[]
   responsavel?: {
     nome: string
@@ -397,6 +416,7 @@ function serializarAluno(dados: {
     observacoesTecnicas: dados.observacoesTecnicas,
     observacoesAdmin: dados.observacoesAdmin,
     idExterno: dados.idExterno,
+    diaVencimento: dados.diaVencimento,
     modalidades: dados.modalidades,
     responsavel: dados.responsavel
       ? {

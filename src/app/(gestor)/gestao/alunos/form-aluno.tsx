@@ -84,6 +84,17 @@ export function FormAluno({
         <Label htmlFor="telefone">Telefone</Label>
         <Input id="telefone" name="telefone" />
       </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="diaVencimento">Vencimento da mensalidade</Label>
+        <Input
+          id="diaVencimento"
+          name="diaVencimento"
+          type="number"
+          min="1"
+          max="28"
+          defaultValue="10"
+        />
+      </div>
       <div className="space-y-1.5 sm:col-span-2">
         <Label htmlFor="fotoUrl">URL da foto</Label>
         <Input id="fotoUrl" name="fotoUrl" type="url" placeholder="https://..." />

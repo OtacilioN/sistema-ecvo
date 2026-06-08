@@ -20,23 +20,29 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
    npm install
    ```
 
-2. **Configure o ambiente** — copie `.env.example` para `.env` e preencha:
+2. **Configure o ambiente local** — use um banco separado de produção:
 
    ```bash
-   cp .env.example .env
-   # DATABASE_URL / DIRECT_URL: conexões da Neon (https://neon.tech)
+   cp .env.development.example .env.development.local
+   npm run db:local:up
+   # DATABASE_URL / DIRECT_URL: por padrão, apontam para o Postgres local em localhost:5432.
+   # Se preferir Neon, troque pelas conexões de uma branch de desenvolvimento.
    # SESSION_SECRET: openssl rand -base64 32
    # CRON_SECRET: openssl rand -base64 32
    ```
 
-3. **Crie o schema e popule dados de demonstração**
+   No Neon, selecione uma branch que **não** seja `production` no modal Connect. Para rodar local
+   contra Neon ou Postgres local, mantenha `ECVO_DATABASE_ENV="development"` no arquivo de ambiente.
+
+3. **Crie o schema e popule dados de demonstração no banco de desenvolvimento**
 
    ```bash
-   npm run db:deploy   # aplica a migration inicial (prisma/migrations)
+   npm run db:migrate  # aplica/cria migrations no ambiente de desenvolvimento
    npm run db:seed     # cria usuários e dados de exemplo
    ```
 
    > Em desenvolvimento, alternativamente use `npm run db:push` para sincronizar o schema sem migrations.
+   > Os scripts `dev`, `db:migrate`, `db:push`, `db:seed` e `db:studio` bloqueiam o endpoint Neon de produção conhecido.
 
 4. **Rode o app**
 
@@ -64,6 +70,7 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
 
 1. Conecte o repositório à Vercel e adicione a integração **Neon** (cria um banco por preview deploy).
 2. Defina as variáveis de ambiente: `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET`, `CRON_SECRET`.
+   Produção não deve depender do `.env` local.
 3. O `build` roda `prisma generate`; aplique migrations com `prisma migrate deploy`
    (via Build Command `npm run db:deploy && npm run build` ou um passo de CI).
 4. O Vercel Cron chama `/api/tarefas/gerar-aulas-futuras` diariamente às 06:00 UTC

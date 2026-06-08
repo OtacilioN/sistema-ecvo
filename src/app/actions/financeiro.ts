@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { exigirPapel } from "@/lib/auth/dal"
 import {
+  atualizarPlano,
   atualizarStatusMensalidade,
   baixarMensalidade,
   criarPlano,
@@ -14,6 +15,7 @@ import {
   baixarMensalidadeSchema,
   gerarMensalidadeSchema,
   pagamentoAvulsoSchema,
+  planoEdicaoSchema,
   planoSchema,
   statusMensalidadeSchema,
   vinculoPlanoSchema,
@@ -34,15 +36,37 @@ export async function acaoCriarPlano(
     nome: formData.get("nome"),
     valor: formData.get("valor"),
     periodicidade: formData.get("periodicidade"),
-    diaVencimento: formData.get("diaVencimento"),
     limiteAulas: formData.get("limiteAulas") || undefined,
-    modalidadeIds: formData.getAll("modalidadeIds"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
   await criarPlano({ ...parsed.data, autorId: usuario.id })
   revalidatePath("/gestao/financeiro")
   revalidatePath("/gestao/auditoria")
+  return { ok: true }
+}
+
+export async function acaoAtualizarPlano(
+  _: EstadoFinanceiro,
+  formData: FormData,
+): Promise<EstadoFinanceiro> {
+  const usuario = await exigirPapel("GESTOR")
+  const parsed = planoEdicaoSchema.safeParse({
+    planoId: formData.get("planoId"),
+    nome: formData.get("nome"),
+    valor: formData.get("valor"),
+    periodicidade: formData.get("periodicidade"),
+    limiteAulas: formData.get("limiteAulas") || undefined,
+    ativo: formData.get("ativo"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await atualizarPlano({ ...parsed.data, autorId: usuario.id })
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/auditoria")
+  revalidatePath("/aluno/financeiro")
+  revalidatePath("/aluno/perfil")
+  if (!resultado.ok) return { erro: resultado.motivo }
   return { ok: true }
 }
 
@@ -54,11 +78,14 @@ export async function acaoVincularPlano(
   const parsed = vinculoPlanoSchema.safeParse({
     alunoId: formData.get("alunoId"),
     planoId: formData.get("planoId"),
+    diaVencimento: formData.get("diaVencimento"),
+    modalidadeIds: formData.getAll("modalidadeIds"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
   const resultado = await vincularPlanoMensalista({ ...parsed.data, autorId: usuario.id })
   revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")
   revalidatePath("/aluno/perfil")

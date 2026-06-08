@@ -25,6 +25,11 @@ const emailOpcional = z
   .union([z.email("E-mail inválido").trim().toLowerCase(), z.literal(""), z.null(), z.undefined()])
   .transform((v) => (typeof v === "string" && v.length > 0 ? v : null))
 
+const diaVencimentoSchema = z.preprocess(
+  (v) => (v === "" || v === null || v === undefined ? 10 : v),
+  z.coerce.number().int().min(1, "Informe um dia entre 1 e 28").max(28),
+)
+
 const numeroInteiroOpcional = (min: number, max?: number) =>
   z
     .preprocess(
@@ -177,6 +182,7 @@ export const alunoSchema = z.object({
   observacoesTecnicas: textoOpcional,
   observacoesAdmin: textoOpcional,
   idExterno: textoOpcional,
+  diaVencimento: diaVencimentoSchema,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
   responsavel: responsavelSchema.optional(),
 })
@@ -198,6 +204,7 @@ export const dadosAlunoSchema = z.object({
   observacoesTecnicas: textoOpcional,
   observacoesAdmin: textoOpcional,
   idExterno: textoOpcional,
+  diaVencimento: diaVencimentoSchema,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
   responsavel: responsavelSchema.nullable().optional(),
 })

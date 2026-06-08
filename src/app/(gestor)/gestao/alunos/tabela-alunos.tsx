@@ -37,7 +37,7 @@ export function TabelaAlunos({
     const termo = busca.trim().toLowerCase()
     if (!termo) return alunos
     return alunos.filter((a) =>
-      [a.nome, a.email, a.tipo, a.status, ...a.modalidadeNomes]
+      [a.nome, a.email, a.tipo, a.status, String(a.diaVencimento), ...a.modalidadeNomes]
         .join(" ")
         .toLowerCase()
         .includes(termo),
@@ -60,6 +60,7 @@ export function TabelaAlunos({
                 <th className="p-4 font-medium">Aluno</th>
                 <th className="p-4 font-medium">Tipo</th>
                 <th className="p-4 font-medium">Modalidades</th>
+                <th className="p-4 font-medium">Venc.</th>
                 <th className="p-4 text-center font-medium">Docs</th>
                 <th className="p-4 font-medium">Status</th>
                 <th className="p-4 text-right font-medium">
@@ -99,6 +100,9 @@ export function TabelaAlunos({
                       )}
                     </div>
                   </td>
+                  <td className="p-4 tabular-nums" data-label="Venc.">
+                    Dia {a.diaVencimento}
+                  </td>
                   <td className="p-4 text-center font-semibold tabular-nums" data-label="Docs">
                     {a.documentos}
                   </td>
@@ -114,7 +118,7 @@ export function TabelaAlunos({
               ))}
               {filtrados.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-10 text-center text-muted-foreground">
+                  <td colSpan={7} className="p-10 text-center text-muted-foreground">
                     {alunos.length === 0
                       ? "Nenhum aluno cadastrado. Use “Novo aluno” para começar."
                       : "Nenhum aluno corresponde à busca."}

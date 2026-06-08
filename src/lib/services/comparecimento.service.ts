@@ -121,7 +121,7 @@ export async function marcarComparecimento(params: {
         status: true,
         tipo: true,
         usuarioId: true,
-        plano: { select: { modalidades: { select: { id: true } } } },
+        modalidadesPlano: { select: { modalidadeId: true } },
       },
     }),
     db.aula.findUnique({
@@ -150,8 +150,8 @@ export async function marcarComparecimento(params: {
   if (!aluno) return { ok: false, motivo: "Aluno não encontrado." }
   if (!aula || aula.cancelada) return { ok: false, motivo: "Aula indisponível." }
   const regras = resolverRegrasTreino(config, aula.turma.modalidade)
-  const mensalidadeInternaNaModalidade = aluno.plano?.modalidades.some(
-    (modalidade) => modalidade.id === aula.turma.modalidadeId,
+  const mensalidadeInternaNaModalidade = aluno.modalidadesPlano.some(
+    (modalidade) => modalidade.modalidadeId === aula.turma.modalidadeId,
   )
 
   const podeFinanceiro = !bloqueiaComparecimentoPorFinanceiro({

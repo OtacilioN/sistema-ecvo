@@ -40,6 +40,7 @@ export default async function AlunosPage() {
           observacoesTecnicas: a.observacoesTecnicas,
           observacoesAdmin: a.observacoesAdmin,
           idExterno: a.idExterno,
+          diaVencimento: a.diaVencimento,
           modalidades: a.modalidades.map((m) => m.id),
           responsavel: a.responsavel,
           modalidadeNomes: a.modalidades.map((m) => m.nome),

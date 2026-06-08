@@ -208,7 +208,7 @@ model Aluno {
   idExterno           String?
 
   responsavel         Responsavel?
-  modalidades         Modalidade[]        @relation("AlunoModalidade")
+  modalidades         Modalidade[]           @relation("AlunoModalidade")
   comparecimentos     Comparecimento[]
   checkins            Checkin[]
   movimentosHoras     MovimentoHoras[]
@@ -218,8 +218,10 @@ model Aluno {
   inscricoesExame     InscricaoExame[]
   registrosImportados RegistroImportado[]
   documentos          DocumentoAluno[]
-  plano               Plano?              @relation(fields: [planoId], references: [id])
+  plano               Plano?                 @relation(fields: [planoId], references: [id])
   planoId             String?
+  diaVencimento       Int                    @default(10)
+  modalidadesPlano    AlunoPlanoModalidade[]
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -292,7 +294,7 @@ model Modalidade {
   turmas                           Turma[]
   movimentosHoras                  MovimentoHoras[]
   exames                           Exame[]
-  planos                           Plano[]                           @relation("PlanoModalidade")
+  alunosPlanos                     AlunoPlanoModalidade[]
   criadoEm                         DateTime                          @default(now())
   atualizadoEm                     DateTime                          @updatedAt
 }
@@ -485,14 +487,23 @@ model Plano {
   nome          String
   valor         Decimal       @db.Decimal(10, 2)
   periodicidade Periodicidade @default(MENSAL)
-  diaVencimento Int           @default(10)
   limiteAulas   Int? // null = ilimitado
   ativo         Boolean       @default(true)
-  modalidades   Modalidade[]  @relation("PlanoModalidade")
   alunos        Aluno[]
   mensalidades  Mensalidade[]
   criadoEm      DateTime      @default(now())
   atualizadoEm  DateTime      @updatedAt
+}
+
+model AlunoPlanoModalidade {
+  aluno        Aluno      @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId      String
+  modalidade   Modalidade @relation(fields: [modalidadeId], references: [id], onDelete: Cascade)
+  modalidadeId String
+  criadoEm     DateTime   @default(now())
+
+  @@id([alunoId, modalidadeId])
+  @@index([modalidadeId])
 }
 
 model Mensalidade {

@@ -19,8 +19,9 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
 ## Entidades
 
 Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento · Checkin ·
-MovimentoHoras · Graduacao · GraduacaoAluno · Exame · InscricaoExame · Plano · Mensalidade · Pagamento ·
-Importacao · RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao.
+MovimentoHoras · Graduacao · GraduacaoAluno · Exame · InscricaoExame · Plano · AlunoPlanoModalidade ·
+Mensalidade · Pagamento · Importacao · RegistroImportado · LogAuditoria · ConfiguracaoAcademia ·
+Notificacao.
 
 ## Diagrama (ER simplificado)
 
@@ -32,6 +33,8 @@ erDiagram
   Usuario ||--o{ Notificacao : "recebe"
 
   Aluno }o--o| Plano : "assinado"
+  Aluno ||--o{ AlunoPlanoModalidade : "contrata"
+  Modalidade ||--o{ AlunoPlanoModalidade : "inclui"
   Aluno }o--o{ Modalidade : "pratica"
   Aluno ||--o| Responsavel : "tem"
   Aluno ||--o{ Comparecimento : ""
@@ -66,6 +69,10 @@ erDiagram
 ## Notas
 
 - **Turma** modela tanto a grade recorrente (`diasSemana`/`horaInicio`/`horaFim`) quanto eventos únicos
+- **Aluno.diaVencimento** define o dia usado ao gerar mensalidades internas; `Mensalidade.vencimento`
+  preserva a data histórica da cobrança gerada.
+- **AlunoPlanoModalidade** define quais modalidades do aluno estão cobertas pelo plano mensal interno.
+  O plano não restringe modalidades; a seleção acontece no vínculo aluno-plano.
   (`ehEvento = true`, sem dia da semana). **Aula** é a ocorrência datada concreta.
 - **Comparecimento** pode ficar em `LISTA_ESPERA` quando a capacidade da aula foi atingida e a configuração
   de lista de espera está ativa. Ao cancelar um comparecimento `CONFIRMADO`, o primeiro registro em lista de

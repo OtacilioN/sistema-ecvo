@@ -1,6 +1,6 @@
 "use client"
 
-import { useActionState } from "react"
+import { type KeyboardEvent, useActionState } from "react"
 import { entrar } from "@/app/actions/auth"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,8 +9,21 @@ import { Label } from "@/components/ui/label"
 export function LoginForm() {
   const [estado, formAction, pending] = useActionState(entrar, undefined)
 
+  function aoTeclar(evento: KeyboardEvent<HTMLFormElement>) {
+    if (evento.key !== "Enter" || evento.nativeEvent.isComposing || pending) {
+      return
+    }
+
+    if (!(evento.target instanceof HTMLInputElement)) {
+      return
+    }
+
+    evento.preventDefault()
+    evento.currentTarget.requestSubmit()
+  }
+
   return (
-    <form action={formAction} className="flex flex-col gap-4">
+    <form action={formAction} className="flex flex-col gap-4" onKeyDown={aoTeclar}>
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">E-mail</Label>
         <Input

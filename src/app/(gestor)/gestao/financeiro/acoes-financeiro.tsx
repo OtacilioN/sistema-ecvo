@@ -1,33 +1,39 @@
 "use client"
 
-import { CreditCard, FilePlus, LinkIcon, WalletCards } from "lucide-react"
+import { CreditCard, FilePlus, LinkIcon, Pencil, WalletCards } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
 import { ItemMenu, MenuAcoes } from "@/components/ui/menu-acoes"
 import {
   FormBaixarMensalidade,
+  FormEditarPlano,
   FormGerarMensalidade,
   FormPagamentoAvulso,
   FormPlano,
   FormStatusMensalidade,
   FormVinculoPlano,
+  type PlanoEdicao,
 } from "./forms-financeiro"
 
-type AlunoOpcao = { id: string; nome: string; detalhe: string }
-type PlanoOpcao = { id: string; nome: string }
 type ModalidadeOpcao = { id: string; nome: string }
+type AlunoOpcao = {
+  id: string
+  nome: string
+  detalhe: string
+  modalidades: ModalidadeOpcao[]
+  modalidadeContratadaIds: string[]
+}
+type PlanoOpcao = { id: string; nome: string }
 type StatusMensalidade = "EM_ABERTO" | "PAGA" | "VENCIDA" | "CANCELADA" | "ISENTA"
 
 /** Ações primárias do cabeçalho da tela Financeiro. */
 export function AcoesFinanceiro({
-  modalidades,
   planos,
   alunos,
   alunosComPlano,
   competenciaAtual,
 }: {
-  modalidades: ModalidadeOpcao[]
   planos: PlanoOpcao[]
   alunos: AlunoOpcao[]
   alunosComPlano: AlunoOpcao[]
@@ -58,9 +64,9 @@ export function AcoesFinanceiro({
         aoFechar={fechar}
         variante="lateral"
         titulo="Novo plano"
-        descricao="Plano de mensalidade e modalidades incluídas."
+        descricao="Plano de mensalidade."
       >
-        <FormPlano modalidades={modalidades} aoConcluir={fechar} />
+        <FormPlano aoConcluir={fechar} />
       </Dialog>
 
       <Dialog
@@ -170,6 +176,40 @@ export function AcoesMensalidade({
           observacao={observacao}
           aoConcluir={fechar}
         />
+      </Dialog>
+    </>
+  )
+}
+
+/** Menu de ações por plano cadastrado. */
+export function AcoesPlano({ plano }: { plano: PlanoEdicao }) {
+  const [painel, setPainel] = useState<"editar" | null>(null)
+  const fechar = () => setPainel(null)
+
+  return (
+    <>
+      <MenuAcoes rotulo="Ações do plano">
+        {(fecharMenu) => (
+          <ItemMenu
+            icone={Pencil}
+            onClick={() => {
+              fecharMenu()
+              setPainel("editar")
+            }}
+          >
+            Editar plano
+          </ItemMenu>
+        )}
+      </MenuAcoes>
+
+      <Dialog
+        aberto={painel === "editar"}
+        aoFechar={fechar}
+        variante="centro"
+        titulo="Editar plano"
+        descricao={plano.nome}
+      >
+        <FormEditarPlano plano={plano} aoConcluir={fechar} />
       </Dialog>
     </>
   )

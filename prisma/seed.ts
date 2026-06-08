@@ -145,8 +145,6 @@ async function main() {
       nome: "Mensal Ilimitado",
       valor: 199.9,
       periodicidade: "MENSAL",
-      diaVencimento: 10,
-      modalidades: { connect: [{ id: jiu.id }, { id: kick.id }] },
     },
   })
 
@@ -167,7 +165,9 @@ async function main() {
           telefone: "(11) 91111-1111",
           dataInicio: new Date(),
           planoId: plano.id,
+          diaVencimento: 10,
           modalidades: { connect: [{ id: jiu.id }] },
+          modalidadesPlano: { create: [{ modalidadeId: jiu.id }] },
         },
       },
     },

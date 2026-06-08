@@ -13,7 +13,8 @@ export default async function Page() {
   const aluno = await db.aluno.findUnique({
     where: { id: alunoId },
     include: {
-      plano: { include: { modalidades: { select: { nome: true } } } },
+      plano: true,
+      modalidadesPlano: { select: { modalidade: { select: { nome: true } } } },
       mensalidades: { orderBy: { vencimento: "desc" }, take: 12 },
       pagamentos: { orderBy: { criadoEm: "desc" }, take: 12 },
     },
@@ -72,10 +73,10 @@ export default async function Page() {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-3">
             <Campo rotulo="Valor" valor={formatarBRL(Number(aluno.plano.valor))} />
-            <Campo rotulo="Vencimento" valor={`Dia ${aluno.plano.diaVencimento}`} />
+            <Campo rotulo="Vencimento" valor={`Dia ${aluno.diaVencimento}`} />
             <Campo
-              rotulo="Modalidades"
-              valor={aluno.plano.modalidades.map((m) => m.nome).join(", ")}
+              rotulo="Modalidades contratadas"
+              valor={aluno.modalidadesPlano.map((item) => item.modalidade.nome).join(", ")}
             />
           </CardContent>
         </Card>

@@ -8,21 +8,25 @@ import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { chaveCompetencia, formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
-import { AcoesFinanceiro, AcoesMensalidade } from "./acoes-financeiro"
+import { AcoesFinanceiro, AcoesMensalidade, AcoesPlano } from "./acoes-financeiro"
 
 export const dynamic = "force-dynamic"
 
 export default async function Page() {
   await exigirPapel("GESTOR")
-  const [modalidades, planos, alunos, mensalidades, pagamentos] = await Promise.all([
-    db.modalidade.findMany({ where: { ativa: true }, orderBy: { nome: "asc" } }),
+  const [planos, alunos, mensalidades, pagamentos] = await Promise.all([
     db.plano.findMany({
       orderBy: { criadoEm: "desc" },
-      include: { modalidades: true, _count: { select: { alunos: true } } },
+      include: { _count: { select: { alunos: true } } },
     }),
     db.aluno.findMany({
       orderBy: { usuario: { nome: "asc" } },
-      include: { usuario: { select: { nome: true } }, plano: { select: { nome: true } } },
+      include: {
+        usuario: { select: { nome: true } },
+        plano: { select: { nome: true } },
+        modalidades: { select: { id: true, nome: true } },
+        modalidadesPlano: { select: { modalidade: { select: { id: true, nome: true } } } },
+      },
     }),
     db.mensalidade.findMany({
       orderBy: [{ status: "asc" }, { vencimento: "asc" }],
@@ -42,16 +46,37 @@ export default async function Page() {
   const alunosOpcao = alunos.map((aluno) => ({
     id: aluno.id,
     nome: aluno.usuario.nome,
-    detalhe: aluno.plano ? `${aluno.tipo} · ${aluno.plano.nome}` : aluno.tipo,
+    detalhe: aluno.plano
+      ? `${aluno.tipo} · ${aluno.plano.nome} · venc. dia ${aluno.diaVencimento}`
+      : `${aluno.tipo} · venc. dia ${aluno.diaVencimento}`,
+    modalidades: aluno.modalidades.map((modalidade) => ({
+      id: modalidade.id,
+      nome: modalidade.nome,
+    })),
+    modalidadeContratadaIds: aluno.modalidadesPlano.map((item) => item.modalidade.id),
   }))
   const alunosComPlano = alunos
     .filter((aluno) => aluno.planoId)
     .map((aluno) => ({
       id: aluno.id,
       nome: aluno.usuario.nome,
-      detalhe: aluno.plano ? `${aluno.tipo} · ${aluno.plano.nome}` : aluno.tipo,
+      detalhe: aluno.plano
+        ? `${aluno.tipo} · ${aluno.plano.nome} · ${rotuloModalidadesContratadas(aluno.modalidadesPlano)} · venc. dia ${aluno.diaVencimento}`
+        : `${aluno.tipo} · venc. dia ${aluno.diaVencimento}`,
+      modalidades: aluno.modalidades.map((modalidade) => ({
+        id: modalidade.id,
+        nome: modalidade.nome,
+      })),
+      modalidadeContratadaIds: aluno.modalidadesPlano.map((item) => item.modalidade.id),
     }))
-  const planosOpcao = planos.map((plano) => ({ id: plano.id, nome: plano.nome }))
+  const planosOpcao = planos.map((plano) => ({
+    id: plano.id,
+    nome: plano.nome,
+    valor: Number(plano.valor),
+    periodicidade: plano.periodicidade,
+    limiteAulas: plano.limiteAulas,
+    ativo: plano.ativo,
+  }))
 
   return (
     <div className="space-y-6">
@@ -60,7 +85,6 @@ export default async function Page() {
           <Link href="/gestao/financeiro/repasses">Ver repasses</Link>
         </Button>
         <AcoesFinanceiro
-          modalidades={modalidades.map((m) => ({ id: m.id, nome: m.nome }))}
           planos={planosOpcao}
           alunos={alunosOpcao}
           alunosComPlano={alunosComPlano}
@@ -149,16 +173,27 @@ export default async function Page() {
                 <div key={plano.id} className="border-b border-border pb-3 last:border-0 last:pb-0">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{plano.nome}</p>
-                    <Badge variant={plano.ativo ? "success" : "secondary"}>
-                      {plano.ativo ? "Ativo" : "Inativo"}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={plano.ativo ? "success" : "secondary"}>
+                        {plano.ativo ? "Ativo" : "Inativo"}
+                      </Badge>
+                      <AcoesPlano
+                        plano={{
+                          id: plano.id,
+                          nome: plano.nome,
+                          valor: Number(plano.valor),
+                          periodicidade: plano.periodicidade,
+                          limiteAulas: plano.limiteAulas,
+                          ativo: plano.ativo,
+                        }}
+                      />
+                    </div>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {formatarBRL(Number(plano.valor))} · venc. dia {plano.diaVencimento} ·{" "}
-                    {plano._count.alunos} aluno(s)
+                    {formatarBRL(Number(plano.valor))} · {plano._count.alunos} aluno(s)
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {plano.modalidades.map((m) => m.nome).join(", ") || "Sem modalidade"}
+                    Disponível para qualquer modalidade
                   </p>
                 </div>
               ))}
@@ -199,4 +234,11 @@ export default async function Page() {
       </div>
     </div>
   )
+}
+
+function rotuloModalidadesContratadas(
+  modalidades: Array<{ modalidade: { nome: string } }>,
+): string {
+  if (modalidades.length === 0) return "sem modalidade contratada"
+  return modalidades.map((item) => item.modalidade.nome).join(", ")
 }

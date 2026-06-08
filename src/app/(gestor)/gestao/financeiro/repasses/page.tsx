@@ -20,6 +20,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>
 
 type LinhaRepasse = {
   chave: string
+  destinatarioId: string
   destinatario: string
   papel: "Professor" | "Sócio A" | "Sócio B" | "Pendência"
   origem: string
@@ -32,6 +33,16 @@ type PendenciaRepasse = {
   origem: string
   referencia: string
   motivo: string
+}
+
+type LinhaProfessor = {
+  professorId: string
+  professorNome: string
+  mensalidadeInterna: number
+  plataformas: number
+  total: number
+  eventos: number
+  origens: string[]
 }
 
 function valorUnico(valor: string | string[] | undefined) {
@@ -68,19 +79,23 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         status: { in: ["PAGA", "ISENTA"] },
       },
       include: {
-        aluno: { select: { usuario: { select: { nome: true } } } },
-        plano: {
-          include: {
-            modalidades: {
+        aluno: {
+          select: {
+            usuario: { select: { nome: true } },
+            modalidadesPlano: {
               select: {
-                id: true,
-                nome: true,
-                turmas: {
-                  where: { ativa: true, professorId: { not: null } },
-                  orderBy: { criadoEm: "asc" },
+                modalidade: {
                   select: {
-                    professorId: true,
-                    professor: { select: { usuario: { select: { nome: true } } } },
+                    id: true,
+                    nome: true,
+                    turmas: {
+                      where: { ativa: true, professorId: { not: null } },
+                      orderBy: { criadoEm: "asc" },
+                      select: {
+                        professorId: true,
+                        professor: { select: { usuario: { select: { nome: true } } } },
+                      },
+                    },
                   },
                 },
               },
@@ -128,11 +143,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   let totalSocioB = 0
 
   function somarLinha(params: Omit<LinhaRepasse, "chave" | "eventos">) {
-    const chave = `${params.papel}:${params.destinatario}:${params.origem}`
+    const chave = `${params.papel}:${params.destinatarioId}:${params.origem}`
     const atual =
       linhas.get(chave) ??
       ({
         chave,
+        destinatarioId: params.destinatarioId,
         destinatario: params.destinatario,
         papel: params.papel,
         origem: params.origem,
@@ -146,9 +162,18 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   for (const mensalidade of mensalidades) {
     const valorRecebido = mensalidade.status === "PAGA" ? Number(mensalidade.valor) : 0
-    const itens = mensalidade.plano.modalidades.map((modalidade) =>
+    const itens = mensalidade.aluno.modalidadesPlano.map(({ modalidade }) =>
       itemModalidadeMensalidade(modalidade, pendencias),
     )
+    if (itens.length === 0) {
+      pendencias.push({
+        chave: `mensalidade:${mensalidade.id}`,
+        origem: "Mensalidade interna",
+        referencia: mensalidade.aluno.usuario.nome,
+        motivo: "Mensalidade de aluno sem modalidade contratada no vínculo do plano.",
+      })
+      continue
+    }
     const repasse = calcularRepasseFinanceiro({
       valorRecebido,
       itens,
@@ -162,6 +187,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
     for (const professor of repasse.professores) {
       somarLinha({
+        destinatarioId: professor.professorId,
         destinatario: professor.professorNome ?? professor.professorId,
         papel: professor.professorId.startsWith("pendencia:") ? "Pendência" : "Professor",
         origem: "Mensalidade interna",
@@ -169,12 +195,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       })
     }
     somarLinha({
+      destinatarioId: "socio-a",
       destinatario: "Sócio A",
       papel: "Sócio A",
       origem: "Mensalidade interna",
       valor: repasse.socioA,
     })
     somarLinha({
+      destinatarioId: "socio-b",
       destinatario: "Sócio B",
       papel: "Sócio B",
       origem: "Mensalidade interna",
@@ -219,19 +247,33 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
     for (const professor of repasse.professores) {
       somarLinha({
+        destinatarioId: professor.professorId,
         destinatario: professor.professorNome ?? professor.professorId,
         papel: professor.professorId.startsWith("pendencia:") ? "Pendência" : "Professor",
         origem,
         valor: professor.valor,
       })
     }
-    somarLinha({ destinatario: "Sócio A", papel: "Sócio A", origem, valor: repasse.socioA })
-    somarLinha({ destinatario: "Sócio B", papel: "Sócio B", origem, valor: repasse.socioB })
+    somarLinha({
+      destinatarioId: "socio-a",
+      destinatario: "Sócio A",
+      papel: "Sócio A",
+      origem,
+      valor: repasse.socioA,
+    })
+    somarLinha({
+      destinatarioId: "socio-b",
+      destinatario: "Sócio B",
+      papel: "Sócio B",
+      origem,
+      valor: repasse.socioB,
+    })
   }
 
   const linhasOrdenadas = Array.from(linhas.values()).sort(
     (a, b) => ordemPapel(a.papel) - ordemPapel(b.papel) || b.valor - a.valor,
   )
+  const professoresOrdenados = consolidarProfessores(linhasOrdenadas)
   const valorPendenteProfessor = linhasOrdenadas
     .filter((linha) => linha.papel === "Pendência")
     .reduce((total, linha) => total + linha.valor, 0)
@@ -269,6 +311,59 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <Resumo rotulo="Sócio B" valor={formatarBRL(totalSocioB)} />
         <Resumo rotulo="Pendências" valor={formatarBRL(valorPendenteProfessor)} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Repasse individual por professor</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="tabela-responsiva w-full text-sm">
+              <thead className="border-b border-border text-left text-muted-foreground">
+                <tr>
+                  <th className="p-4 font-medium">Professor</th>
+                  <th className="p-4 font-medium">Origens</th>
+                  <th className="p-4 font-medium">Eventos</th>
+                  <th className="p-4 text-right font-medium">Mensalidade interna</th>
+                  <th className="p-4 text-right font-medium">Plataformas</th>
+                  <th className="p-4 text-right font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {professoresOrdenados.map((professor) => (
+                  <tr key={professor.professorId} className="border-b border-border last:border-0">
+                    <td className="p-4 font-medium" data-label="Professor">
+                      {professor.professorNome}
+                    </td>
+                    <td className="p-4" data-label="Origens">
+                      {professor.origens.join(", ")}
+                    </td>
+                    <td className="p-4 tabular-nums" data-label="Eventos">
+                      {professor.eventos}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Mensalidade interna">
+                      {formatarBRL(professor.mensalidadeInterna)}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Plataformas">
+                      {formatarBRL(professor.plataformas)}
+                    </td>
+                    <td className="p-4 text-right font-semibold tabular-nums" data-label="Total">
+                      {formatarBRL(professor.total)}
+                    </td>
+                  </tr>
+                ))}
+                {professoresOrdenados.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-10 text-center text-muted-foreground">
+                      Nenhum professor com repasse na competência.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -399,6 +494,42 @@ function ordemPapel(papel: LinhaRepasse["papel"]) {
     Pendência: 3,
   }
   return ordem[papel]
+}
+
+function consolidarProfessores(linhas: LinhaRepasse[]): LinhaProfessor[] {
+  const professores = new Map<string, LinhaProfessor & { origensSet: Set<string> }>()
+  for (const linha of linhas) {
+    if (linha.papel !== "Professor") continue
+    const atual =
+      professores.get(linha.destinatarioId) ??
+      ({
+        professorId: linha.destinatarioId,
+        professorNome: linha.destinatario,
+        mensalidadeInterna: 0,
+        plataformas: 0,
+        total: 0,
+        eventos: 0,
+        origens: [],
+        origensSet: new Set<string>(),
+      } satisfies LinhaProfessor & { origensSet: Set<string> })
+
+    if (linha.origem === "Mensalidade interna") {
+      atual.mensalidadeInterna += linha.valor
+    } else {
+      atual.plataformas += linha.valor
+    }
+    atual.total += linha.valor
+    atual.eventos += linha.eventos
+    atual.origensSet.add(linha.origem)
+    professores.set(linha.destinatarioId, atual)
+  }
+
+  return Array.from(professores.values())
+    .map(({ origensSet, ...professor }) => ({
+      ...professor,
+      origens: Array.from(origensSet).sort(),
+    }))
+    .sort((a, b) => b.total - a.total || a.professorNome.localeCompare(b.professorNome))
 }
 
 function Resumo({ rotulo, valor }: { rotulo: string; valor: string }) {

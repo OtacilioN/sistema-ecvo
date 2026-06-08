@@ -42,6 +42,7 @@ export type AlunoLinha = {
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
   idExterno: string | null
+  diaVencimento: number
   modalidades: string[]
   responsavel: ResponsavelAluno
 }

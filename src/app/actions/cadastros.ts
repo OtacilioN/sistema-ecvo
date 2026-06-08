@@ -350,6 +350,7 @@ export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise
     observacoesTecnicas: formData.get("observacoesTecnicas"),
     observacoesAdmin: formData.get("observacoesAdmin"),
     idExterno: formData.get("idExterno"),
+    diaVencimento: formData.get("diaVencimento"),
     modalidadeIds: formData.getAll("modalidadeIds"),
     responsavel: responsavel ?? undefined,
   })
@@ -386,6 +387,7 @@ export async function acaoAtualizarDadosAluno(
     observacoesTecnicas: formData.get("observacoesTecnicas"),
     observacoesAdmin: formData.get("observacoesAdmin"),
     idExterno: formData.get("idExterno"),
+    diaVencimento: formData.get("diaVencimento"),
     modalidadeIds: formData.getAll("modalidadeIds"),
     responsavel: responsavelDoFormData(formData),
   })
@@ -407,13 +409,16 @@ export async function acaoAtualizarDadosAluno(
     observacoesTecnicas: parsed.data.observacoesTecnicas,
     observacoesAdmin: parsed.data.observacoesAdmin,
     idExterno: parsed.data.idExterno,
+    diaVencimento: parsed.data.diaVencimento,
     modalidadeIds: parsed.data.modalidadeIds,
     responsavel: parsed.data.responsavel,
   })
   if (!resultado.ok) return { erro: resultado.motivo }
 
   revalidatePath("/gestao/alunos")
+  revalidatePath("/gestao/financeiro")
   revalidatePath("/gestao/auditoria")
+  revalidatePath("/aluno/financeiro")
   revalidatePath("/aluno/perfil")
   return { ok: true }
 }

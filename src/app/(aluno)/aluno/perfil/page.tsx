@@ -96,6 +96,7 @@ export default async function Page() {
         modalidades: { select: { id: true, nome: true } },
         responsavel: true,
         plano: { select: { nome: true, valor: true } },
+        modalidadesPlano: { select: { modalidade: { select: { nome: true } } } },
         mensalidades: {
           where: { status: { in: ["EM_ABERTO", "VENCIDA"] } },
           orderBy: { vencimento: "asc" },
@@ -335,6 +336,18 @@ export default async function Page() {
             </CardHeader>
             <CardContent className="space-y-3">
               <Campo rotulo="Plano" valor={aluno.plano?.nome ?? null} />
+              <Campo
+                rotulo="Vencimento da mensalidade"
+                valor={temMensalidadeInterna ? `Dia ${aluno.diaVencimento}` : null}
+              />
+              <Campo
+                rotulo="Modalidades contratadas"
+                valor={
+                  temMensalidadeInterna
+                    ? aluno.modalidadesPlano.map((item) => item.modalidade.nome).join(", ")
+                    : null
+                }
+              />
               <div>
                 <p className="text-xs text-muted-foreground">Situação</p>
                 <Badge className="mt-1" variant={adimplente ? "success" : "warning"}>

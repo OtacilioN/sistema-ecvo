@@ -29,6 +29,7 @@ type AlunoParaEdicao = {
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
   idExterno: string | null
+  diaVencimento: number
   modalidades: string[]
   responsavel: {
     nome: string
@@ -100,6 +101,17 @@ export function FormDadosAluno({
       <div className="space-y-1.5">
         <Label htmlFor="telefone-aluno">Telefone</Label>
         <Input id="telefone-aluno" name="telefone" defaultValue={aluno?.telefone ?? ""} />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="diaVencimento-aluno">Vencimento da mensalidade</Label>
+        <Input
+          id="diaVencimento-aluno"
+          name="diaVencimento"
+          type="number"
+          min="1"
+          max="28"
+          defaultValue={aluno.diaVencimento}
+        />
       </div>
       <div className="space-y-1.5 sm:col-span-2">
         <Label htmlFor="fotoUrl-aluno">URL da foto</Label>
