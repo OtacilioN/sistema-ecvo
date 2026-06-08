@@ -3,6 +3,7 @@ import type { Prisma, StatusAluno, TipoAluno } from "@prisma/client"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import { excluirFotoInternaSeExistir } from "@/lib/storage/blob-fotos"
 
 // Serviço de ALUNOS (RF-001..004). Criar um aluno cria o Usuario (papel ALUNO) + Aluno,
 // conecta modalidades e, se menor de idade, o responsável.
@@ -303,6 +304,10 @@ export async function atualizarAluno(
     return aluno
   })
 
+  if (params.fotoUrl !== undefined && atual.fotoUrl !== atualizado.fotoUrl) {
+    await excluirFotoInternaSeExistir(atual.fotoUrl)
+  }
+
   return { ok: true as const, aluno: atualizado }
 }
 
@@ -371,6 +376,8 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       tx,
     )
   })
+
+  await excluirFotoInternaSeExistir(aluno.fotoUrl)
 
   return { ok: true as const, alunoId: aluno.id }
 }

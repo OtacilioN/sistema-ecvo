@@ -1,7 +1,8 @@
 "use client"
 
-import { useActionState, useEffect, useRef } from "react"
+import { useActionState, useEffect, useRef, useState } from "react"
 import { acaoCriarAluno, type EstadoForm } from "@/app/actions/cadastros"
+import { CampoUploadFoto } from "@/components/campo-upload-foto"
 import { SeletorModalidades } from "@/components/seletor-modalidades"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
@@ -34,10 +35,13 @@ export function FormAluno({
 }) {
   const [estado, acao] = useActionState<EstadoForm, FormData>(acaoCriarAluno, undefined)
   const ref = useRef<HTMLFormElement>(null)
+  const [uploadPendente, setUploadPendente] = useState(false)
+  const [fotoKey, setFotoKey] = useState(0)
 
   useEffect(() => {
     if (estado?.ok) {
       ref.current?.reset()
+      setFotoKey((key) => key + 1)
       aoConcluir?.()
     }
   }, [estado?.ok, aoConcluir])
@@ -95,10 +99,12 @@ export function FormAluno({
           defaultValue="10"
         />
       </div>
-      <div className="space-y-1.5 sm:col-span-2">
-        <Label htmlFor="fotoUrl">URL da foto</Label>
-        <Input id="fotoUrl" name="fotoUrl" type="url" placeholder="https://..." />
-      </div>
+      <CampoUploadFoto
+        key={fotoKey}
+        id="fotoUrl"
+        entidade="alunos"
+        onPendenteChange={setUploadPendente}
+      />
       <div className="space-y-1.5">
         <Label htmlFor="dataNascimento">Data de nascimento</Label>
         <Input id="dataNascimento" name="dataNascimento" type="date" />
@@ -168,7 +174,7 @@ export function FormAluno({
       </fieldset>
 
       <div className="flex items-center gap-3 sm:col-span-2">
-        <BotaoEnviar>Cadastrar aluno</BotaoEnviar>
+        <BotaoEnviar disabled={uploadPendente}>Cadastrar aluno</BotaoEnviar>
         {estado?.erro && <p className="text-sm text-destructive">{estado.erro}</p>}
       </div>
     </form>

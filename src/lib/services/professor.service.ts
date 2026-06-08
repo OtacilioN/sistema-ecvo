@@ -2,6 +2,7 @@ import "server-only"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import { excluirFotoInternaSeExistir } from "@/lib/storage/blob-fotos"
 
 // Serviço de PROFESSORES (RF-005/006). Criar um professor cria o Usuario (papel PROFESSOR)
 // e o Professor vinculado, conectando as modalidades habilitadas.
@@ -160,6 +161,10 @@ export async function atualizarProfessor(
     return professor
   })
 
+  if (params.fotoUrl !== undefined && atual.fotoUrl !== resultado.fotoUrl) {
+    await excluirFotoInternaSeExistir(atual.fotoUrl)
+  }
+
   return { ok: true as const, professor: resultado }
 }
 
@@ -216,6 +221,8 @@ export async function excluirProfessor(params: { professorId: string; autorId: s
       tx,
     )
   })
+
+  await excluirFotoInternaSeExistir(professor.fotoUrl)
 
   return { ok: true as const, professorId: professor.id }
 }
