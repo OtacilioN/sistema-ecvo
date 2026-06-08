@@ -6,8 +6,8 @@ import { registrarLog } from "@/lib/services/auditoria.service"
 // Serviço de HORAS — o livro-razão (ledger) append-only de MovimentoHoras (RF-030..039).
 // Regra de ouro: NUNCA se apaga ou edita um movimento. O total é sempre SUM(minutos).
 // Um CREDITO (>0) nasce de um check-in válido; um ESTORNO (<0) o reverte; AJUSTE_MANUAL (±)
-// é lançado pelo gestor. Toda função de mutação aceita um TransactionClient para participar
-// da mesma transação da operação que a originou (ex.: estorno + LogAuditoria na invalidação).
+// é lançado por gestor/professor autorizado. Toda função de mutação aceita um TransactionClient
+// para participar da mesma transação da operação que a originou (ex.: estorno + LogAuditoria).
 
 // ───────────────────────── Lógica pura (testável sem banco) ─────────────────────────
 
@@ -64,6 +64,28 @@ export function podeAjustarHoras(params: {
   }
   if (!params.alunoModalidadeIds.includes(params.modalidadeId)) {
     return { ok: false, motivo: "Aluno não vinculado à modalidade informada." }
+  }
+  return { ok: true }
+}
+
+export function podeProfessorLancarHoras(params: {
+  minutos: number
+  motivo: string
+  alunoModalidadeIds: string[]
+  professorModalidadeIds: string[]
+  modalidadeId: string
+}): { ok: true } | { ok: false; motivo: string } {
+  if (!Number.isInteger(params.minutos) || params.minutos <= 0) {
+    return { ok: false, motivo: "Informe minutos inteiros maiores que zero." }
+  }
+  if (params.motivo.trim().length < 5) {
+    return { ok: false, motivo: "Informe o motivo do lançamento." }
+  }
+  if (!params.alunoModalidadeIds.includes(params.modalidadeId)) {
+    return { ok: false, motivo: "Aluno não vinculado à modalidade informada." }
+  }
+  if (!params.professorModalidadeIds.includes(params.modalidadeId)) {
+    return { ok: false, motivo: "Professor não habilitado nesta modalidade." }
   }
   return { ok: true }
 }
@@ -194,6 +216,87 @@ export async function registrarAjusteManualHoras(params: {
           aluno: aluno.usuario.nome,
           modalidadeId: params.modalidadeId,
           modalidade: modalidade.nome,
+          minutos: criado.minutos,
+          tipo: criado.tipo,
+        },
+        justificativa: params.motivo,
+      },
+      tx,
+    )
+
+    return criado
+  })
+
+  return { ok: true as const, movimento }
+}
+
+export async function registrarLancamentoAvulsoHorasProfessor(params: {
+  alunoId: string
+  modalidadeId: string
+  minutos: number
+  motivo: string
+  professorId: string
+  autorId: string
+}) {
+  const [aluno, modalidade, professor] = await Promise.all([
+    db.aluno.findUnique({
+      where: { id: params.alunoId },
+      select: {
+        id: true,
+        usuario: { select: { nome: true } },
+        modalidades: { select: { id: true } },
+      },
+    }),
+    db.modalidade.findUnique({
+      where: { id: params.modalidadeId },
+      select: { id: true, nome: true, ativa: true },
+    }),
+    db.professor.findUnique({
+      where: { id: params.professorId },
+      select: {
+        id: true,
+        usuario: { select: { nome: true } },
+        modalidades: { select: { id: true } },
+      },
+    }),
+  ])
+
+  if (!aluno) return { ok: false as const, motivo: "Aluno não encontrado." }
+  if (!modalidade?.ativa)
+    return { ok: false as const, motivo: "Modalidade não encontrada ou inativa." }
+  if (!professor) return { ok: false as const, motivo: "Professor não encontrado." }
+
+  const regra = podeProfessorLancarHoras({
+    minutos: params.minutos,
+    motivo: params.motivo,
+    alunoModalidadeIds: aluno.modalidades.map((item) => item.id),
+    professorModalidadeIds: professor.modalidades.map((item) => item.id),
+    modalidadeId: params.modalidadeId,
+  })
+  if (!regra.ok) return { ok: false as const, motivo: regra.motivo }
+
+  const movimento = await db.$transaction(async (tx) => {
+    const criado = await ajustarManual(tx, {
+      alunoId: params.alunoId,
+      modalidadeId: params.modalidadeId,
+      minutos: params.minutos,
+      motivo: params.motivo,
+      autorId: params.autorId,
+    })
+
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "AJUSTE_HORAS",
+        entidade: "MovimentoHoras",
+        entidadeId: criado.id,
+        valorNovo: {
+          alunoId: params.alunoId,
+          aluno: aluno.usuario.nome,
+          modalidadeId: params.modalidadeId,
+          modalidade: modalidade.nome,
+          professorId: params.professorId,
+          professor: professor.usuario.nome,
           minutos: criado.minutos,
           tipo: criado.tipo,
         },

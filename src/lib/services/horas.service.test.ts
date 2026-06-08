@@ -3,6 +3,7 @@ import {
   META_DEZ_MIL_HORAS_MIN,
   minutosDeEstorno,
   podeAjustarHoras,
+  podeProfessorLancarHoras,
   progressoDezMil,
   proximoMarco,
   totaisPorModalidade,
@@ -116,6 +117,52 @@ describe("podeAjustarHoras", () => {
         minutos: 30,
         motivo: "Correção",
         alunoModalidadeIds: ["boxe"],
+        modalidadeId: "jiu",
+      }),
+    ).toMatchObject({ ok: false })
+  })
+})
+
+describe("podeProfessorLancarHoras", () => {
+  it("permite lançamento positivo quando aluno e professor compartilham a modalidade", () => {
+    expect(
+      podeProfessorLancarHoras({
+        minutos: 75,
+        motivo: "Treino avulso",
+        alunoModalidadeIds: ["jiu", "boxe"],
+        professorModalidadeIds: ["jiu"],
+        modalidadeId: "jiu",
+      }),
+    ).toEqual({ ok: true })
+  })
+
+  it("bloqueia minuto negativo e modalidade fora do professor ou do aluno", () => {
+    expect(
+      podeProfessorLancarHoras({
+        minutos: -30,
+        motivo: "Treino avulso",
+        alunoModalidadeIds: ["jiu"],
+        professorModalidadeIds: ["jiu"],
+        modalidadeId: "jiu",
+      }),
+    ).toMatchObject({ ok: false })
+
+    expect(
+      podeProfessorLancarHoras({
+        minutos: 30,
+        motivo: "Treino avulso",
+        alunoModalidadeIds: ["jiu"],
+        professorModalidadeIds: ["boxe"],
+        modalidadeId: "jiu",
+      }),
+    ).toMatchObject({ ok: false })
+
+    expect(
+      podeProfessorLancarHoras({
+        minutos: 30,
+        motivo: "Treino avulso",
+        alunoModalidadeIds: ["boxe"],
+        professorModalidadeIds: ["jiu"],
         modalidadeId: "jiu",
       }),
     ).toMatchObject({ ok: false })

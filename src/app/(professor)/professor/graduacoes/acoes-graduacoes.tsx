@@ -1,15 +1,16 @@
 "use client"
 
-import { Award, CalendarPlus } from "lucide-react"
+import { Award, CalendarPlus, ClockPlus } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
 import { FormExame } from "./form-exame"
 import { FormGraduacao } from "./form-graduacao"
+import { FormLancamentoHorasProfessor } from "./form-lancamento-horas"
 
-type AlunoOpcao = { id: string; nome: string; detalhe: string }
-type GraduacaoOpcao = { id: string; rotulo: string }
 type ModalidadeOpcao = { id: string; nome: string }
+type AlunoOpcao = { id: string; nome: string; detalhe: string; modalidades: ModalidadeOpcao[] }
+type GraduacaoOpcao = { id: string; rotulo: string }
 
 export function AcoesGraduacoesProfessor({
   alunos,
@@ -21,8 +22,10 @@ export function AcoesGraduacoesProfessor({
   modalidades: ModalidadeOpcao[]
 }) {
   const [graduacaoAberta, setGraduacaoAberta] = useState(false)
+  const [horasAberta, setHorasAberta] = useState(false)
   const [exameAberto, setExameAberto] = useState(false)
   const podeRegistrarGraduacao = alunos.length > 0 && graduacoes.length > 0
+  const podeLancarHoras = alunos.length > 0
   const podeCriarExame = modalidades.length > 0
 
   return (
@@ -33,6 +36,14 @@ export function AcoesGraduacoesProfessor({
         disabled={!podeRegistrarGraduacao}
       >
         <Award className="size-4" /> Registrar graduação
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setHorasAberta(true)}
+        disabled={!podeLancarHoras}
+      >
+        <ClockPlus className="size-4" /> Lançar horas
       </Button>
       <Button
         type="button"
@@ -55,6 +66,16 @@ export function AcoesGraduacoesProfessor({
           graduacoes={graduacoes}
           aoConcluir={() => setGraduacaoAberta(false)}
         />
+      </Dialog>
+
+      <Dialog
+        aberto={horasAberta}
+        aoFechar={() => setHorasAberta(false)}
+        variante="centro"
+        titulo="Lançar horas"
+        descricao="Registro avulso para aluno de uma modalidade sob sua responsabilidade."
+      >
+        <FormLancamentoHorasProfessor alunos={alunos} aoConcluir={() => setHorasAberta(false)} />
       </Dialog>
 
       <Dialog
