@@ -82,6 +82,10 @@ export default async function Page() {
     id: aluno.id,
     nome: aluno.usuario.nome,
     detalhe: aluno.modalidades.map((m) => m.nome).join(", "),
+    modalidades: aluno.modalidades.map((modalidade) => ({
+      id: modalidade.id,
+      nome: modalidade.nome,
+    })),
   }))
 
   const atuais = alunos.flatMap((aluno) =>

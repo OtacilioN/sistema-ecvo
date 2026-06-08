@@ -31,7 +31,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Registro retroativo de check-in com justificativa e auditoria (RF-031) | `Checkin`,`LogAuditoria` | `checkinRetroativo`, `realizarCheckin`, `acaoLancarCheckin`, `professor/aula/[id]` |
 | Horas + estorno (RF-030..039) | `MovimentoHoras` | `src/lib/services/horas.service.ts`, `aluno/horas` |
 | Acompanhamento de horas por modalidade pelo professor (RF-026/RF-032/RF-033) | `MovimentoHoras`,`Aluno`,`Modalidade` | `professor/graduacoes` |
-| Ajuste manual de horas com auditoria (RF-038) | `MovimentoHoras`,`LogAuditoria` | `src/lib/services/horas.service.ts`, `src/app/actions/horas.ts`, `gestao/alunos` |
+| Ajuste manual de horas com auditoria (RF-038) | `MovimentoHoras`,`LogAuditoria` | `src/lib/services/horas.service.ts`, `src/app/actions/horas.ts`, `gestao/alunos`, `professor/graduacoes` |
 | Invalidação por professor/gestor (RF-027/028/035) | `Checkin`,`MovimentoHoras`,`LogAuditoria` | `checkin.service.ts`, `auditoria.service.ts`, `professor/aula/[id]`, `gestao/turmas/aula/[id]` |
 | Perfil do aluno com histórico de graduações, comparecimentos/check-ins, documentos e conciliação (RF-003/RF-041/RF-042/RF-063/RF-064) | `Aluno` e relações, `GraduacaoAluno`,`Comparecimento`,`Checkin`,`DocumentoAluno`, `RegistroImportado` | `aluno/perfil`, `gestao/alunos`, `aluno/graduacoes` |
 

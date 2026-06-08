@@ -110,7 +110,8 @@ aluno experimental.
 - **RF-034** Cálculo automático ao check-in válido (soma duração ao total geral e da modalidade).
 - **RF-035** Estorno de horas por invalidação, mantendo registro do estorno.
 - **RF-036** Progresso rumo às 10 mil horas (engajamento). **RF-037** Marcos intermediários.
-- **RF-038** Ajuste manual de horas (modalidade, quantidade, motivo, responsável, auditoria).
+- **RF-038** Ajuste manual de horas (modalidade, quantidade, motivo, responsável, auditoria);
+  professores só podem lançar horas positivas para alunos vinculados às suas modalidades.
 - **RF-039** Prevenção de duplicidade (mesma aula não conta duas vezes).
 
 ### Graduação
