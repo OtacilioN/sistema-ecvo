@@ -57,7 +57,7 @@ export default async function AlunoAgenda() {
         </Card>
       )}
 
-      <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {aulas.map((aula) => {
           const comp = aula.comparecimentos[0]
           const temComparecimento = comp?.status === "CONFIRMADO"
@@ -70,10 +70,10 @@ export default async function AlunoAgenda() {
             janelaHoras,
           })
           return (
-            <Card key={aula.id}>
-              <CardContent className="flex items-start justify-between gap-4 py-4">
+            <Card key={aula.id} className="flex flex-col">
+              <CardContent className="flex flex-1 flex-col gap-3 py-4">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{aula.turma.modalidade.nome}</Badge>
                     {temComparecimento && !presente && (
                       <Badge variant="secondary">Comparecimento marcado</Badge>
@@ -89,14 +89,16 @@ export default async function AlunoAgenda() {
                     {aula.turma.local ? ` · ${aula.turma.local}` : ""}
                   </p>
                 </div>
-                <AcoesAula
-                  aulaId={aula.id}
-                  temComparecimento={temComparecimento}
-                  emListaEspera={emListaEspera}
-                  presente={presente}
-                  pendenteRevisao={pendenteRevisao}
-                  janelaAberta={janelaAberta}
-                />
+                <div className="mt-auto pt-1">
+                  <AcoesAula
+                    aulaId={aula.id}
+                    temComparecimento={temComparecimento}
+                    emListaEspera={emListaEspera}
+                    presente={presente}
+                    pendenteRevisao={pendenteRevisao}
+                    janelaAberta={janelaAberta}
+                  />
+                </div>
               </CardContent>
             </Card>
           )

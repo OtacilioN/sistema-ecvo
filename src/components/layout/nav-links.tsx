@@ -133,13 +133,13 @@ export function NavPainelMobile({ itens }: { itens: ItemNav[] }) {
   )
 }
 
-/** Navegação inferior fixa (mobile / aluno). */
+/** Navegação inferior fixa (mobile / aluno). Oculta no desktop, onde há sidebar. */
 export function NavInferior({ itens }: { itens: ItemNav[] }) {
   const pathname = usePathname()
   const hrefAtivo = obterHrefAtivo(pathname, itens)
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-flow-col border-t border-border bg-card pb-[env(safe-area-inset-bottom)]">
+    <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-flow-col border-t border-border bg-card pb-[env(safe-area-inset-bottom)] md:hidden">
       {itens.map((item) => (
         <Link
           key={item.href}

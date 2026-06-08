@@ -1,13 +1,24 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { HOME_POR_PAPEL } from "@/lib/auth/dal"
+import { exigirPapel, getUsuarioAtual, HOME_POR_PAPEL } from "@/lib/auth/dal"
 import { verificarSenha } from "@/lib/auth/senha"
 import { criarSessao, destruirSessao } from "@/lib/auth/session"
 import { db } from "@/lib/db"
-import { loginSchema } from "@/lib/validations/auth"
+import { alterarSenhaPropria, redefinirSenhaUsuario } from "@/lib/services/usuario.service"
+import {
+  alterarMinhaSenhaSchema,
+  loginSchema,
+  redefinirSenhaUsuarioSchema,
+} from "@/lib/validations/auth"
 
 export type EstadoLogin = { erro?: string } | undefined
+export type EstadoSenha = { erro?: string; ok?: boolean } | undefined
+
+function primeiroErro(issues: { message: string }[]): string {
+  return issues[0]?.message ?? "Dados inválidos."
+}
 
 export async function entrar(_anterior: EstadoLogin, formData: FormData): Promise<EstadoLogin> {
   const parsed = loginSchema.safeParse({
@@ -33,4 +44,51 @@ export async function entrar(_anterior: EstadoLogin, formData: FormData): Promis
 export async function sair() {
   await destruirSessao()
   redirect("/login")
+}
+
+export async function acaoAlterarMinhaSenha(
+  _: EstadoSenha,
+  formData: FormData,
+): Promise<EstadoSenha> {
+  const usuario = await getUsuarioAtual()
+  const parsed = alterarMinhaSenhaSchema.safeParse({
+    senhaAtual: formData.get("senhaAtual"),
+    novaSenha: formData.get("novaSenha"),
+    confirmarSenha: formData.get("confirmarSenha"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await alterarSenhaPropria({
+    usuarioId: usuario.id,
+    senhaAtual: parsed.data.senhaAtual,
+    novaSenha: parsed.data.novaSenha,
+  })
+  if (!resultado.ok) return { erro: resultado.motivo }
+
+  revalidatePath("/gestao/auditoria")
+  return { ok: true }
+}
+
+export async function acaoRedefinirSenhaUsuario(
+  _: EstadoSenha,
+  formData: FormData,
+): Promise<EstadoSenha> {
+  const gestor = await exigirPapel("GESTOR")
+  const parsed = redefinirSenhaUsuarioSchema.safeParse({
+    usuarioId: formData.get("usuarioId"),
+    novaSenha: formData.get("novaSenha"),
+    confirmarSenha: formData.get("confirmarSenha"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await redefinirSenhaUsuario({
+    usuarioId: parsed.data.usuarioId,
+    novaSenha: parsed.data.novaSenha,
+    autorId: gestor.id,
+  })
+  if (!resultado.ok) return { erro: resultado.motivo }
+
+  revalidatePath("/gestao/usuarios")
+  revalidatePath("/gestao/auditoria")
+  return { ok: true }
 }

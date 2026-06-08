@@ -7,6 +7,7 @@ import {
   FileBarChart,
   GraduationCap,
   History,
+  KeyRound,
   LayoutDashboard,
   Settings,
   ShieldCheck,
@@ -22,6 +23,7 @@ const icMobile = "size-5"
 export const NAV_GESTOR: ItemNav[] = [
   { href: "/gestao", rotulo: "Início", icone: <LayoutDashboard className={ic} /> },
   { href: "/gestao/gestores", rotulo: "Gestores", icone: <ShieldCheck className={ic} /> },
+  { href: "/gestao/usuarios", rotulo: "Usuários", icone: <KeyRound className={ic} /> },
   { href: "/gestao/alunos", rotulo: "Alunos", icone: <Users className={ic} /> },
   { href: "/gestao/professores", rotulo: "Professores", icone: <UserRound className={ic} /> },
   { href: "/gestao/modalidades", rotulo: "Modalidades", icone: <GraduationCap className={ic} /> },
@@ -32,6 +34,7 @@ export const NAV_GESTOR: ItemNav[] = [
   { href: "/gestao/auditoria", rotulo: "Auditoria", icone: <ShieldCheck className={ic} /> },
   { href: "/gestao/notificacoes", rotulo: "Notificações", icone: <Bell className={ic} /> },
   { href: "/gestao/configuracoes", rotulo: "Configurações", icone: <Settings className={ic} /> },
+  { href: "/gestao/perfil", rotulo: "Minha conta", icone: <KeyRound className={ic} /> },
 ]
 
 export const NAV_PROFESSOR: ItemNav[] = [
@@ -39,6 +42,7 @@ export const NAV_PROFESSOR: ItemNav[] = [
   { href: "/professor/turmas", rotulo: "Minhas aulas", icone: <CalendarDays className={ic} /> },
   { href: "/professor/graduacoes", rotulo: "Graduações", icone: <Award className={ic} /> },
   { href: "/professor/notificacoes", rotulo: "Notificações", icone: <Bell className={ic} /> },
+  { href: "/professor/perfil", rotulo: "Minha conta", icone: <KeyRound className={ic} /> },
 ]
 
 export const NAV_ALUNO: ItemNav[] = [

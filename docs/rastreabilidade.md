@@ -6,7 +6,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 ## Fundação (Fase 0) — ✅
 | Tema | Entidade(s) | Arquivos |
 | --- | --- | --- |
-| Autenticação usuário+senha (RNF-004) | `Usuario` | `src/lib/auth/{session,senha,dal}.ts`, `src/app/actions/auth.ts`, `src/app/(auth)/login/*` |
+| Autenticação usuário+senha, troca própria e redefinição por gestor (RNF-004) | `Usuario`,`LogAuditoria` | `src/lib/auth/{session,senha,dal}.ts`, `src/lib/services/usuario.service.ts`, `src/app/actions/auth.ts`, `src/app/(auth)/login/*`, `{gestao,professor}/perfil`, `aluno/perfil`, `gestao/usuarios` |
 | RBAC por papel (RNF-004) | — | `src/lib/auth/dal.ts` (`exigirPapel`), `src/proxy.ts` |
 | Cadastro/listagem de gestores do sistema | `Usuario` | `src/lib/services/gestor.service.ts`, `src/app/actions/cadastros.ts`, `gestao/gestores` |
 | Auditoria (RF-079/080) | `LogAuditoria` | `src/lib/services/auditoria.service.ts` |

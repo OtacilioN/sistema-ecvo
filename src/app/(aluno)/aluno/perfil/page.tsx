@@ -6,6 +6,7 @@ import type {
   StatusConciliacao,
   TipoAluno,
 } from "@prisma/client"
+import { FormMinhaSenha } from "@/components/auth/form-minha-senha"
 import { Badge, type BadgeProps } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirAluno } from "@/lib/auth/dal"
@@ -384,6 +385,15 @@ export default async function Page() {
                 valor={String(aluno._count.registrosImportados)}
               />
               <Campo rotulo="Documentos" valor={String(aluno._count.documentos)} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Senha de acesso</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FormMinhaSenha />
             </CardContent>
           </Card>
         </div>
