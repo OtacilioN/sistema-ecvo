@@ -1,6 +1,6 @@
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { formatInTimeZone, toZonedTime } from "date-fns-tz"
+import { formatInTimeZone, fromZonedTime, toZonedTime } from "date-fns-tz"
 
 // Timezone padrão da academia (Brasil). Janelas de comparecimento, recorrência semanal
 // e geração de aulas são sensíveis a fuso (RF-014).
@@ -39,6 +39,11 @@ export function formatarDataExtenso(data: Date): string {
 /** Converte um Date para o horário local da academia (para cálculos de dia/hora). */
 export function paraFusoAcademia(data: Date): Date {
   return toZonedTime(data, TIMEZONE)
+}
+
+export function inicioDoDiaAcademia(data: Date): Date {
+  const dia = formatInTimeZone(data, TIMEZONE, "yyyy-MM-dd")
+  return fromZonedTime(`${dia}T00:00:00`, TIMEZONE)
 }
 
 /** Formata uma duração em minutos como "1h30" / "45min" / "2h". */

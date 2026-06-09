@@ -71,6 +71,37 @@ type DadosAluno = {
   } | null
 }
 
+type Cliente = Prisma.TransactionClient | typeof db
+
+export async function migrarMensalidadesAbertasParaPlanoAluno(
+  cliente: Cliente,
+  params: {
+    alunoId: string
+    planoAnteriorId: string | null
+    planoNovoId: string | null
+    planoNovoValor?: Prisma.MensalidadeUncheckedUpdateManyInput["valor"]
+  },
+) {
+  if (params.planoAnteriorId === params.planoNovoId) return 0
+
+  const data: Prisma.MensalidadeUncheckedUpdateManyInput = {
+    planoId: params.planoNovoId,
+  }
+  if (params.planoNovoId && params.planoNovoValor !== undefined) {
+    data.valor = params.planoNovoValor
+  }
+
+  const resultado = await cliente.mensalidade.updateMany({
+    where: {
+      alunoId: params.alunoId,
+      status: "EM_ABERTO",
+    },
+    data,
+  })
+
+  return resultado.count
+}
+
 export async function criarAluno(
   params: { nome: string; email: string; senha: string; autorId: string } & DadosAluno,
 ) {
@@ -189,6 +220,8 @@ export async function atualizarAluno(
   if (!atual) return { ok: false as const, motivo: "Aluno não encontrado." }
 
   const atualizado = await db.$transaction(async (tx) => {
+    let mensalidadesAbertasMigradas = 0
+
     if (params.responsavel !== undefined) {
       if (params.responsavel) {
         await tx.responsavel.upsert({
@@ -266,10 +299,19 @@ export async function atualizarAluno(
       include: {
         usuario: { select: { nome: true, fotoUrl: true } },
         modalidades: { select: { id: true, nome: true } },
-        plano: { select: { nome: true } },
+        plano: { select: { nome: true, valor: true } },
         responsavel: true,
       },
     })
+
+    if (params.planoId !== undefined) {
+      mensalidadesAbertasMigradas = await migrarMensalidadesAbertasParaPlanoAluno(tx, {
+        alunoId: atual.id,
+        planoAnteriorId: atual.planoId,
+        planoNovoId: params.planoId,
+        planoNovoValor: aluno.plano?.valor,
+      })
+    }
 
     if (params.planoId === null) {
       await tx.alunoPlanoModalidade.deleteMany({ where: { alunoId: atual.id } })
@@ -313,26 +355,29 @@ export async function atualizarAluno(
       modalidades: atual.modalidades.map((modalidade) => modalidade.nome),
       responsavel: atual.responsavel,
     })
-    const valorNovo = serializarAluno({
-      nome: aluno.usuario.nome,
-      tipo: aluno.tipo,
-      status: aluno.status,
-      cpf: aluno.cpf,
-      telefone: aluno.telefone,
-      fotoUrl: aluno.fotoUrl,
-      dataNascimento: aluno.dataNascimento,
-      endereco: aluno.endereco,
-      dataInicio: aluno.dataInicio,
-      contatoEmergencia: aluno.contatoEmergencia,
-      restricoesMedicas: aluno.restricoesMedicas,
-      observacoesTecnicas: aluno.observacoesTecnicas,
-      observacoesAdmin: aluno.observacoesAdmin,
-      idExterno: aluno.idExterno,
-      plano: aluno.plano?.nome ?? null,
-      diaVencimento: aluno.diaVencimento,
-      modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
-      responsavel: aluno.responsavel,
-    })
+    const valorNovo = {
+      ...serializarAluno({
+        nome: aluno.usuario.nome,
+        tipo: aluno.tipo,
+        status: aluno.status,
+        cpf: aluno.cpf,
+        telefone: aluno.telefone,
+        fotoUrl: aluno.fotoUrl,
+        dataNascimento: aluno.dataNascimento,
+        endereco: aluno.endereco,
+        dataInicio: aluno.dataInicio,
+        contatoEmergencia: aluno.contatoEmergencia,
+        restricoesMedicas: aluno.restricoesMedicas,
+        observacoesTecnicas: aluno.observacoesTecnicas,
+        observacoesAdmin: aluno.observacoesAdmin,
+        idExterno: aluno.idExterno,
+        plano: aluno.plano?.nome ?? null,
+        diaVencimento: aluno.diaVencimento,
+        modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
+        responsavel: aluno.responsavel,
+      }),
+      ...(mensalidadesAbertasMigradas > 0 ? { mensalidadesAbertasMigradas } : {}),
+    }
 
     if (JSON.stringify(valorAntigo) !== JSON.stringify(valorNovo)) {
       await registrarLog(

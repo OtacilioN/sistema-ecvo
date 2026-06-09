@@ -6,11 +6,10 @@ import type {
   TipoAluno,
   TipoPagamento,
 } from "@prisma/client"
-import { formatInTimeZone, fromZonedTime } from "date-fns-tz"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
-import { chaveCompetencia, formatarData, TIMEZONE } from "@/lib/utils/datas"
+import { chaveCompetencia, formatarData, inicioDoDiaAcademia } from "@/lib/utils/datas"
 
 type Cliente = Prisma.TransactionClient | typeof db
 
@@ -71,13 +70,20 @@ export function statusMensalidadeEfetivo(
   return mensalidade.vencimento.getTime() < inicioDoDia(hoje).getTime() ? "VENCIDA" : "EM_ABERTO"
 }
 
+export function mensalidadeBloqueiaTreino(
+  mensalidade: MensalidadeResumo,
+  hoje = new Date(),
+): boolean {
+  return statusMensalidadeEfetivo(mensalidade, hoje) === "VENCIDA"
+}
+
 export function mensalistaAdimplente(
   mensalidades: MensalidadeResumo[],
   hoje = new Date(),
 ): boolean {
   return mensalidades.every((mensalidade) => {
     const status = statusMensalidadeEfetivo(mensalidade, hoje)
-    return status !== "EM_ABERTO" && status !== "VENCIDA"
+    return status !== "VENCIDA"
   })
 }
 
@@ -794,6 +800,7 @@ export async function gerarLembretesFinanceirosGestores(
   const agora = params?.agora ?? new Date()
   const hoje = inicioDoDia(agora)
   const amanha = intervaloDoDia(new Date(hoje.getTime() + 24 * 60 * 60 * 1000))
+  const vencidas = await vencerMensalidadesAtrasadas(cliente, { agora })
 
   const [gestores, vencemAmanha, inadimplentes] = await Promise.all([
     cliente.usuario.findMany({
@@ -810,8 +817,7 @@ export async function gerarLembretesFinanceirosGestores(
     }),
     cliente.mensalidade.findMany({
       where: {
-        status: "EM_ABERTO",
-        vencimento: { lt: hoje },
+        status: "VENCIDA",
       },
       include: { aluno: { select: { usuario: { select: { nome: true } } } } },
       orderBy: { vencimento: "asc" },
@@ -850,6 +856,7 @@ export async function gerarLembretesFinanceirosGestores(
   return {
     ok: true as const,
     gestoresNotificados: gestores.length,
+    mensalidadesVencidasAtualizadas: vencidas.mensalidadesVencidas,
     mensalidadesAVencer: vencemAmanha.length,
     mensalidadesInadimplentes: inadimplentes.length,
     lembretesCriados,
@@ -858,14 +865,29 @@ export async function gerarLembretesFinanceirosGestores(
   }
 }
 
+export async function vencerMensalidadesAtrasadas(
+  cliente: Cliente = db,
+  params?: { agora?: Date },
+) {
+  const hoje = inicioDoDia(params?.agora ?? new Date())
+  const resultado = await cliente.mensalidade.updateMany({
+    where: {
+      status: "EM_ABERTO",
+      vencimento: { lt: hoje },
+    },
+    data: { status: "VENCIDA" },
+  })
+
+  return { ok: true as const, mensalidadesVencidas: resultado.count }
+}
+
 function vencimentoDaCompetencia(competencia: string, diaVencimento: number): Date {
   const [ano, mes] = competencia.split("-").map(Number)
   return new Date(Date.UTC(ano, mes - 1, diaVencimento, 12, 0, 0))
 }
 
 function inicioDoDia(data: Date): Date {
-  const dia = formatInTimeZone(data, TIMEZONE, "yyyy-MM-dd")
-  return fromZonedTime(`${dia}T00:00:00`, TIMEZONE)
+  return inicioDoDiaAcademia(data)
 }
 
 function intervaloDoDia(data: Date): { inicio: Date; fim: Date } {

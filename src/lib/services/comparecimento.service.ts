@@ -10,6 +10,7 @@ import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
+import { inicioDoDiaAcademia } from "@/lib/utils/datas"
 
 // Serviço de COMPARECIMENTO — a INTENÇÃO de treinar (RN-001/RF-013..018).
 // Marcar comparecimento NÃO gera presença nem horas; é apenas reserva/sinalização.
@@ -98,8 +99,12 @@ async function configuracao() {
 }
 
 async function mensalidadeEmDia(alunoId: string): Promise<boolean> {
+  const hoje = inicioDoDiaAcademia(new Date())
   const pendente = await db.mensalidade.findFirst({
-    where: { alunoId, status: { in: ["EM_ABERTO", "VENCIDA"] } },
+    where: {
+      alunoId,
+      OR: [{ status: "VENCIDA" }, { status: "EM_ABERTO", vencimento: { lt: hoje } }],
+    },
     select: { id: true },
   })
   return pendente === null
@@ -163,7 +168,7 @@ export async function marcarComparecimento(params: {
       : true,
     bloqueioInadimplencia: config.bloqueioInadimplencia,
   })
-  if (!podeFinanceiro) return { ok: false, motivo: "Mensalidade em aberto." }
+  if (!podeFinanceiro) return { ok: false, motivo: "Mensalidade vencida." }
 
   if (
     !podeMarcarComparecimento({

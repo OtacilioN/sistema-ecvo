@@ -1,3 +1,4 @@
+import type { StatusMensalidade } from "@prisma/client"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -6,11 +7,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirPapel } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
+import { cn } from "@/lib/utils"
 import { formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 import { AcoesFinanceiro, AcoesMensalidade, AcoesPlano } from "./acoes-financeiro"
 
 export const dynamic = "force-dynamic"
+
+const rotulosStatusMensalidade: Record<StatusMensalidade, string> = {
+  EM_ABERTO: "Em aberto",
+  PAGA: "Paga",
+  VENCIDA: "Vencida",
+  CANCELADA: "Cancelada",
+  ISENTA: "Isenta",
+}
 
 export default async function Page() {
   await exigirPapel("GESTOR")
@@ -84,11 +94,10 @@ export default async function Page() {
                 <thead className="border-b border-border text-left text-muted-foreground">
                   <tr>
                     <th className="p-4 font-medium">Aluno</th>
-                    <th className="p-4 font-medium">Competência</th>
                     <th className="p-4 font-medium">Vencimento</th>
                     <th className="p-4 font-medium">Valor</th>
                     <th className="p-4 font-medium">Status</th>
-                    <th className="p-4 text-right font-medium">
+                    <th className="p-4 text-right font-medium md:sticky md:right-0 md:z-20 md:bg-card md:pl-6">
                       <span className="sr-only">Ações</span>
                     </th>
                   </tr>
@@ -97,27 +106,46 @@ export default async function Page() {
                   {mensalidades.map((mensalidade) => {
                     const status = statusMensalidadeEfetivo(mensalidade)
                     const quitada = status === "PAGA" || status === "ISENTA"
+                    const emAberto = status === "EM_ABERTO"
+                    const vencida = status === "VENCIDA"
                     return (
                       <tr
                         key={mensalidade.id}
-                        className="border-b border-border transition-colors last:border-0 hover:bg-muted/40"
+                        className={cn(
+                          "border-b border-border transition-colors last:border-0 hover:bg-muted/40",
+                          vencida && "bg-destructive/5 hover:bg-destructive/10",
+                        )}
                       >
                         <td className="p-4 font-medium" data-label="Aluno">
                           {mensalidade.aluno.usuario.nome}
                         </td>
-                        <td className="p-4" data-label="Competência">
-                          {mensalidade.competencia}
-                        </td>
-                        <td className="p-4" data-label="Vencimento">
+                        <td
+                          className={cn("p-4", vencida && "font-semibold text-destructive")}
+                          data-label="Vencimento"
+                        >
                           {formatarData(mensalidade.vencimento)}
                         </td>
                         <td className="p-4 tabular-nums" data-label="Valor">
                           {formatarBRL(Number(mensalidade.valor))}
                         </td>
                         <td className="p-4" data-label="Status">
-                          <Badge variant={quitada ? "success" : "warning"}>{status}</Badge>
+                          <Badge
+                            variant={vencida ? "destructive" : quitada ? "success" : "outline"}
+                            className={cn(
+                              "whitespace-nowrap",
+                              emAberto && "border-sky-200 bg-sky-50 text-sky-800",
+                            )}
+                          >
+                            {rotulosStatusMensalidade[status]}
+                          </Badge>
                         </td>
-                        <td className="p-4" data-label="Ações">
+                        <td
+                          className={cn(
+                            "p-4 md:sticky md:right-0 md:z-10 md:bg-card md:pl-6 md:shadow-[-10px_0_14px_-14px_rgba(1,1,1,0.55)]",
+                            vencida && "md:bg-destructive/5",
+                          )}
+                          data-label="Ações"
+                        >
                           <div className="flex justify-end">
                             <AcoesMensalidade
                               mensalidadeId={mensalidade.id}
@@ -133,7 +161,7 @@ export default async function Page() {
                   })}
                   {mensalidades.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="p-10 text-center text-muted-foreground">
+                      <td colSpan={5} className="p-10 text-center text-muted-foreground">
                         Nenhuma mensalidade registrada.
                       </td>
                     </tr>

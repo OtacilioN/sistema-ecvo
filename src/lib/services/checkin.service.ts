@@ -12,7 +12,7 @@ import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
 import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
 import { creditarPorCheckin, estornarCheckin } from "@/lib/services/horas.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
-import { formatarDataHora } from "@/lib/utils/datas"
+import { formatarDataHora, inicioDoDiaAcademia } from "@/lib/utils/datas"
 
 // Serviço de CHECK-IN — o coração do loop de treino (RF-019..031).
 // REGRAS INVIOLÁVEIS:
@@ -63,7 +63,7 @@ export function avaliarCheckin(ctx: ContextoCheckin): AvaliacaoCheckin {
     ctx.statusAluno === "INADIMPLENTE" ||
     (ctx.mensalidadeInternaNaModalidade && !ctx.mensalidadeEmDia)
   if (inadimplente && ctx.bloqueioInadimplencia === "BLOQUEAR_CHECKIN") {
-    return { ok: false, motivo: "Mensalidade em aberto." }
+    return { ok: false, motivo: "Mensalidade vencida." }
   }
 
   if (!ctx.temComparecimento && ctx.capacidadeAula > 0 && ctx.ocupacaoAula >= ctx.capacidadeAula) {
@@ -134,10 +134,14 @@ async function configuracao() {
   )
 }
 
-/** Há mensalidade da competência corrente em aberto/vencida para o aluno? */
+/** Há mensalidade vencida para o aluno? Mensalidade em aberto antes do vencimento não bloqueia. */
 async function mensalidadeEmDia(alunoId: string): Promise<boolean> {
+  const hoje = inicioDoDiaAcademia(new Date())
   const pendente = await db.mensalidade.findFirst({
-    where: { alunoId, status: { in: ["EM_ABERTO", "VENCIDA"] } },
+    where: {
+      alunoId,
+      OR: [{ status: "VENCIDA" }, { status: "EM_ABERTO", vencimento: { lt: hoje } }],
+    },
     select: { id: true },
   })
   return pendente === null
@@ -373,7 +377,7 @@ export async function realizarCheckin(params: {
         alunoId: params.alunoId,
         aulaId: params.aulaId,
         autorId: params.autorId,
-        motivo: "Mensalidade em aberto.",
+        motivo: "Mensalidade vencida.",
         agora,
       })
       return {

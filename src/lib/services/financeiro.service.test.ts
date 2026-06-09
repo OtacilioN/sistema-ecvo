@@ -5,8 +5,10 @@ import {
   mensagemLembreteVencimentoMensalidade,
   mensagemPagamentoAvulso,
   mensagemStatusMensalidade,
+  mensalidadeBloqueiaTreino,
   mensalistaAdimplente,
   statusMensalidadeEfetivo,
+  vencerMensalidadesAtrasadas,
 } from "./financeiro.service"
 
 describe("statusMensalidadeEfetivo", () => {
@@ -30,7 +32,16 @@ describe("statusMensalidadeEfetivo", () => {
 })
 
 describe("mensalistaAdimplente", () => {
-  it("é falso quando há mensalidade vencida ou em aberto", () => {
+  it("é verdadeiro quando há mensalidade em aberto antes do vencimento", () => {
+    expect(
+      mensalistaAdimplente(
+        [{ status: "EM_ABERTO", vencimento: new Date("2026-06-10T12:00:00Z") }],
+        new Date("2026-06-09T12:00:00Z"),
+      ),
+    ).toBe(true)
+  })
+
+  it("é falso quando há mensalidade vencida", () => {
     expect(
       mensalistaAdimplente(
         [{ status: "EM_ABERTO", vencimento: new Date("2026-06-10T12:00:00Z") }],
@@ -46,6 +57,55 @@ describe("mensalistaAdimplente", () => {
         { status: "ISENTA", vencimento: new Date("2026-06-10T12:00:00Z") },
       ]),
     ).toBe(true)
+  })
+})
+
+describe("mensalidadeBloqueiaTreino", () => {
+  it("não bloqueia mensalidade em aberto antes do vencimento", () => {
+    expect(
+      mensalidadeBloqueiaTreino(
+        { status: "EM_ABERTO", vencimento: new Date("2026-06-10T12:00:00Z") },
+        new Date("2026-06-09T12:00:00Z"),
+      ),
+    ).toBe(false)
+  })
+
+  it("bloqueia mensalidade vencida automaticamente pela data", () => {
+    expect(
+      mensalidadeBloqueiaTreino(
+        { status: "EM_ABERTO", vencimento: new Date("2026-06-10T12:00:00Z") },
+        new Date("2026-06-11T12:00:00Z"),
+      ),
+    ).toBe(true)
+  })
+})
+
+describe("vencerMensalidadesAtrasadas", () => {
+  it("marca como vencidas apenas mensalidades em aberto com vencimento passado", async () => {
+    const chamadas: unknown[] = []
+    const cliente = {
+      mensalidade: {
+        updateMany: async (params: unknown) => {
+          chamadas.push(params)
+          return { count: 2 }
+        },
+      },
+    } as never
+
+    const resultado = await vencerMensalidadesAtrasadas(cliente, {
+      agora: new Date("2026-06-11T12:00:00Z"),
+    })
+
+    expect(resultado).toEqual({ ok: true, mensalidadesVencidas: 2 })
+    expect(chamadas).toEqual([
+      {
+        where: {
+          status: "EM_ABERTO",
+          vencimento: { lt: expect.any(Date) },
+        },
+        data: { status: "VENCIDA" },
+      },
+    ])
   })
 })
 

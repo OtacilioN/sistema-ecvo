@@ -61,7 +61,7 @@ export function TabelaAlunos({
         a.tipo,
         a.status,
         a.planoNome,
-        String(a.diaVencimento),
+        a.planoId ? String(a.diaVencimento) : "",
         ...a.modalidadeNomes,
       ]
         .join(" ")
@@ -69,6 +69,20 @@ export function TabelaAlunos({
         .includes(termo)
     })
   }, [alunos, busca, planoFiltro])
+
+  const grupos = useMemo(
+    () => [
+      {
+        titulo: "Alunos Mensalistas",
+        alunos: filtrados.filter((a) => a.tipo !== "WELLHUB" && a.tipo !== "TOTALPASS"),
+      },
+      {
+        titulo: "Alunos Wellhub/Totalpass",
+        alunos: filtrados.filter((a) => a.tipo === "WELLHUB" || a.tipo === "TOTALPASS"),
+      },
+    ],
+    [filtrados],
+  )
 
   return (
     <Card>
@@ -94,96 +108,136 @@ export function TabelaAlunos({
         </span>
       </div>
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <table className="tabela-responsiva w-full text-sm">
-            <thead className="border-b border-border text-left text-muted-foreground">
-              <tr>
-                <th className="p-4 font-medium">Aluno</th>
-                <th className="p-4 font-medium">Tipo</th>
-                <th className="p-4 font-medium">Plano</th>
-                <th className="p-4 font-medium">Modalidades</th>
-                <th className="p-4 font-medium">Venc.</th>
-                <th className="p-4 text-center font-medium">Docs</th>
-                <th className="p-4 font-medium">Status</th>
-                <th className="p-4 text-right font-medium">
-                  <span className="sr-only">Ações</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.map((a) => (
-                <tr
-                  key={a.id}
-                  className="border-b border-border transition-colors last:border-0 hover:bg-muted/40"
-                >
-                  <td className="p-4" data-label="Aluno">
-                    <div className="flex items-center gap-3">
-                      <FotoPerfil nome={a.nome} fotoUrl={a.fotoUrl} />
-                      <div className="min-w-0">
-                        <span className="font-medium">{a.nome}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {a.email}
-                        </span>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="p-4" data-label="Tipo">
-                    <Badge variant="outline">{a.tipo}</Badge>
-                  </td>
-                  <td className="p-4" data-label="Plano">
-                    {a.planoNome ? (
-                      <Badge variant="outline">{a.planoNome}</Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Sem plano</span>
-                    )}
-                  </td>
-                  <td className="p-4" data-label="Modalidades">
-                    <div className="flex flex-wrap gap-1">
-                      {a.modalidadeNomes.map((nome) => (
-                        <Badge key={nome} variant="secondary">
-                          {nome}
-                        </Badge>
-                      ))}
-                      {a.modalidadeNomes.length === 0 && (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="p-4 tabular-nums" data-label="Venc.">
-                    Dia {a.diaVencimento}
-                  </td>
-                  <td className="p-4 text-center font-semibold tabular-nums" data-label="Docs">
-                    {a.documentos}
-                  </td>
-                  <td className="p-4" data-label="Status">
-                    <Badge variant={VARIANTE_STATUS[a.status]}>{a.status}</Badge>
-                  </td>
-                  <td className="p-4" data-label="Ações">
-                    <div className="flex justify-end">
-                      <AcoesAluno
-                        aluno={a}
-                        modalidades={modalidades}
-                        planos={planos}
-                        competenciaAtual={competenciaAtual}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtrados.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="p-10 text-center text-muted-foreground">
-                    {alunos.length === 0
-                      ? "Nenhum aluno cadastrado. Use “Novo aluno” para começar."
-                      : "Nenhum aluno corresponde à busca."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {filtrados.length === 0 ? (
+          <p className="p-10 text-center text-sm text-muted-foreground">
+            {alunos.length === 0
+              ? "Nenhum aluno cadastrado. Use “Novo aluno” para começar."
+              : "Nenhum aluno corresponde à busca."}
+          </p>
+        ) : (
+          <div className="divide-y divide-border">
+            {grupos.map((grupo) => (
+              <section key={grupo.titulo} className="space-y-3 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold">{grupo.titulo}</h2>
+                  <span className="text-xs text-muted-foreground">
+                    {grupo.alunos.length} aluno(s)
+                  </span>
+                </div>
+                {grupo.alunos.length > 0 ? (
+                  <TabelaGrupoAlunos
+                    alunos={grupo.alunos}
+                    modalidades={modalidades}
+                    planos={planos}
+                    competenciaAtual={competenciaAtual}
+                  />
+                ) : (
+                  <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+                    Nenhum aluno nesta lista.
+                  </p>
+                )}
+              </section>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
+  )
+}
+
+function TabelaGrupoAlunos({
+  alunos,
+  modalidades,
+  planos,
+  competenciaAtual,
+}: {
+  alunos: AlunoLista[]
+  modalidades: Modalidade[]
+  planos: Plano[]
+  competenciaAtual: string
+}) {
+  return (
+    <div className="-mx-4 overflow-x-auto">
+      <table className="tabela-responsiva w-full text-sm">
+        <thead className="border-y border-border text-left text-muted-foreground">
+          <tr>
+            <th className="p-4 font-medium">Aluno</th>
+            <th className="p-4 font-medium">Tipo</th>
+            <th className="p-4 font-medium">Plano</th>
+            <th className="p-4 font-medium">Modalidades</th>
+            <th className="p-4 font-medium">Venc.</th>
+            <th className="p-4 text-center font-medium">Docs</th>
+            <th className="p-4 font-medium">Status</th>
+            <th className="p-4 text-right font-medium">
+              <span className="sr-only">Ações</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {alunos.map((a) => (
+            <tr
+              key={a.id}
+              className="border-b border-border transition-colors last:border-0 hover:bg-muted/40"
+            >
+              <td className="p-4" data-label="Aluno">
+                <div className="flex items-center gap-3">
+                  <FotoPerfil nome={a.nome} fotoUrl={a.fotoUrl} />
+                  <div className="min-w-0">
+                    <span className="font-medium">{a.nome}</span>
+                    <span className="block truncate text-xs text-muted-foreground">{a.email}</span>
+                  </div>
+                </div>
+              </td>
+              <td className="p-4" data-label="Tipo">
+                <Badge variant="outline">{a.tipo}</Badge>
+              </td>
+              <td className="p-4" data-label="Plano">
+                {a.planoNome ? (
+                  <Badge variant="outline">{a.planoNome}</Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Sem plano</span>
+                )}
+              </td>
+              <td className="p-4" data-label="Modalidades">
+                <div className="flex flex-wrap gap-1">
+                  {a.modalidadeNomes.map((nome) => (
+                    <Badge key={nome} variant="secondary">
+                      {nome}
+                    </Badge>
+                  ))}
+                  {a.modalidadeNomes.length === 0 && (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </div>
+              </td>
+              <td className="p-4 tabular-nums" data-label="Venc.">
+                {a.planoId ? (
+                  `Dia ${a.diaVencimento}`
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </td>
+              <td className="p-4 text-center font-semibold tabular-nums" data-label="Docs">
+                {a.documentos}
+              </td>
+              <td className="p-4" data-label="Status">
+                <Badge variant={VARIANTE_STATUS[a.status]}>{a.status}</Badge>
+              </td>
+              <td className="p-4" data-label="Ações">
+                <div className="flex justify-end">
+                  <AcoesAluno
+                    aluno={a}
+                    modalidades={modalidades}
+                    planos={planos}
+                    competenciaAtual={competenciaAtual}
+                  />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
