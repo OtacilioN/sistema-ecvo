@@ -1,5 +1,5 @@
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { listarModalidades } from "@/lib/services/modalidade.service"
 import { BotaoNovaModalidade } from "./acoes-modalidade"
 import { TabelaModalidades } from "./tabela-modalidades"
@@ -7,16 +7,18 @@ import { TabelaModalidades } from "./tabela-modalidades"
 export const dynamic = "force-dynamic"
 
 export default async function ModalidadesPage() {
-  await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
+  const podeEditar = usuario.papel === "GESTOR"
   const modalidades = await listarModalidades()
 
   return (
     <div className="space-y-6">
       <CabecalhoPagina titulo="Modalidades" descricao="Modalidades oferecidas pela academia.">
-        <BotaoNovaModalidade />
+        {podeEditar && <BotaoNovaModalidade />}
       </CabecalhoPagina>
 
       <TabelaModalidades
+        podeEditar={podeEditar}
         modalidades={modalidades.map((m) => ({
           id: m.id,
           nome: m.nome,

@@ -7,8 +7,8 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Tema | Entidade(s) | Arquivos |
 | --- | --- | --- |
 | Autenticação usuário+senha, troca própria e redefinição por gestor (RNF-004) | `Usuario`,`LogAuditoria` | `src/lib/auth/{session,senha,dal}.ts`, `src/lib/services/usuario.service.ts`, `src/app/actions/auth.ts`, `src/app/(auth)/login/*`, `{gestao,professor}/perfil`, `aluno/perfil`, `gestao/usuarios` |
-| RBAC por papel (RNF-004) | — | `src/lib/auth/dal.ts` (`exigirPapel`), `src/proxy.ts` |
-| Cadastro/listagem de gestores do sistema | `Usuario` | `src/lib/services/gestor.service.ts`, `src/app/actions/cadastros.ts`, `gestao/gestores` |
+| RBAC por papel (RNF-004) | — | `src/lib/auth/dal.ts` (`exigirPapel`, `exigirGestao`), `src/proxy.ts` |
+| Cadastro/listagem de gestores e secretaria do sistema | `Usuario` | `src/lib/services/gestor.service.ts`, `src/app/actions/cadastros.ts`, `gestao/gestores` |
 | Auditoria (RF-079/080) | `LogAuditoria` | `src/lib/services/auditoria.service.ts` |
 | Design system (paleta/logo) | — | `src/app/globals.css`, `src/components/ui/*`, `src/components/marca.tsx` |
 | Configuração da academia (RF-014/022/051) | `ConfiguracaoAcademia` | `prisma/schema.prisma` |

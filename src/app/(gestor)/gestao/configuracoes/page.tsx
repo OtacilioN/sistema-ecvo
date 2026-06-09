@@ -1,12 +1,12 @@
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { obterConfiguracaoAcademia } from "@/lib/services/configuracao.service"
 import { FormConfiguracao } from "./form-configuracao"
 
 export const dynamic = "force-dynamic"
 
 export default async function Page() {
-  await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
   const configuracao = await obterConfiguracaoAcademia()
   const configuracaoSerializada = {
     ...configuracao,
@@ -20,7 +20,10 @@ export default async function Page() {
         descricao="Regras de comparecimento, check-in, financeiro e notificações."
       />
 
-      <FormConfiguracao configuracao={configuracaoSerializada} />
+      <FormConfiguracao
+        configuracao={configuracaoSerializada}
+        somenteLeitura={usuario.papel !== "GESTOR"}
+      />
     </div>
   )
 }

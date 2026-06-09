@@ -3,12 +3,13 @@ import { Badge } from "@/components/ui/badge"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FormMinhaFoto } from "@/components/usuarios/form-foto-usuario"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 
 export const dynamic = "force-dynamic"
 
 export default async function PerfilGestorPage() {
-  const usuario = await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
+  const papelRotulo = usuario.papel === "SECRETARIA" ? "Secretaria" : "Gestor"
 
   return (
     <div className="space-y-6">
@@ -25,7 +26,7 @@ export default async function PerfilGestorPage() {
             <Campo rotulo="Foto" valor={usuario.fotoUrl ? "Informada" : null} />
             <div>
               <p className="text-xs text-muted-foreground">Papel</p>
-              <Badge className="mt-1">Gestor</Badge>
+              <Badge className="mt-1">{papelRotulo}</Badge>
             </div>
             <Campo rotulo="Status" valor={usuario.ativo ? "Ativo" : "Inativo"} />
           </CardContent>

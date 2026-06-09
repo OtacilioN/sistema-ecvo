@@ -1,7 +1,7 @@
 import { Badge, type BadgeProps } from "@/components/ui/badge"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { formatarData, formatarDataHora } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
@@ -22,7 +22,8 @@ const VARIANTE_STATUS: Record<string, BadgeProps["variant"]> = {
 }
 
 export default async function Page() {
-  await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
+  const podeEditar = usuario.papel === "GESTOR"
   const [importacoes, registros, alunos, checkins] = await Promise.all([
     db.importacao.findMany({
       orderBy: { criadoEm: "desc" },
@@ -93,7 +94,7 @@ export default async function Page() {
         titulo="Conciliação"
         descricao="Importação CSV/XLSX Wellhub/TotalPass, identificação de alunos e comparação com check-ins."
       >
-        <BotaoImportarConciliacao />
+        {podeEditar && <BotaoImportarConciliacao />}
       </CabecalhoPagina>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -119,9 +120,11 @@ export default async function Page() {
                   <th className="p-4 font-medium">Aluno</th>
                   <th className="p-4 font-medium">Check-in</th>
                   <th className="p-4 font-medium">Status</th>
-                  <th className="p-4 text-right font-medium">
-                    <span className="sr-only">Ações</span>
-                  </th>
+                  {podeEditar && (
+                    <th className="p-4 text-right font-medium">
+                      <span className="sr-only">Ações</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -161,23 +164,28 @@ export default async function Page() {
                         {registro.statusConciliacao}
                       </Badge>
                     </td>
-                    <td className="p-4" data-label="Ações">
-                      <div className="flex justify-end">
-                        {registro.statusConciliacao !== "CONCILIADO" && (
-                          <AcaoResolverRegistro
-                            registroId={registro.id}
-                            statusAtual={registro.statusConciliacao}
-                            alunos={alunosOpcao}
-                            checkins={checkinsOpcao}
-                          />
-                        )}
-                      </div>
-                    </td>
+                    {podeEditar && (
+                      <td className="p-4" data-label="Ações">
+                        <div className="flex justify-end">
+                          {registro.statusConciliacao !== "CONCILIADO" && (
+                            <AcaoResolverRegistro
+                              registroId={registro.id}
+                              statusAtual={registro.statusConciliacao}
+                              alunos={alunosOpcao}
+                              checkins={checkinsOpcao}
+                            />
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {registros.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="p-10 text-center text-muted-foreground">
+                    <td
+                      colSpan={podeEditar ? 8 : 7}
+                      className="p-10 text-center text-muted-foreground"
+                    >
                       Nenhum registro importado. Use “Importar planilha” para começar.
                     </td>
                   </tr>

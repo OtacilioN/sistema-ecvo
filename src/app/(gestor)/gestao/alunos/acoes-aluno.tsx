@@ -93,11 +93,13 @@ export function AcoesAluno({
   modalidades,
   planos,
   competenciaAtual,
+  podeAdministrar,
 }: {
   aluno: AlunoLinha
   modalidades: Modalidade[]
   planos: Plano[]
   competenciaAtual: string
+  podeAdministrar: boolean
 }) {
   const [painel, setPainel] = useState<Painel>(null)
   const fechar = () => setPainel(null)
@@ -116,46 +118,50 @@ export function AcoesAluno({
             >
               Editar dados
             </ItemMenu>
-            <ItemMenu
-              icone={ClockPlus}
-              onClick={() => {
-                fecharMenu()
-                setPainel("horas")
-              }}
-            >
-              Ajustar horas
-            </ItemMenu>
-            <ItemMenu
-              icone={WalletCards}
-              disabled={!aluno.planoId}
-              title={!aluno.planoId ? "Aluno sem plano de pagamento" : undefined}
-              onClick={() => {
-                fecharMenu()
-                setPainel("pagamento")
-              }}
-            >
-              Dar baixa
-            </ItemMenu>
-            <ItemMenu
-              icone={FileText}
-              onClick={() => {
-                fecharMenu()
-                setPainel("documento")
-              }}
-            >
-              Anexar documento
-            </ItemMenu>
-            <SeparadorMenu />
-            <ItemMenu
-              icone={Trash2}
-              variante="destructive"
-              onClick={() => {
-                fecharMenu()
-                setPainel("excluir")
-              }}
-            >
-              Excluir aluno
-            </ItemMenu>
+            {podeAdministrar && (
+              <>
+                <ItemMenu
+                  icone={ClockPlus}
+                  onClick={() => {
+                    fecharMenu()
+                    setPainel("horas")
+                  }}
+                >
+                  Ajustar horas
+                </ItemMenu>
+                <ItemMenu
+                  icone={WalletCards}
+                  disabled={!aluno.planoId}
+                  title={!aluno.planoId ? "Aluno sem plano de pagamento" : undefined}
+                  onClick={() => {
+                    fecharMenu()
+                    setPainel("pagamento")
+                  }}
+                >
+                  Dar baixa
+                </ItemMenu>
+                <ItemMenu
+                  icone={FileText}
+                  onClick={() => {
+                    fecharMenu()
+                    setPainel("documento")
+                  }}
+                >
+                  Anexar documento
+                </ItemMenu>
+                <SeparadorMenu />
+                <ItemMenu
+                  icone={Trash2}
+                  variante="destructive"
+                  onClick={() => {
+                    fecharMenu()
+                    setPainel("excluir")
+                  }}
+                >
+                  Excluir aluno
+                </ItemMenu>
+              </>
+            )}
           </>
         )}
       </MenuAcoes>

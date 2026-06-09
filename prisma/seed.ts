@@ -116,6 +116,17 @@ async function main() {
     },
   })
 
+  await db.usuario.upsert({
+    where: { email: "secretaria@ecvo.com.br" },
+    update: {},
+    create: {
+      email: "secretaria@ecvo.com.br",
+      senhaHash: SENHA_PADRAO,
+      nome: "Secretaria ECVO",
+      papel: "SECRETARIA",
+    },
+  })
+
   // ─── Professor ───
   const profUser = await db.usuario.upsert({
     where: { email: "professor@ecvo.com.br" },

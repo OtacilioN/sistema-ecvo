@@ -1,5 +1,5 @@
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { listarAlunos } from "@/lib/services/aluno.service"
 import { listarModalidades } from "@/lib/services/modalidade.service"
@@ -10,7 +10,8 @@ import { TabelaAlunos } from "./tabela-alunos"
 export const dynamic = "force-dynamic"
 
 export default async function AlunosPage() {
-  await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
+  const podeAdministrarAluno = usuario.papel === "GESTOR"
   const [alunos, modalidades, planos] = await Promise.all([
     listarAlunos(),
     listarModalidades({ apenasAtivas: true }),
@@ -36,6 +37,7 @@ export default async function AlunosPage() {
         modalidades={opcoesModalidades}
         planos={opcoesPlanos}
         competenciaAtual={competenciaAtual}
+        podeAdministrar={podeAdministrarAluno}
         alunos={alunos.map((a) => ({
           id: a.id,
           nome: a.usuario.nome,

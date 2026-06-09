@@ -1,12 +1,12 @@
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { TabelaAuditoria } from "./tabela-auditoria"
 
 export const dynamic = "force-dynamic"
 
 export default async function Page() {
-  await exigirPapel("GESTOR")
+  await exigirGestao()
   const logs = await db.logAuditoria.findMany({
     orderBy: { criadoEm: "desc" },
     take: 100,

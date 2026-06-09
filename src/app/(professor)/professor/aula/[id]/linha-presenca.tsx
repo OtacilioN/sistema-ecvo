@@ -21,6 +21,7 @@ export function LinhaPresenca({
   observacoesTecnicas,
   status,
   checkinId,
+  somenteLeitura = false,
 }: {
   aulaId: string
   alunoId: string
@@ -28,6 +29,7 @@ export function LinhaPresenca({
   observacoesTecnicas: string | null
   status: StatusLinha
   checkinId: string | null
+  somenteLeitura?: boolean
 }) {
   const [lancar, acaoLancar] = useActionState<EstadoTreino, FormData>(acaoLancarCheckin, undefined)
   const [invalidar, acaoInvalidar] = useActionState<EstadoTreino, FormData>(
@@ -51,7 +53,15 @@ export function LinhaPresenca({
         <Badge variant={rotulo.variant}>{rotulo.texto}</Badge>
       </td>
       <td className="p-4" data-label="Ação">
-        {status === "PRESENTE" && checkinId ? (
+        {somenteLeitura ? (
+          <div className="space-y-2">
+            {observacoesTecnicas ? (
+              <p className="max-w-md text-sm text-muted-foreground">{observacoesTecnicas}</p>
+            ) : (
+              <span className="text-sm text-muted-foreground">Somente leitura</span>
+            )}
+          </div>
+        ) : status === "PRESENTE" && checkinId ? (
           abrindo ? (
             <form action={acaoInvalidar} className="flex flex-wrap items-center gap-2">
               <input type="hidden" name="checkinId" value={checkinId} />

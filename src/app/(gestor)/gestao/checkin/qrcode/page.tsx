@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent } from "@/components/ui/card"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import {
   mascararTokenCheckin,
   obterOuCriarTokenCheckinAcademia,
@@ -34,7 +34,8 @@ async function origemDaRequisicao() {
 }
 
 export default async function QrCodeCheckinPage() {
-  await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
+  const podeEditar = usuario.papel === "GESTOR"
   const token = await obterOuCriarTokenCheckinAcademia()
   const url = `${await origemDaRequisicao()}/aluno/checkin?token=${encodeURIComponent(token.token)}`
   const qrDataUrl = await QRCode.toDataURL(url, {
@@ -60,11 +61,13 @@ export default async function QrCodeCheckinPage() {
           descricao="Código global da academia para check-in dos alunos na entrada."
         >
           <AcoesQRCode qrDataUrl={qrDataUrl} />
-          <form action={acaoRotacionarTokenCheckinAcademia}>
-            <BotaoEnviar variant="destructive">
-              <RotateCcw className="size-4" /> Rotacionar token
-            </BotaoEnviar>
-          </form>
+          {podeEditar && (
+            <form action={acaoRotacionarTokenCheckinAcademia}>
+              <BotaoEnviar variant="destructive">
+                <RotateCcw className="size-4" /> Rotacionar token
+              </BotaoEnviar>
+            </form>
+          )}
         </CabecalhoPagina>
       </div>
 

@@ -6,6 +6,7 @@ import { acaoCriarGestor, type EstadoForm } from "@/app/actions/cadastros"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 
 export function FormGestor({ aoConcluir }: { aoConcluir?: () => void }) {
   const [estado, acao] = useActionState<EstadoForm, FormData>(acaoCriarGestor, undefined)
@@ -32,10 +33,17 @@ export function FormGestor({ aoConcluir }: { aoConcluir?: () => void }) {
         <Label htmlFor="senha">Senha inicial</Label>
         <Input id="senha" name="senha" type="text" minLength={6} required />
       </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="papel">Perfil</Label>
+        <Select id="papel" name="papel" defaultValue="SECRETARIA">
+          <option value="SECRETARIA">Secretaria</option>
+          <option value="GESTOR">Gestor</option>
+        </Select>
+      </div>
       {estado?.erro && <p className="text-sm text-destructive sm:col-span-2">{estado.erro}</p>}
       <div className="flex justify-end sm:col-span-2">
         <BotaoEnviar>
-          <ShieldPlus className="size-4" /> Cadastrar gestor
+          <ShieldPlus className="size-4" /> Cadastrar acesso
         </BotaoEnviar>
       </div>
     </form>

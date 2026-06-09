@@ -3,7 +3,7 @@ import { fromZonedTime } from "date-fns-tz"
 import { Badge } from "@/components/ui/badge"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent } from "@/components/ui/card"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { listarModalidades } from "@/lib/services/modalidade.service"
 import { listarProfessores } from "@/lib/services/professor.service"
@@ -26,7 +26,8 @@ function rotuloDiasSemana(diasSemana: number[], diaSemana: number | null): strin
 }
 
 export default async function TurmasPage() {
-  await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
+  const podeEditar = usuario.papel === "GESTOR"
   const agora = new Date()
   const hojeAcademia = paraFusoAcademia(agora)
   const chaveHoje = format(hojeAcademia, "yyyy-MM-dd")
@@ -70,8 +71,12 @@ export default async function TurmasPage() {
         titulo="Turmas e horários"
         descricao="Grade recorrente, aulas avulsas, substituições e cancelamentos."
       >
-        <BotaoAulaAvulsa modalidades={modalidadesOpcao} professores={professoresOpcao} />
-        <BotaoNovaTurma modalidades={modalidadesOpcao} professores={professoresOpcao} />
+        {podeEditar && (
+          <>
+            <BotaoAulaAvulsa modalidades={modalidadesOpcao} professores={professoresOpcao} />
+            <BotaoNovaTurma modalidades={modalidadesOpcao} professores={professoresOpcao} />
+          </>
+        )}
       </CabecalhoPagina>
 
       <section className="space-y-3">
@@ -88,9 +93,11 @@ export default async function TurmasPage() {
                     <th className="p-4 font-medium">Professor</th>
                     <th className="p-4 text-center font-medium">Aulas</th>
                     <th className="p-4 font-medium">Status</th>
-                    <th className="p-4 text-right font-medium">
-                      <span className="sr-only">Ações</span>
-                    </th>
+                    {podeEditar && (
+                      <th className="p-4 text-right font-medium">
+                        <span className="sr-only">Ações</span>
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -130,39 +137,44 @@ export default async function TurmasPage() {
                             {t.ativa ? "Ativa" : "Inativa"}
                           </Badge>
                         </td>
-                        <td className="p-4" data-label="Ações">
-                          <div className="flex justify-end">
-                            <AcoesTurma
-                              modalidades={modalidadesOpcao}
-                              professores={professoresOpcao}
-                              turma={{
-                                id: t.id,
-                                rotulo: `${t.modalidade.nome} · ${diasSemana} ${t.horaInicio ?? ""}`,
-                                modalidadeId: t.modalidadeId,
-                                nome: t.nome,
-                                professorId: t.professorId,
-                                diasSemana:
-                                  t.diasSemana.length > 0
-                                    ? t.diasSemana
-                                    : t.diaSemana === null
-                                      ? []
-                                      : [t.diaSemana],
-                                horaInicio: t.horaInicio,
-                                horaFim: t.horaFim,
-                                capacidade: t.capacidade,
-                                local: t.local,
-                                nivel: t.nivel,
-                                ativa: t.ativa,
-                              }}
-                            />
-                          </div>
-                        </td>
+                        {podeEditar && (
+                          <td className="p-4" data-label="Ações">
+                            <div className="flex justify-end">
+                              <AcoesTurma
+                                modalidades={modalidadesOpcao}
+                                professores={professoresOpcao}
+                                turma={{
+                                  id: t.id,
+                                  rotulo: `${t.modalidade.nome} · ${diasSemana} ${t.horaInicio ?? ""}`,
+                                  modalidadeId: t.modalidadeId,
+                                  nome: t.nome,
+                                  professorId: t.professorId,
+                                  diasSemana:
+                                    t.diasSemana.length > 0
+                                      ? t.diasSemana
+                                      : t.diaSemana === null
+                                        ? []
+                                        : [t.diaSemana],
+                                  horaInicio: t.horaInicio,
+                                  horaFim: t.horaFim,
+                                  capacidade: t.capacidade,
+                                  local: t.local,
+                                  nivel: t.nivel,
+                                  ativa: t.ativa,
+                                }}
+                              />
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     )
                   })}
                   {turmas.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-10 text-center text-muted-foreground">
+                      <td
+                        colSpan={podeEditar ? 7 : 6}
+                        className="p-10 text-center text-muted-foreground"
+                      >
                         Nenhuma turma cadastrada. Use “Nova turma” para começar.
                       </td>
                     </tr>
@@ -240,6 +252,7 @@ export default async function TurmasPage() {
                             cancelada={aula.cancelada}
                             professores={professoresOpcao}
                             rotulo={`${formatarDataHora(aula.inicio)} · ${aula.turma.modalidade.nome}`}
+                            somenteLeitura={!podeEditar}
                           />
                         </div>
                       </td>

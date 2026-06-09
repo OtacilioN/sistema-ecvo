@@ -11,14 +11,14 @@ export function BotaoNovoGestor() {
   return (
     <>
       <Button onClick={() => setAberto(true)}>
-        <Plus className="size-4" /> Novo gestor
+        <Plus className="size-4" /> Novo acesso
       </Button>
       <Dialog
         aberto={aberto}
         aoFechar={() => setAberto(false)}
         variante="lateral"
-        titulo="Novo gestor"
-        descricao="Acesso administrativo à academia e à auditoria."
+        titulo="Novo acesso"
+        descricao="Gestor ou Secretaria com acesso administrativo."
       >
         <FormGestor aoConcluir={() => setAberto(false)} />
       </Dialog>

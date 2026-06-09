@@ -18,9 +18,11 @@ export type ProfessorLista = ProfessorLinha & {
 export function TabelaProfessores({
   professores,
   modalidades,
+  podeEditar,
 }: {
   professores: ProfessorLista[]
   modalidades: Modalidade[]
+  podeEditar: boolean
 }) {
   const [busca, setBusca] = useState("")
 
@@ -52,9 +54,11 @@ export function TabelaProfessores({
                 <th className="p-4 font-medium">Modalidades</th>
                 <th className="p-4 text-center font-medium">Turmas</th>
                 <th className="p-4 font-medium">Status</th>
-                <th className="p-4 text-right font-medium">
-                  <span className="sr-only">Ações</span>
-                </th>
+                {podeEditar && (
+                  <th className="p-4 text-right font-medium">
+                    <span className="sr-only">Ações</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -97,16 +101,21 @@ export function TabelaProfessores({
                       <Badge variant="secondary">Inativo</Badge>
                     )}
                   </td>
-                  <td className="p-4" data-label="Ações">
-                    <div className="flex justify-end">
-                      <AcoesProfessor professor={p} modalidades={modalidades} />
-                    </div>
-                  </td>
+                  {podeEditar && (
+                    <td className="p-4" data-label="Ações">
+                      <div className="flex justify-end">
+                        <AcoesProfessor professor={p} modalidades={modalidades} />
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {filtrados.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-10 text-center text-muted-foreground">
+                  <td
+                    colSpan={podeEditar ? 5 : 4}
+                    className="p-10 text-center text-muted-foreground"
+                  >
                     {professores.length === 0
                       ? "Nenhum professor cadastrado. Use “Novo professor” para começar."
                       : "Nenhum professor corresponde à busca."}

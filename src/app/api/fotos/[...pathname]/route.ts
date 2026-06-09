@@ -49,7 +49,7 @@ async function podeAcessarFoto(fotoUrl: string) {
   })
 
   if (!usuario?.ativo) return false
-  if (usuario.papel === "GESTOR") return true
+  if (usuario.papel === "GESTOR" || usuario.papel === "SECRETARIA") return true
   if (usuario.fotoUrl === fotoUrl) return true
 
   if (usuario.papel === "ALUNO" && usuario.aluno) {

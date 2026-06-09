@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
@@ -23,7 +23,8 @@ const rotulosStatusMensalidade: Record<StatusMensalidade, string> = {
 }
 
 export default async function Page() {
-  await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
+  const podeEditar = usuario.papel === "GESTOR"
   const [planos, alunos, mensalidades, pagamentos] = await Promise.all([
     db.plano.findMany({
       orderBy: { criadoEm: "desc" },
@@ -80,7 +81,7 @@ export default async function Page() {
         <Button asChild variant="outline">
           <Link href="/gestao/financeiro/repasses">Ver repasses</Link>
         </Button>
-        <AcoesFinanceiro planos={planosOpcao} alunos={alunosOpcao} />
+        {podeEditar && <AcoesFinanceiro planos={planosOpcao} alunos={alunosOpcao} />}
       </CabecalhoPagina>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
@@ -97,9 +98,11 @@ export default async function Page() {
                     <th className="p-4 font-medium">Vencimento</th>
                     <th className="p-4 font-medium">Valor</th>
                     <th className="p-4 font-medium">Status</th>
-                    <th className="p-4 text-right font-medium md:sticky md:right-0 md:z-20 md:bg-card md:pl-6">
-                      <span className="sr-only">Ações</span>
-                    </th>
+                    {podeEditar && (
+                      <th className="p-4 text-right font-medium md:sticky md:right-0 md:z-20 md:bg-card md:pl-6">
+                        <span className="sr-only">Ações</span>
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -139,29 +142,34 @@ export default async function Page() {
                             {rotulosStatusMensalidade[status]}
                           </Badge>
                         </td>
-                        <td
-                          className={cn(
-                            "p-4 md:sticky md:right-0 md:z-10 md:bg-card md:pl-6 md:shadow-[-10px_0_14px_-14px_rgba(1,1,1,0.55)]",
-                            vencida && "md:bg-destructive/5",
-                          )}
-                          data-label="Ações"
-                        >
-                          <div className="flex justify-end">
-                            <AcoesMensalidade
-                              mensalidadeId={mensalidade.id}
-                              status={mensalidade.status}
-                              formaPagamento={mensalidade.formaPagamento}
-                              observacao={mensalidade.observacao}
-                              quitada={quitada}
-                            />
-                          </div>
-                        </td>
+                        {podeEditar && (
+                          <td
+                            className={cn(
+                              "p-4 md:sticky md:right-0 md:z-10 md:bg-card md:pl-6 md:shadow-[-10px_0_14px_-14px_rgba(1,1,1,0.55)]",
+                              vencida && "md:bg-destructive/5",
+                            )}
+                            data-label="Ações"
+                          >
+                            <div className="flex justify-end">
+                              <AcoesMensalidade
+                                mensalidadeId={mensalidade.id}
+                                status={mensalidade.status}
+                                formaPagamento={mensalidade.formaPagamento}
+                                observacao={mensalidade.observacao}
+                                quitada={quitada}
+                              />
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     )
                   })}
                   {mensalidades.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="p-10 text-center text-muted-foreground">
+                      <td
+                        colSpan={podeEditar ? 5 : 4}
+                        className="p-10 text-center text-muted-foreground"
+                      >
                         Nenhuma mensalidade registrada.
                       </td>
                     </tr>
@@ -186,18 +194,20 @@ export default async function Page() {
                       <Badge variant={plano.ativo ? "success" : "secondary"}>
                         {plano.ativo ? "Ativo" : "Inativo"}
                       </Badge>
-                      <AcoesPlano
-                        plano={{
-                          id: plano.id,
-                          nome: plano.nome,
-                          valor: Number(plano.valor),
-                          periodicidade: plano.periodicidade,
-                          limiteAulas: plano.limiteAulas,
-                          ativo: plano.ativo,
-                        }}
-                        planos={planosOpcao}
-                        alunosVinculados={plano._count.alunos}
-                      />
+                      {podeEditar && (
+                        <AcoesPlano
+                          plano={{
+                            id: plano.id,
+                            nome: plano.nome,
+                            valor: Number(plano.valor),
+                            periodicidade: plano.periodicidade,
+                            limiteAulas: plano.limiteAulas,
+                            ativo: plano.ativo,
+                          }}
+                          planos={planosOpcao}
+                          alunosVinculados={plano._count.alunos}
+                        />
+                      )}
                     </div>
                   </div>
                   <p className="text-sm text-muted-foreground">

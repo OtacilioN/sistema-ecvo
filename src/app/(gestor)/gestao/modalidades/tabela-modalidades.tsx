@@ -23,7 +23,13 @@ export type ModalidadeLista = ModalidadeLinha & {
   alunos: number
 }
 
-export function TabelaModalidades({ modalidades }: { modalidades: ModalidadeLista[] }) {
+export function TabelaModalidades({
+  modalidades,
+  podeEditar,
+}: {
+  modalidades: ModalidadeLista[]
+  podeEditar: boolean
+}) {
   const [busca, setBusca] = useState("")
 
   const filtradas = useMemo(() => {
@@ -64,9 +70,11 @@ export function TabelaModalidades({ modalidades }: { modalidades: ModalidadeList
                 <th className="p-4 text-center font-medium">Turmas</th>
                 <th className="p-4 text-center font-medium">Alunos</th>
                 <th className="p-4 font-medium">Status</th>
-                <th className="p-4 text-right font-medium">
-                  <span className="sr-only">Ações</span>
-                </th>
+                {podeEditar && (
+                  <th className="p-4 text-right font-medium">
+                    <span className="sr-only">Ações</span>
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -131,16 +139,21 @@ export function TabelaModalidades({ modalidades }: { modalidades: ModalidadeList
                       <Badge variant="secondary">Inativa</Badge>
                     )}
                   </td>
-                  <td className="p-4" data-label="Ações">
-                    <div className="flex justify-end">
-                      <AcoesModalidade modalidade={m} />
-                    </div>
-                  </td>
+                  {podeEditar && (
+                    <td className="p-4" data-label="Ações">
+                      <div className="flex justify-end">
+                        <AcoesModalidade modalidade={m} />
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {filtradas.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="p-10 text-center text-muted-foreground">
+                  <td
+                    colSpan={podeEditar ? 9 : 8}
+                    className="p-10 text-center text-muted-foreground"
+                  >
                     {modalidades.length === 0
                       ? "Nenhuma modalidade cadastrada. Use “Nova modalidade” para começar."
                       : "Nenhuma modalidade corresponde à busca."}

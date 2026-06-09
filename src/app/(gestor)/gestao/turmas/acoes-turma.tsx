@@ -136,11 +136,13 @@ export function AcoesAula({
   rotulo,
   cancelada,
   professores,
+  somenteLeitura = false,
 }: {
   aulaId: string
   rotulo: string
   cancelada: boolean
   professores: Opcao[]
+  somenteLeitura?: boolean
 }) {
   const [painel, setPainel] = useState<PainelAula>(null)
   const fechar = () => setPainel(null)
@@ -157,7 +159,7 @@ export function AcoesAula({
             >
               Abrir lista
             </ItemMenuLink>
-            {!cancelada && (
+            {!somenteLeitura && !cancelada && (
               <>
                 <ItemMenu
                   icone={UserRoundCheck}

@@ -13,6 +13,7 @@ import { db } from "@/lib/db"
 /** Página inicial de cada papel. */
 export const HOME_POR_PAPEL: Record<Papel, string> = {
   GESTOR: "/gestao",
+  SECRETARIA: "/gestao",
   PROFESSOR: "/professor",
   ALUNO: "/aluno",
 }
@@ -59,6 +60,11 @@ export async function exigirPapel(...papeis: Papel[]) {
     redirect(HOME_POR_PAPEL[usuario.papel])
   }
   return usuario
+}
+
+/** Atalho: área administrativa compartilhada entre Gestor e Secretaria. */
+export async function exigirGestao() {
+  return exigirPapel("GESTOR", "SECRETARIA")
 }
 
 /** Atalho: exige que o usuário seja um Aluno e retorna o id do Aluno. */

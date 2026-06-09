@@ -70,5 +70,6 @@ async function podeSubirFoto(usuario: { id: string; papel: string }, pathname: s
     return existe > 0
   }
 
-  return usuario.papel === "GESTOR" && (entidade === "alunos" || entidade === "professores")
+  if (usuario.papel === "GESTOR") return entidade === "alunos" || entidade === "professores"
+  return usuario.papel === "SECRETARIA" && entidade === "alunos"
 }

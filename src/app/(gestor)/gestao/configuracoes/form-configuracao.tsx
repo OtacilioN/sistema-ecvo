@@ -27,7 +27,13 @@ type Configuracao = {
   valorBaseModalidade: number
 }
 
-export function FormConfiguracao({ configuracao }: { configuracao: Configuracao }) {
+export function FormConfiguracao({
+  configuracao,
+  somenteLeitura = false,
+}: {
+  configuracao: Configuracao
+  somenteLeitura?: boolean
+}) {
   const [estado, acao] = useActionState<EstadoConfiguracao, FormData>(
     acaoAtualizarConfiguracao,
     undefined,
@@ -49,6 +55,7 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
               min={0}
               max={168}
               defaultValue={configuracao.janelaComparecimentoHoras}
+              disabled={somenteLeitura}
               required
             />
           </div>
@@ -62,6 +69,7 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
               min={0}
               max={168}
               defaultValue={configuracao.prazoCancelamentoHoras}
+              disabled={somenteLeitura}
               required
             />
           </div>
@@ -72,6 +80,7 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
               id="politicaCheckinSemComparecimento"
               name="politicaCheckinSemComparecimento"
               defaultValue={configuracao.politicaCheckinSemComparecimento}
+              disabled={somenteLeitura}
             >
               <option value="PERMITIR">Permitir</option>
               <option value="BLOQUEAR">Bloquear</option>
@@ -85,6 +94,7 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
               id="bloqueioInadimplencia"
               name="bloqueioInadimplencia"
               defaultValue={configuracao.bloqueioInadimplencia}
+              disabled={somenteLeitura}
             >
               <option value="APENAS_ALERTAR">Apenas alertar</option>
               <option value="BLOQUEAR_COMPARECIMENTO">Bloquear comparecimento</option>
@@ -102,6 +112,7 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
                 type="checkbox"
                 name="exigirComparecimentoParaCheckin"
                 defaultChecked={configuracao.exigirComparecimentoParaCheckin}
+                disabled={somenteLeitura}
                 className="accent-primary"
               />
               Exigir comparecimento prévio para check-in do aluno
@@ -111,6 +122,7 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
                 type="checkbox"
                 name="listaEsperaAtiva"
                 defaultChecked={configuracao.listaEsperaAtiva}
+                disabled={somenteLeitura}
                 className="accent-primary"
               />
               Ativar lista de espera quando a turma atingir a capacidade
@@ -120,6 +132,7 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
                 type="checkbox"
                 name="rankingHorasAtivo"
                 defaultChecked={configuracao.rankingHorasAtivo}
+                disabled={somenteLeitura}
                 className="accent-primary"
               />
               Exibir ranking de horas treinadas
@@ -137,6 +150,7 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
                 min={0.01}
                 step="0.01"
                 defaultValue={configuracao.valorBaseModalidade}
+                disabled={somenteLeitura}
                 required
               />
             </div>
@@ -150,46 +164,55 @@ export function FormConfiguracao({ configuracao }: { configuracao: Configuracao 
               nome="notificarComparecimento"
               ativo={configuracao.notificarComparecimento}
               rotulo="Comparecimento e no-show"
+              disabled={somenteLeitura}
             />
             <OpcaoNotificacao
               nome="notificarLembreteTreino"
               ativo={configuracao.notificarLembreteTreino}
               rotulo="Lembrete de treino"
+              disabled={somenteLeitura}
             />
             <OpcaoNotificacao
               nome="notificarCancelamentoAula"
               ativo={configuracao.notificarCancelamentoAula}
               rotulo="Cancelamento de aula"
+              disabled={somenteLeitura}
             />
             <OpcaoNotificacao
               nome="notificarFinanceiro"
               ativo={configuracao.notificarFinanceiro}
               rotulo="Financeiro"
+              disabled={somenteLeitura}
             />
             <OpcaoNotificacao
               nome="notificarGraduacao"
               ativo={configuracao.notificarGraduacao}
               rotulo="Graduação e exames"
+              disabled={somenteLeitura}
             />
             <OpcaoNotificacao
               nome="notificarCheckinInvalidado"
               ativo={configuracao.notificarCheckinInvalidado}
               rotulo="Check-in invalidado"
+              disabled={somenteLeitura}
             />
             <OpcaoNotificacao
               nome="notificarAniversario"
               ativo={configuracao.notificarAniversario}
               rotulo="Aniversários"
+              disabled={somenteLeitura}
             />
           </fieldset>
 
-          <div className="flex items-center gap-3 md:col-span-2">
-            <BotaoEnviar>
-              <Save className="size-4" /> Salvar regras
-            </BotaoEnviar>
-            {estado?.erro && <p className="text-sm text-destructive">{estado.erro}</p>}
-            {estado?.ok && <p className="text-sm text-success">Configurações atualizadas.</p>}
-          </div>
+          {!somenteLeitura && (
+            <div className="flex items-center gap-3 md:col-span-2">
+              <BotaoEnviar>
+                <Save className="size-4" /> Salvar regras
+              </BotaoEnviar>
+              {estado?.erro && <p className="text-sm text-destructive">{estado.erro}</p>}
+              {estado?.ok && <p className="text-sm text-success">Configurações atualizadas.</p>}
+            </div>
+          )}
         </form>
       </CardContent>
     </Card>
@@ -209,14 +232,22 @@ function OpcaoNotificacao({
   nome,
   ativo,
   rotulo,
+  disabled,
 }: {
   nome: string
   ativo: boolean
   rotulo: string
+  disabled?: boolean
 }) {
   return (
     <label className="flex items-center gap-2 text-sm">
-      <input type="checkbox" name={nome} defaultChecked={ativo} className="accent-primary" />
+      <input
+        type="checkbox"
+        name={nome}
+        defaultChecked={ativo}
+        disabled={disabled}
+        className="accent-primary"
+      />
       {rotulo}
     </label>
   )

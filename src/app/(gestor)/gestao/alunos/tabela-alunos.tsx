@@ -37,11 +37,13 @@ export function TabelaAlunos({
   modalidades,
   planos,
   competenciaAtual,
+  podeAdministrar,
 }: {
   alunos: AlunoLista[]
   modalidades: Modalidade[]
   planos: Plano[]
   competenciaAtual: string
+  podeAdministrar: boolean
 }) {
   const [busca, setBusca] = useState("")
   const [planoFiltro, setPlanoFiltro] = useState("TODOS")
@@ -130,6 +132,7 @@ export function TabelaAlunos({
                     modalidades={modalidades}
                     planos={planos}
                     competenciaAtual={competenciaAtual}
+                    podeAdministrar={podeAdministrar}
                   />
                 ) : (
                   <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
@@ -150,11 +153,13 @@ function TabelaGrupoAlunos({
   modalidades,
   planos,
   competenciaAtual,
+  podeAdministrar,
 }: {
   alunos: AlunoLista[]
   modalidades: Modalidade[]
   planos: Plano[]
   competenciaAtual: string
+  podeAdministrar: boolean
 }) {
   return (
     <div className="-mx-4 overflow-x-auto">
@@ -230,6 +235,7 @@ function TabelaGrupoAlunos({
                     modalidades={modalidades}
                     planos={planos}
                     competenciaAtual={competenciaAtual}
+                    podeAdministrar={podeAdministrar}
                   />
                 </div>
               </td>

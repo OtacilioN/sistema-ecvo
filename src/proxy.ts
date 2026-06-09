@@ -8,8 +8,15 @@ import { COOKIE_SESSAO, descriptografar } from "@/lib/auth/session"
 
 const PREFIXO_POR_PAPEL: Record<string, string> = {
   GESTOR: "/gestao",
+  SECRETARIA: "/gestao",
   PROFESSOR: "/professor",
   ALUNO: "/aluno",
+}
+
+const PAPEIS_POR_PREFIXO: Record<string, string[]> = {
+  "/gestao": ["GESTOR", "SECRETARIA"],
+  "/professor": ["PROFESSOR"],
+  "/aluno": ["ALUNO"],
 }
 
 const ROTAS_PUBLICAS = ["/login"]
@@ -37,8 +44,8 @@ export async function proxy(req: NextRequest) {
   }
 
   // Autenticado tentando acessar a área de outro papel → home do próprio papel.
-  for (const [papel, prefixo] of Object.entries(PREFIXO_POR_PAPEL)) {
-    if (pathname.startsWith(prefixo) && sessao.papel !== papel) {
+  for (const [prefixo, papeisPermitidos] of Object.entries(PAPEIS_POR_PREFIXO)) {
+    if (pathname.startsWith(prefixo) && !papeisPermitidos.includes(sessao.papel)) {
       return NextResponse.redirect(new URL(home, req.nextUrl))
     }
   }

@@ -19,6 +19,8 @@ Conceitos-chave (ver glossário): **comparecimento** (intenção) ≠ **check-in
 ## 2. Papéis
 
 - **Gestor** — administra a academia (pode haver vários).
+- **Secretaria** — acessa a visão administrativa em modo majoritariamente leitura; pode cadastrar alunos e
+  editar dados gerais de aluno.
 - **Professor** — ministra aulas, acompanha alunos, invalida check-ins indevidos, registra observações e graduações.
 - **Aluno** — acessa a grade, marca comparecimento, faz check-in, acompanha evolução.
 
@@ -43,6 +45,8 @@ aluno experimental.
 
 - **Gestor**: CRUD de alunos/professores/gestores/modalidades/turmas; planos e mensalidades; pagamentos;
   inadimplência; relatórios; importação e conciliação; configurações; invalidar check-ins; auditoria.
+- **Secretaria**: visão administrativa de leitura para cadastros, turmas, financeiro, conciliação,
+  relatórios, auditoria e configurações; pode cadastrar alunos e editar dados gerais de aluno.
 - **Professor**: ver suas aulas; ver comparecimentos/check-ins/presentes; invalidar check-ins; histórico
   técnico; horas por modalidade; observações; registrar e consultar graduações. Não gerencia financeiro.
 - **Aluno**: ver a própria grade; marcar/cancelar comparecimento; fazer check-in; consultar check-ins,

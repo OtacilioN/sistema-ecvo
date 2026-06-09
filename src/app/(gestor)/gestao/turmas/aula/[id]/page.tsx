@@ -5,14 +5,15 @@ import { LinhaPresenca } from "@/app/(professor)/professor/aula/[id]/linha-prese
 import { TentativasInadimplencia } from "@/app/(professor)/professor/aula/[id]/tentativas-inadimplencia"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { carregarMonitoramentoAula } from "@/lib/services/aula-monitoramento.service"
 import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
 
 export const dynamic = "force-dynamic"
 
 export default async function AulaGestaoDetalhe({ params }: { params: Promise<{ id: string }> }) {
-  await exigirPapel("GESTOR")
+  const usuario = await exigirGestao()
+  const podeEditar = usuario.papel === "GESTOR"
   const { id } = await params
   const agora = new Date()
 
@@ -41,7 +42,7 @@ export default async function AulaGestaoDetalhe({ params }: { params: Promise<{ 
         <AtualizacaoAula />
       </div>
 
-      {podeProcessarNoShow && <FormNoShows aulaId={aula.id} />}
+      {podeEditar && podeProcessarNoShow && <FormNoShows aulaId={aula.id} />}
 
       <TentativasInadimplencia tentativas={tentativasInadimplentes} />
 
@@ -65,6 +66,7 @@ export default async function AulaGestaoDetalhe({ params }: { params: Promise<{ 
                   observacoesTecnicas={linha.observacoesTecnicas}
                   status={linha.status}
                   checkinId={linha.checkinId}
+                  somenteLeitura={!podeEditar}
                 />
               ))}
               {lista.length === 0 && (

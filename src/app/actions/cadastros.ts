@@ -297,6 +297,7 @@ export async function acaoCriarGestor(_: EstadoForm, formData: FormData): Promis
     nome: formData.get("nome"),
     email: formData.get("email"),
     senha: formData.get("senha"),
+    papel: formData.get("papel"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
@@ -331,7 +332,7 @@ export async function acaoAtualizarStatusProfessor(
 }
 
 export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise<EstadoForm> {
-  const usuario = await exigirPapel("GESTOR")
+  const usuario = await exigirPapel("GESTOR", "SECRETARIA")
   const responsavel = responsavelDoFormData(formData)
   const parsed = alunoSchema.safeParse({
     nome: formData.get("nome"),
@@ -371,7 +372,7 @@ export async function acaoAtualizarDadosAluno(
   _: EstadoForm,
   formData: FormData,
 ): Promise<EstadoForm> {
-  const usuario = await exigirPapel("GESTOR")
+  const usuario = await exigirPapel("GESTOR", "SECRETARIA")
   const parsed = dadosAlunoSchema.safeParse({
     alunoId: formData.get("alunoId"),
     nome: formData.get("nome"),

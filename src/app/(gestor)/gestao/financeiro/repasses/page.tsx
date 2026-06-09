@@ -5,7 +5,7 @@ import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import {
   calcularRepasseFinanceiro,
@@ -61,7 +61,7 @@ function intervaloCompetencia(competencia: string) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  await exigirPapel("GESTOR")
+  await exigirGestao()
   const params = await searchParams
   const competencia = competenciaValida(valorUnico(params.competencia))
   const { inicio, fim } = intervaloCompetencia(competencia)

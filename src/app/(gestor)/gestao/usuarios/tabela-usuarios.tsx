@@ -26,12 +26,14 @@ export type UsuarioAcessoLinha = {
 
 const ROTULO_PAPEL: Record<Papel, string> = {
   GESTOR: "Gestor",
+  SECRETARIA: "Secretaria",
   PROFESSOR: "Professor",
   ALUNO: "Aluno",
 }
 
 const VARIANTE_PAPEL: Record<Papel, BadgeProps["variant"]> = {
   GESTOR: "default",
+  SECRETARIA: "outline",
   PROFESSOR: "outline",
   ALUNO: "secondary",
 }
@@ -42,10 +44,16 @@ function detalheOperacional(usuario: UsuarioAcessoLinha) {
     if (usuario.professorAtivo === null) return "Sem vínculo"
     return usuario.professorAtivo ? "Professor ativo" : "Professor inativo"
   }
-  return "Acesso administrativo"
+  return usuario.papel === "SECRETARIA" ? "Acesso de secretaria" : "Acesso administrativo"
 }
 
-export function TabelaUsuarios({ usuarios }: { usuarios: UsuarioAcessoLinha[] }) {
+export function TabelaUsuarios({
+  usuarios,
+  podeEditar,
+}: {
+  usuarios: UsuarioAcessoLinha[]
+  podeEditar: boolean
+}) {
   const [busca, setBusca] = useState("")
   const [usuarioSenha, setUsuarioSenha] = useState<UsuarioAcessoLinha | null>(null)
   const [usuarioFoto, setUsuarioFoto] = useState<UsuarioAcessoLinha | null>(null)
@@ -85,9 +93,11 @@ export function TabelaUsuarios({ usuarios }: { usuarios: UsuarioAcessoLinha[] })
                   <th className="p-4 font-medium">Papel</th>
                   <th className="p-4 font-medium">Conta</th>
                   <th className="p-4 font-medium">Criado em</th>
-                  <th className="p-4 text-right font-medium">
-                    <span className="sr-only">Ações</span>
-                  </th>
+                  {podeEditar && (
+                    <th className="p-4 text-right font-medium">
+                      <span className="sr-only">Ações</span>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -119,39 +129,44 @@ export function TabelaUsuarios({ usuarios }: { usuarios: UsuarioAcessoLinha[] })
                     <td className="p-4" data-label="Criado em">
                       {formatarData(usuario.criadoEm)}
                     </td>
-                    <td className="p-4" data-label="Ações">
-                      <div className="flex justify-end">
-                        <MenuAcoes rotulo={`Ações de ${usuario.nome}`}>
-                          {(fecharMenu) => (
-                            <>
-                              <ItemMenu
-                                icone={ImagePlus}
-                                onClick={() => {
-                                  fecharMenu()
-                                  setUsuarioFoto(usuario)
-                                }}
-                              >
-                                Alterar foto
-                              </ItemMenu>
-                              <ItemMenu
-                                icone={KeyRound}
-                                onClick={() => {
-                                  fecharMenu()
-                                  setUsuarioSenha(usuario)
-                                }}
-                              >
-                                Redefinir senha
-                              </ItemMenu>
-                            </>
-                          )}
-                        </MenuAcoes>
-                      </div>
-                    </td>
+                    {podeEditar && (
+                      <td className="p-4" data-label="Ações">
+                        <div className="flex justify-end">
+                          <MenuAcoes rotulo={`Ações de ${usuario.nome}`}>
+                            {(fecharMenu) => (
+                              <>
+                                <ItemMenu
+                                  icone={ImagePlus}
+                                  onClick={() => {
+                                    fecharMenu()
+                                    setUsuarioFoto(usuario)
+                                  }}
+                                >
+                                  Alterar foto
+                                </ItemMenu>
+                                <ItemMenu
+                                  icone={KeyRound}
+                                  onClick={() => {
+                                    fecharMenu()
+                                    setUsuarioSenha(usuario)
+                                  }}
+                                >
+                                  Redefinir senha
+                                </ItemMenu>
+                              </>
+                            )}
+                          </MenuAcoes>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {filtrados.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-10 text-center text-muted-foreground">
+                    <td
+                      colSpan={podeEditar ? 5 : 4}
+                      className="p-10 text-center text-muted-foreground"
+                    >
                       {usuarios.length === 0
                         ? "Nenhum usuário cadastrado."
                         : "Nenhum usuário corresponde à busca."}

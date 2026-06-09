@@ -143,11 +143,11 @@ export async function acaoAtualizarFotoUsuario(
   return { ok: true }
 }
 
-function revalidarFotoUsuario(papel?: "GESTOR" | "PROFESSOR" | "ALUNO") {
+function revalidarFotoUsuario(papel?: "GESTOR" | "SECRETARIA" | "PROFESSOR" | "ALUNO") {
   revalidatePath("/gestao/auditoria")
   revalidatePath("/gestao/usuarios")
 
-  if (!papel || papel === "GESTOR") revalidatePath("/gestao/perfil")
+  if (!papel || papel === "GESTOR" || papel === "SECRETARIA") revalidatePath("/gestao/perfil")
   if (!papel || papel === "PROFESSOR") {
     revalidatePath("/professor/perfil")
     revalidatePath("/gestao/professores")
