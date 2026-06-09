@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Marca } from "@/components/marca"
+import { BotaoInstalarApp } from "@/components/pwa-install-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LoginForm } from "./login-form"
 
@@ -20,6 +21,9 @@ export default function LoginPage() {
           <LoginForm />
         </CardContent>
       </Card>
+      <div className="mt-4 flex justify-center">
+        <BotaoInstalarApp rotuloSempreVisivel />
+      </div>
     </div>
   )
 }

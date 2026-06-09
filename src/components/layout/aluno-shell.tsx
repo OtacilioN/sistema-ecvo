@@ -3,6 +3,7 @@ import Link from "next/link"
 import { type ItemNav, NavInferior, NavLateral } from "@/components/layout/nav-links"
 import { SairBotao } from "@/components/layout/sair-botao"
 import { Marca } from "@/components/marca"
+import { BotaoInstalarApp } from "@/components/pwa-install-button"
 import { Button } from "@/components/ui/button"
 
 // Shell do Aluno: navegação inferior fixa no mobile (RNF-002) e sidebar no desktop.
@@ -24,6 +25,7 @@ export function AlunoShell({
             <span className="block text-sm font-medium">{usuarioNome}</span>
             <span className="block text-xs text-muted-foreground">Aluno</span>
           </div>
+          <BotaoInstalarApp />
           <Button asChild variant="ghost" size="icon" aria-label="Notificações">
             <Link href="/aluno/notificacoes">
               <Bell />
