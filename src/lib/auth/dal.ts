@@ -18,6 +18,8 @@ export const HOME_POR_PAPEL: Record<Papel, string> = {
   ALUNO: "/aluno",
 }
 
+const ROTA_SESSAO_INVALIDA = "/api/auth/sessao-invalida"
+
 /** Verifica a sessão; redireciona para /login se ausente/inválida. Memoizado por render. */
 export const verificarSessao = cache(async (): Promise<SessaoPayload> => {
   const sessao = await lerSessao()
@@ -46,7 +48,7 @@ export const getUsuarioAtual = cache(async () => {
       professor: { select: { id: true } },
     },
   })
-  if (!usuario?.ativo) redirect("/login")
+  if (!usuario?.ativo) redirect(ROTA_SESSAO_INVALIDA)
   return usuario
 })
 
@@ -70,13 +72,13 @@ export async function exigirGestao() {
 /** Atalho: exige que o usuário seja um Aluno e retorna o id do Aluno. */
 export async function exigirAluno() {
   const usuario = await exigirPapel("ALUNO")
-  if (!usuario.aluno) redirect("/login")
+  if (!usuario.aluno) redirect(ROTA_SESSAO_INVALIDA)
   return { usuario, alunoId: usuario.aluno.id }
 }
 
 /** Atalho: exige Professor e retorna o id do Professor. */
 export async function exigirProfessor() {
   const usuario = await exigirPapel("PROFESSOR")
-  if (!usuario.professor) redirect("/login")
+  if (!usuario.professor) redirect(ROTA_SESSAO_INVALIDA)
   return { usuario, professorId: usuario.professor.id }
 }
