@@ -1,6 +1,7 @@
 import { type ItemNav, NavLateral, NavPainelMobile } from "@/components/layout/nav-links"
 import { SairBotao } from "@/components/layout/sair-botao"
 import { Marca } from "@/components/marca"
+import { BotaoInstalarApp } from "@/components/pwa-install-button"
 
 // Shell para áreas de Gestor e Professor: drawer no mobile, sidebar no desktop.
 export function PainelShell({
@@ -22,6 +23,7 @@ export function PainelShell({
           <Marca tamanho={32} />
         </div>
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <BotaoInstalarApp />
           <div className="min-w-0 text-right leading-tight">
             <span className="block text-sm font-medium">{usuarioNome}</span>
             <span className="block text-xs text-muted-foreground">{papelRotulo}</span>
