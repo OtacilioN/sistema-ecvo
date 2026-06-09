@@ -75,9 +75,9 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
    (via Build Command `npm run db:deploy && npm run build` ou um passo de CI).
 4. O Vercel Cron chama `/api/tarefas/gerar-aulas-futuras` diariamente às 06:00 UTC
    para manter oito semanas de aulas recorrentes futuras geradas, e
-   `/api/tarefas/lembretes-diarios` às 11:00 UTC para notificar gestores sobre
-   mensalidades a vencer/inadimplentes, além de gestores e professores sobre
-   aniversários de alunos.
+   `/api/tarefas/lembretes-diarios` às 11:00 UTC para gerar mensalidades recorrentes
+   da competência atual, notificar gestores sobre mensalidades a vencer/inadimplentes
+   e avisar gestores/professores sobre aniversários de alunos.
 5. `main` → produção; cada PR → preview com banco isolado.
 
 ## Documentação

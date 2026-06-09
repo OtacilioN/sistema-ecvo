@@ -4,9 +4,17 @@ import { useMemo, useState } from "react"
 import { Badge, type BadgeProps } from "@/components/ui/badge"
 import { CampoBusca } from "@/components/ui/campo-busca"
 import { Card, CardContent } from "@/components/ui/card"
+import { Select } from "@/components/ui/select"
 import { AcoesAluno, type AlunoLinha } from "./acoes-aluno"
 
 type Modalidade = { id: string; nome: string }
+type Plano = {
+  id: string
+  nome: string
+  valor: number
+  periodicidade: string
+  ativo: boolean
+}
 type StatusAluno = AlunoLinha["status"]
 
 export type AlunoLista = AlunoLinha & {
@@ -27,27 +35,60 @@ const VARIANTE_STATUS: Record<StatusAluno, BadgeProps["variant"]> = {
 export function TabelaAlunos({
   alunos,
   modalidades,
+  planos,
+  competenciaAtual,
 }: {
   alunos: AlunoLista[]
   modalidades: Modalidade[]
+  planos: Plano[]
+  competenciaAtual: string
 }) {
   const [busca, setBusca] = useState("")
+  const [planoFiltro, setPlanoFiltro] = useState("TODOS")
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
-    if (!termo) return alunos
-    return alunos.filter((a) =>
-      [a.nome, a.email, a.tipo, a.status, String(a.diaVencimento), ...a.modalidadeNomes]
+    return alunos.filter((a) => {
+      const correspondePlano =
+        planoFiltro === "TODOS" ||
+        (planoFiltro === "SEM_PLANO" ? !a.planoId : a.planoId === planoFiltro)
+      if (!correspondePlano) return false
+      if (!termo) return true
+
+      return [
+        a.nome,
+        a.email,
+        a.tipo,
+        a.status,
+        a.planoNome,
+        String(a.diaVencimento),
+        ...a.modalidadeNomes,
+      ]
         .join(" ")
         .toLowerCase()
-        .includes(termo),
-    )
-  }, [alunos, busca])
+        .includes(termo)
+    })
+  }, [alunos, busca, planoFiltro])
 
   return (
     <Card>
       <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-        <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Nome, e-mail, modalidade…" />
+        <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_220px]">
+          <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Nome, e-mail, modalidade…" />
+          <Select
+            aria-label="Filtrar por plano"
+            value={planoFiltro}
+            onChange={(evento) => setPlanoFiltro(evento.target.value)}
+          >
+            <option value="TODOS">Todos os planos</option>
+            <option value="SEM_PLANO">Sem plano</option>
+            {planos.map((plano) => (
+              <option key={plano.id} value={plano.id}>
+                {plano.nome}
+              </option>
+            ))}
+          </Select>
+        </div>
         <span className="text-sm text-muted-foreground">
           {filtrados.length} de {alunos.length}
         </span>
@@ -59,6 +100,7 @@ export function TabelaAlunos({
               <tr>
                 <th className="p-4 font-medium">Aluno</th>
                 <th className="p-4 font-medium">Tipo</th>
+                <th className="p-4 font-medium">Plano</th>
                 <th className="p-4 font-medium">Modalidades</th>
                 <th className="p-4 font-medium">Venc.</th>
                 <th className="p-4 text-center font-medium">Docs</th>
@@ -88,6 +130,13 @@ export function TabelaAlunos({
                   <td className="p-4" data-label="Tipo">
                     <Badge variant="outline">{a.tipo}</Badge>
                   </td>
+                  <td className="p-4" data-label="Plano">
+                    {a.planoNome ? (
+                      <Badge variant="outline">{a.planoNome}</Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sem plano</span>
+                    )}
+                  </td>
                   <td className="p-4" data-label="Modalidades">
                     <div className="flex flex-wrap gap-1">
                       {a.modalidadeNomes.map((nome) => (
@@ -111,14 +160,19 @@ export function TabelaAlunos({
                   </td>
                   <td className="p-4" data-label="Ações">
                     <div className="flex justify-end">
-                      <AcoesAluno aluno={a} modalidades={modalidades} />
+                      <AcoesAluno
+                        aluno={a}
+                        modalidades={modalidades}
+                        planos={planos}
+                        competenciaAtual={competenciaAtual}
+                      />
                     </div>
                   </td>
                 </tr>
               ))}
               {filtrados.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-10 text-center text-muted-foreground">
+                  <td colSpan={8} className="p-10 text-center text-muted-foreground">
                     {alunos.length === 0
                       ? "Nenhum aluno cadastrado. Use “Novo aluno” para começar."
                       : "Nenhum aluno corresponde à busca."}

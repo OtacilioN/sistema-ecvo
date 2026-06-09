@@ -1,18 +1,26 @@
 "use client"
 
-import { ClockPlus, FileText, Pencil, Plus, Trash2 } from "lucide-react"
+import { ClockPlus, FileText, Pencil, Plus, Trash2, WalletCards } from "lucide-react"
 import { useState } from "react"
 import { acaoExcluirAluno } from "@/app/actions/cadastros"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
 import { DialogoConfirmacao } from "@/components/ui/dialogo-confirmacao"
 import { ItemMenu, MenuAcoes, SeparadorMenu } from "@/components/ui/menu-acoes"
+import { FormBaixaMensalidadeAluno } from "../financeiro/forms-financeiro"
 import { FormAjusteHoras } from "./form-ajuste-horas"
 import { FormAluno } from "./form-aluno"
 import { FormDadosAluno } from "./form-dados-aluno"
 import { FormDocumentoAluno } from "./form-documento-aluno"
 
 type Modalidade = { id: string; nome: string }
+type Plano = {
+  id: string
+  nome: string
+  valor: number
+  periodicidade: string
+  ativo: boolean
+}
 
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
 type StatusAluno = "ATIVO" | "INATIVO" | "SUSPENSO" | "CANCELADO" | "INADIMPLENTE" | "TRANCADO"
@@ -42,17 +50,26 @@ export type AlunoLinha = {
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
   idExterno: string | null
+  planoId: string | null
+  planoNome: string | null
+  planoValor: number | null
   diaVencimento: number
   modalidades: string[]
   responsavel: ResponsavelAluno
 }
 
 /** Botão primário de cabeçalho que abre o painel de cadastro de aluno. */
-export function BotaoNovoAluno({ modalidades }: { modalidades: Modalidade[] }) {
+export function BotaoNovoAluno({
+  modalidades,
+  planos,
+}: {
+  modalidades: Modalidade[]
+  planos: Plano[]
+}) {
   const [aberto, setAberto] = useState(false)
   return (
     <>
-      <Button onClick={() => setAberto(true)}>
+      <Button type="button" onClick={() => setAberto(true)}>
         <Plus className="size-4" /> Novo aluno
       </Button>
       <Dialog
@@ -62,21 +79,25 @@ export function BotaoNovoAluno({ modalidades }: { modalidades: Modalidade[] }) {
         titulo="Novo aluno"
         descricao="Cadastro de aluno."
       >
-        <FormAluno modalidades={modalidades} aoConcluir={() => setAberto(false)} />
+        <FormAluno modalidades={modalidades} planos={planos} aoConcluir={() => setAberto(false)} />
       </Dialog>
     </>
   )
 }
 
-type Painel = "editar" | "horas" | "documento" | "excluir" | null
+type Painel = "editar" | "horas" | "pagamento" | "documento" | "excluir" | null
 
 /** Menu de ações por linha da tabela de alunos. */
 export function AcoesAluno({
   aluno,
   modalidades,
+  planos,
+  competenciaAtual,
 }: {
   aluno: AlunoLinha
   modalidades: Modalidade[]
+  planos: Plano[]
+  competenciaAtual: string
 }) {
   const [painel, setPainel] = useState<Painel>(null)
   const fechar = () => setPainel(null)
@@ -103,6 +124,17 @@ export function AcoesAluno({
               }}
             >
               Ajustar horas
+            </ItemMenu>
+            <ItemMenu
+              icone={WalletCards}
+              disabled={!aluno.planoId}
+              title={!aluno.planoId ? "Aluno sem plano de pagamento" : undefined}
+              onClick={() => {
+                fecharMenu()
+                setPainel("pagamento")
+              }}
+            >
+              Dar baixa
             </ItemMenu>
             <ItemMenu
               icone={FileText}
@@ -135,7 +167,12 @@ export function AcoesAluno({
         titulo="Editar aluno"
         descricao={aluno.nome}
       >
-        <FormDadosAluno aluno={aluno} modalidades={modalidades} aoConcluir={fechar} />
+        <FormDadosAluno
+          aluno={aluno}
+          modalidades={modalidades}
+          planos={planos}
+          aoConcluir={fechar}
+        />
       </Dialog>
 
       <Dialog
@@ -148,6 +185,26 @@ export function AcoesAluno({
         <FormAjusteHoras
           aluno={{ id: aluno.id, nome: aluno.nome }}
           modalidades={modalidades}
+          aoConcluir={fechar}
+        />
+      </Dialog>
+
+      <Dialog
+        aberto={painel === "pagamento"}
+        aoFechar={fechar}
+        variante="lateral"
+        titulo="Dar baixa"
+        descricao={aluno.nome}
+      >
+        <FormBaixaMensalidadeAluno
+          aluno={{
+            id: aluno.id,
+            nome: aluno.nome,
+            planoNome: aluno.planoNome,
+            planoValor: aluno.planoValor,
+            diaVencimento: aluno.diaVencimento,
+          }}
+          competenciaAtual={competenciaAtual}
           aoConcluir={fechar}
         />
       </Dialog>

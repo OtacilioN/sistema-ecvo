@@ -1,6 +1,6 @@
 "use client"
 
-import { CreditCard, FilePlus, LinkIcon, Save, WalletCards } from "lucide-react"
+import { FilePlus, LinkIcon, Save, Trash2, WalletCards } from "lucide-react"
 import type * as React from "react"
 import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -8,7 +8,8 @@ import {
   acaoAtualizarStatusMensalidade,
   acaoBaixarMensalidade,
   acaoCriarPlano,
-  acaoGerarMensalidade,
+  acaoDarBaixaMensalidadeAluno,
+  acaoExcluirPlano,
   acaoPagamentoAvulso,
   acaoVincularPlano,
   type EstadoFinanceiro,
@@ -17,6 +18,7 @@ import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
+import { formatarBRL } from "@/lib/utils/formato"
 
 type ModalidadeOpcao = { id: string; nome: string }
 type PeriodicidadePlano = "MENSAL" | "TRIMESTRAL" | "SEMESTRAL" | "ANUAL"
@@ -26,6 +28,13 @@ type AlunoOpcao = {
   detalhe: string
   modalidades: ModalidadeOpcao[]
   modalidadeContratadaIds: string[]
+}
+export type AlunoBaixaMensalidade = {
+  id: string
+  nome: string
+  planoNome: string | null
+  planoValor: number | null
+  diaVencimento: number
 }
 type PlanoOpcao = { id: string; nome: string }
 export type PlanoEdicao = {
@@ -135,6 +144,57 @@ export function FormEditarPlano({
   )
 }
 
+export function FormExcluirPlano({
+  plano,
+  planos,
+  alunosVinculados,
+  aoConcluir,
+}: {
+  plano: PlanoEdicao
+  planos: PlanoOpcao[]
+  alunosVinculados: number
+  aoConcluir?: () => void
+}) {
+  const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(acaoExcluirPlano, undefined)
+  const planosDestino = planos.filter((item) => item.id !== plano.id)
+  const exigeMigracao = alunosVinculados > 0
+  const semDestino = exigeMigracao && planosDestino.length === 0
+
+  useEffect(() => {
+    if (estado?.ok) aoConcluir?.()
+  }, [estado?.ok, aoConcluir])
+
+  return (
+    <form action={acao} className="space-y-4">
+      <input type="hidden" name="planoId" value={plano.id} />
+      <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+        <p className="font-medium text-destructive">Esta ação remove o plano da lista.</p>
+        <p className="mt-1 text-muted-foreground">
+          Mensalidades antigas continuam registradas com seus valores e status.
+        </p>
+      </div>
+      {exigeMigracao && (
+        <SelectCampo
+          id="planoDestinoId"
+          rotulo={`Migrar ${alunosVinculados} aluno(s) para`}
+          opcoes={planosDestino}
+        />
+      )}
+      {semDestino && (
+        <p className="text-sm text-destructive">
+          Cadastre outro plano antes de excluir este, pois há alunos vinculados.
+        </p>
+      )}
+      <Erro estado={estado} />
+      <div className="flex justify-end">
+        <BotaoEnviar variant="destructive" disabled={semDestino}>
+          <Trash2 className="size-4" /> Excluir plano
+        </BotaoEnviar>
+      </div>
+    </form>
+  )
+}
+
 export function FormVinculoPlano({
   alunos,
   planos,
@@ -236,41 +296,6 @@ export function FormVinculoPlano({
   )
 }
 
-export function FormGerarMensalidade({
-  alunos,
-  competenciaAtual,
-  aoConcluir,
-}: {
-  alunos: AlunoOpcao[]
-  competenciaAtual: string
-  aoConcluir?: () => void
-}) {
-  const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(acaoGerarMensalidade, undefined)
-
-  useEffect(() => {
-    if (estado?.ok) aoConcluir?.()
-  }, [estado?.ok, aoConcluir])
-
-  return (
-    <form action={acao} className="space-y-4">
-      <SelectCampo id="alunoId" rotulo="Aluno" opcoes={alunos} />
-      <CampoTexto
-        id="competencia"
-        rotulo="Competência"
-        type="month"
-        defaultValue={competenciaAtual}
-        required
-      />
-      <Erro estado={estado} />
-      <div className="flex justify-end">
-        <BotaoEnviar>
-          <CreditCard className="size-4" /> Gerar mensalidade
-        </BotaoEnviar>
-      </div>
-    </form>
-  )
-}
-
 export function FormBaixarMensalidade({
   mensalidadeId,
   aoConcluir,
@@ -302,11 +327,82 @@ export function FormBaixarMensalidade({
   )
 }
 
+export function FormBaixaMensalidadeAluno({
+  aluno,
+  competenciaAtual,
+  aoConcluir,
+}: {
+  aluno: AlunoBaixaMensalidade
+  competenciaAtual: string
+  aoConcluir?: () => void
+}) {
+  const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(
+    acaoDarBaixaMensalidadeAluno,
+    undefined,
+  )
+  const semPlano = !aluno.planoNome || aluno.planoValor === null
+
+  useEffect(() => {
+    if (estado?.ok) aoConcluir?.()
+  }, [estado?.ok, aoConcluir])
+
+  return (
+    <form action={acao} className="grid gap-4 sm:grid-cols-2">
+      <input type="hidden" name="alunoId" value={aluno.id} />
+      <input type="hidden" name="competencia" value={competenciaAtual} />
+
+      <div className="rounded-md border border-border bg-muted/30 p-4 sm:col-span-2">
+        <p className="text-sm font-medium">{aluno.nome}</p>
+        {semPlano ? (
+          <p className="mt-1 text-sm text-destructive">
+            Este aluno não possui plano de pagamento vinculado.
+          </p>
+        ) : (
+          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <dt className="text-muted-foreground">Plano</dt>
+              <dd className="font-medium">{aluno.planoNome}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Competência</dt>
+              <dd className="font-medium">{competenciaAtual}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Valor</dt>
+              <dd className="font-semibold">{formatarBRL(aluno.planoValor ?? 0)}</dd>
+            </div>
+          </dl>
+        )}
+      </div>
+
+      {!semPlano && (
+        <>
+          <CampoTexto
+            id="formaPagamento"
+            rotulo="Forma de pagamento"
+            placeholder="Pix, cartão..."
+          />
+          <CampoTexto id="observacao" rotulo="Observação" />
+        </>
+      )}
+
+      <Erro estado={estado} />
+      <div className="flex justify-end sm:col-span-2">
+        <BotaoEnviar disabled={semPlano}>
+          <WalletCards className="size-4" /> Dar baixa
+        </BotaoEnviar>
+      </div>
+    </form>
+  )
+}
+
 export function FormPagamentoAvulso({
   alunos,
+  alunoIdInicial,
   aoConcluir,
 }: {
   alunos: AlunoOpcao[]
+  alunoIdInicial?: string
   aoConcluir?: () => void
 }) {
   const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(acaoPagamentoAvulso, undefined)
@@ -321,7 +417,13 @@ export function FormPagamentoAvulso({
 
   return (
     <form ref={ref} action={acao} className="grid gap-4 sm:grid-cols-2">
-      <SelectCampo id="alunoId" rotulo="Aluno" opcoes={alunos} opcional />
+      <SelectCampo
+        id="alunoId"
+        rotulo="Aluno"
+        opcoes={alunos}
+        opcional
+        defaultValue={alunoIdInicial}
+      />
       <div className="space-y-1.5">
         <Label htmlFor="tipo">Tipo</Label>
         <Select id="tipo" name="tipo" defaultValue="AULA_UNICA">
@@ -427,16 +529,18 @@ function SelectCampo({
   rotulo,
   opcoes,
   opcional,
+  defaultValue,
 }: {
   id: string
   rotulo: string
   opcoes: { id: string; nome?: string; rotulo?: string; detalhe?: string }[]
   opcional?: boolean
+  defaultValue?: string
 }) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{rotulo}</Label>
-      <Select id={id} name={id} required={!opcional}>
+      <Select id={id} name={id} required={!opcional} defaultValue={defaultValue}>
         <option value="">{opcional ? "Sem vínculo" : "Selecione"}</option>
         {opcoes.map((opcao) => (
           <option key={opcao.id} value={opcao.id}>

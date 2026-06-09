@@ -23,6 +23,16 @@ export const planoEdicaoSchema = planoSchema.extend({
   ativo: z.enum(["true", "false"]).transform((v) => v === "true"),
 })
 
+export const planoExclusaoSchema = z
+  .object({
+    planoId: z.string().min(1, "Selecione o plano"),
+    planoDestinoId: textoOpcional,
+  })
+  .refine((dados) => dados.planoId !== dados.planoDestinoId, {
+    message: "Escolha um plano de destino diferente.",
+    path: ["planoDestinoId"],
+  })
+
 export const vinculoPlanoSchema = z.object({
   alunoId: z.string().min(1, "Selecione o aluno"),
   planoId: z.string().min(1, "Selecione o plano"),
@@ -30,13 +40,15 @@ export const vinculoPlanoSchema = z.object({
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade contratada"),
 })
 
-export const gerarMensalidadeSchema = z.object({
-  alunoId: z.string().min(1, "Selecione o aluno"),
-  competencia: z.string().regex(/^\d{4}-\d{2}$/, "Competência inválida"),
-})
-
 export const baixarMensalidadeSchema = z.object({
   mensalidadeId: z.string().min(1, "Selecione a mensalidade"),
+  formaPagamento: textoOpcional,
+  observacao: textoOpcional,
+})
+
+export const baixaMensalidadeAlunoSchema = z.object({
+  alunoId: z.string().min(1, "Selecione o aluno"),
+  competencia: z.string().regex(/^\d{4}-\d{2}$/, "Competência inválida"),
   formaPagamento: textoOpcional,
   observacao: textoOpcional,
 })

@@ -528,8 +528,8 @@ model Mensalidade {
   id             String            @id @default(cuid())
   aluno          Aluno             @relation(fields: [alunoId], references: [id], onDelete: Cascade)
   alunoId        String
-  plano          Plano             @relation(fields: [planoId], references: [id])
-  planoId        String
+  plano          Plano?            @relation(fields: [planoId], references: [id], onDelete: SetNull)
+  planoId        String?
   competencia    String // "2026-06"
   valor          Decimal           @db.Decimal(10, 2)
   vencimento     DateTime

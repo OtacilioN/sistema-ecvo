@@ -10,7 +10,7 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
-import { formatarData, TIMEZONE } from "@/lib/utils/datas"
+import { chaveCompetencia, formatarData, TIMEZONE } from "@/lib/utils/datas"
 
 type Cliente = Prisma.TransactionClient | typeof db
 
@@ -318,6 +318,79 @@ export async function atualizarPlano(params: {
   return { ok: true as const, plano }
 }
 
+export async function excluirPlano(params: {
+  planoId: string
+  planoDestinoId?: string | null
+  autorId: string
+}) {
+  const plano = await db.plano.findUnique({
+    where: { id: params.planoId },
+    select: {
+      id: true,
+      nome: true,
+      valor: true,
+      periodicidade: true,
+      limiteAulas: true,
+      ativo: true,
+      _count: { select: { alunos: true, mensalidades: true } },
+    },
+  })
+  if (!plano) return { ok: false as const, motivo: "Plano não encontrado." }
+
+  let planoDestino: { id: string; nome: string } | null = null
+  if (plano._count.alunos > 0) {
+    if (!params.planoDestinoId) {
+      return {
+        ok: false as const,
+        motivo: "Escolha um plano para migrar os alunos vinculados.",
+      }
+    }
+    if (params.planoDestinoId === params.planoId) {
+      return { ok: false as const, motivo: "Escolha um plano de destino diferente." }
+    }
+    planoDestino = await db.plano.findUnique({
+      where: { id: params.planoDestinoId },
+      select: { id: true, nome: true },
+    })
+    if (!planoDestino) return { ok: false as const, motivo: "Plano de destino não encontrado." }
+  }
+
+  await db.$transaction(async (tx) => {
+    if (planoDestino) {
+      await tx.aluno.updateMany({
+        where: { planoId: params.planoId },
+        data: { planoId: planoDestino.id },
+      })
+    }
+
+    await tx.plano.delete({ where: { id: params.planoId } })
+
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "PLANO",
+        entidade: "Plano",
+        entidadeId: plano.id,
+        valorAntigo: {
+          ...serializarPlano(plano),
+          alunosVinculados: plano._count.alunos,
+          mensalidadesHistoricas: plano._count.mensalidades,
+        },
+        valorNovo: {
+          excluido: true,
+          alunosMigrados: plano._count.alunos,
+          planoDestinoId: planoDestino?.id ?? null,
+          planoDestinoNome: planoDestino?.nome ?? null,
+          mensalidadesMantidasSemPlano: plano._count.mensalidades,
+        },
+      },
+      tx,
+    )
+  })
+
+  return { ok: true as const, alunosMigrados: plano._count.alunos }
+}
+
 export async function vincularPlanoMensalista(params: {
   alunoId: string
   planoId: string
@@ -394,7 +467,17 @@ export async function vincularPlanoMensalista(params: {
 export async function gerarMensalidade(params: {
   alunoId: string
   competencia: string
-  autorId: string
+  autorId?: string
+}) {
+  const resultado = await obterOuCriarMensalidade(params)
+  if (!resultado.ok) return resultado
+  return { ok: true as const, mensalidade: resultado.mensalidade, criada: resultado.criada }
+}
+
+async function obterOuCriarMensalidade(params: {
+  alunoId: string
+  competencia: string
+  autorId?: string
 }) {
   const aluno = await db.aluno.findUnique({
     where: { id: params.alunoId },
@@ -420,10 +503,15 @@ export async function gerarMensalidade(params: {
   const plano = aluno.plano
 
   const mensalidade = await db.$transaction(async (tx) => {
-    const criada = await tx.mensalidade.upsert({
-      where: { alunoId_competencia: { alunoId: aluno.id, competencia: params.competencia } },
-      update: {},
-      create: {
+    const existente = await tx.mensalidade.findUnique({
+      where: {
+        alunoId_competencia: { alunoId: aluno.id, competencia: params.competencia },
+      },
+    })
+    if (existente) return { mensalidade: existente, criada: false }
+
+    const criada = await tx.mensalidade.create({
+      data: {
         alunoId: aluno.id,
         planoId: plano.id,
         competencia: params.competencia,
@@ -432,24 +520,26 @@ export async function gerarMensalidade(params: {
       },
     })
 
-    await registrarLog(
-      {
-        autorId: params.autorId,
-        acao: "PAGAMENTO",
-        entidade: "Mensalidade",
-        entidadeId: criada.id,
-        valorNovo: {
-          alunoId: aluno.id,
-          competencia: criada.competencia,
-          valor: Number(criada.valor),
-          diaVencimento: aluno.diaVencimento,
-          modalidadeIds: aluno.modalidadesPlano.map((modalidade) => modalidade.modalidadeId),
-          vencimento: criada.vencimento.toISOString(),
-          status: criada.status,
+    if (params.autorId) {
+      await registrarLog(
+        {
+          autorId: params.autorId,
+          acao: "PAGAMENTO",
+          entidade: "Mensalidade",
+          entidadeId: criada.id,
+          valorNovo: {
+            alunoId: aluno.id,
+            competencia: criada.competencia,
+            valor: Number(criada.valor),
+            diaVencimento: aluno.diaVencimento,
+            modalidadeIds: aluno.modalidadesPlano.map((modalidade) => modalidade.modalidadeId),
+            vencimento: criada.vencimento.toISOString(),
+            status: criada.status,
+          },
         },
-      },
-      tx,
-    )
+        tx,
+      )
+    }
 
     await criarNotificacao(tx, {
       usuarioId: aluno.usuarioId,
@@ -461,10 +551,45 @@ export async function gerarMensalidade(params: {
       })}.`,
     })
 
-    return criada
+    return { mensalidade: criada, criada: true }
   })
 
-  return { ok: true as const, mensalidade }
+  return { ok: true as const, ...mensalidade }
+}
+
+export async function gerarMensalidadesRecorrentes(params?: { competencia?: string }) {
+  const competencia = params?.competencia ?? chaveCompetencia()
+  const alunos = await db.aluno.findMany({
+    where: {
+      planoId: { not: null },
+      status: { in: ["ATIVO", "INADIMPLENTE"] },
+    },
+    select: { id: true },
+    orderBy: { criadoEm: "asc" },
+  })
+
+  let criadas = 0
+  let existentes = 0
+  const puladas: Array<{ alunoId: string; motivo: string }> = []
+
+  for (const aluno of alunos) {
+    const resultado = await obterOuCriarMensalidade({ alunoId: aluno.id, competencia })
+    if (!resultado.ok) {
+      puladas.push({ alunoId: aluno.id, motivo: resultado.motivo })
+      continue
+    }
+    if (resultado.criada) criadas++
+    else existentes++
+  }
+
+  return {
+    ok: true as const,
+    competencia,
+    alunosProcessados: alunos.length,
+    criadas,
+    existentes,
+    puladas,
+  }
 }
 
 export async function baixarMensalidade(params: {
@@ -478,6 +603,9 @@ export async function baixarMensalidade(params: {
     include: { aluno: { select: { usuarioId: true } } },
   })
   if (!mensalidade) return { ok: false as const, motivo: "Mensalidade não encontrada." }
+  if (mensalidade.status === "PAGA" || mensalidade.status === "ISENTA") {
+    return { ok: false as const, motivo: "Mensalidade já está quitada." }
+  }
 
   const atualizada = await db.$transaction(async (tx) => {
     const nova = await tx.mensalidade.update({
@@ -513,6 +641,28 @@ export async function baixarMensalidade(params: {
   })
 
   return { ok: true as const, mensalidade: atualizada }
+}
+
+export async function darBaixaMensalidadeAluno(params: {
+  alunoId: string
+  competencia: string
+  formaPagamento?: string | null
+  observacao?: string | null
+  autorId: string
+}) {
+  const mensalidade = await gerarMensalidade({
+    alunoId: params.alunoId,
+    competencia: params.competencia,
+    autorId: params.autorId,
+  })
+  if (!mensalidade.ok) return mensalidade
+
+  return baixarMensalidade({
+    mensalidadeId: mensalidade.mensalidade.id,
+    formaPagamento: params.formaPagamento,
+    observacao: params.observacao,
+    autorId: params.autorId,
+  })
 }
 
 export async function atualizarStatusMensalidade(params: {

@@ -7,15 +7,17 @@ import {
   atualizarStatusMensalidade,
   baixarMensalidade,
   criarPlano,
-  gerarMensalidade,
+  darBaixaMensalidadeAluno,
+  excluirPlano,
   registrarPagamentoAvulso,
   vincularPlanoMensalista,
 } from "@/lib/services/financeiro.service"
 import {
+  baixaMensalidadeAlunoSchema,
   baixarMensalidadeSchema,
-  gerarMensalidadeSchema,
   pagamentoAvulsoSchema,
   planoEdicaoSchema,
+  planoExclusaoSchema,
   planoSchema,
   statusMensalidadeSchema,
   vinculoPlanoSchema,
@@ -70,6 +72,27 @@ export async function acaoAtualizarPlano(
   return { ok: true }
 }
 
+export async function acaoExcluirPlano(
+  _: EstadoFinanceiro,
+  formData: FormData,
+): Promise<EstadoFinanceiro> {
+  const usuario = await exigirPapel("GESTOR")
+  const parsed = planoExclusaoSchema.safeParse({
+    planoId: formData.get("planoId"),
+    planoDestinoId: formData.get("planoDestinoId"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await excluirPlano({ ...parsed.data, autorId: usuario.id })
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/alunos")
+  revalidatePath("/gestao/auditoria")
+  revalidatePath("/aluno/financeiro")
+  revalidatePath("/aluno/perfil")
+  if (!resultado.ok) return { erro: resultado.motivo }
+  return { ok: true }
+}
+
 export async function acaoVincularPlano(
   _: EstadoFinanceiro,
   formData: FormData,
@@ -93,26 +116,6 @@ export async function acaoVincularPlano(
   return { ok: true }
 }
 
-export async function acaoGerarMensalidade(
-  _: EstadoFinanceiro,
-  formData: FormData,
-): Promise<EstadoFinanceiro> {
-  const usuario = await exigirPapel("GESTOR")
-  const parsed = gerarMensalidadeSchema.safeParse({
-    alunoId: formData.get("alunoId"),
-    competencia: formData.get("competencia"),
-  })
-  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
-
-  const resultado = await gerarMensalidade({ ...parsed.data, autorId: usuario.id })
-  revalidatePath("/gestao/financeiro")
-  revalidatePath("/gestao/auditoria")
-  revalidatePath("/aluno/financeiro")
-  revalidatePath("/aluno/perfil")
-  if (!resultado.ok) return { erro: resultado.motivo }
-  return { ok: true }
-}
-
 export async function acaoBaixarMensalidade(
   _: EstadoFinanceiro,
   formData: FormData,
@@ -127,6 +130,29 @@ export async function acaoBaixarMensalidade(
 
   const resultado = await baixarMensalidade({ ...parsed.data, autorId: usuario.id })
   revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/auditoria")
+  revalidatePath("/aluno/financeiro")
+  revalidatePath("/aluno/perfil")
+  if (!resultado.ok) return { erro: resultado.motivo }
+  return { ok: true }
+}
+
+export async function acaoDarBaixaMensalidadeAluno(
+  _: EstadoFinanceiro,
+  formData: FormData,
+): Promise<EstadoFinanceiro> {
+  const usuario = await exigirPapel("GESTOR")
+  const parsed = baixaMensalidadeAlunoSchema.safeParse({
+    alunoId: formData.get("alunoId"),
+    competencia: formData.get("competencia"),
+    formaPagamento: formData.get("formaPagamento"),
+    observacao: formData.get("observacao"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await darBaixaMensalidadeAluno({ ...parsed.data, autorId: usuario.id })
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")
   revalidatePath("/aluno/perfil")

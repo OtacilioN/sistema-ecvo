@@ -26,7 +26,7 @@ export function listarAlunos(opts?: { busca?: string; status?: StatusAluno }) {
       usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
       responsavel: true,
-      plano: { select: { nome: true } },
+      plano: { select: { nome: true, valor: true } },
       _count: { select: { documentos: true } },
     },
   })
@@ -58,6 +58,7 @@ type DadosAluno = {
   observacoesTecnicas?: string | null
   observacoesAdmin?: string | null
   idExterno?: string | null
+  planoId?: string | null
   diaVencimento?: number
   modalidadeIds: string[]
   responsavel?: {
@@ -97,8 +98,16 @@ export async function criarAluno(
             observacoesTecnicas: params.observacoesTecnicas ?? null,
             observacoesAdmin: params.observacoesAdmin ?? null,
             idExterno: params.idExterno ?? null,
+            planoId: params.planoId ?? null,
             diaVencimento: params.diaVencimento ?? 10,
             modalidades: { connect: params.modalidadeIds.map((id) => ({ id })) },
+            ...(params.planoId
+              ? {
+                  modalidadesPlano: {
+                    create: params.modalidadeIds.map((modalidadeId) => ({ modalidadeId })),
+                  },
+                }
+              : {}),
             ...(params.responsavel
               ? {
                   responsavel: {
@@ -132,6 +141,7 @@ export async function criarAluno(
           tipo: usuario.aluno?.tipo,
           status: usuario.aluno?.status,
           diaVencimento: usuario.aluno?.diaVencimento,
+          planoId: usuario.aluno?.planoId,
           modalidadeIds: params.modalidadeIds,
           responsavelInformado: Boolean(params.responsavel),
           cpfInformado: Boolean(params.cpf),
@@ -167,10 +177,13 @@ export async function atualizarAluno(
       observacoesTecnicas: true,
       observacoesAdmin: true,
       idExterno: true,
+      planoId: true,
+      plano: { select: { nome: true } },
       diaVencimento: true,
       responsavel: true,
       usuario: { select: { nome: true, fotoUrl: true } },
       modalidades: { select: { id: true, nome: true } },
+      modalidadesPlano: { select: { modalidadeId: true } },
     },
   })
   if (!atual) return { ok: false as const, motivo: "Aluno não encontrado." }
@@ -237,6 +250,14 @@ export async function atualizarAluno(
           ? { observacoesAdmin: params.observacoesAdmin }
           : {}),
         ...(params.idExterno !== undefined ? { idExterno: params.idExterno } : {}),
+        ...(params.planoId !== undefined
+          ? {
+              plano:
+                params.planoId === null
+                  ? { disconnect: true }
+                  : { connect: { id: params.planoId } },
+            }
+          : {}),
         ...(params.diaVencimento !== undefined ? { diaVencimento: params.diaVencimento } : {}),
         ...(params.modalidadeIds
           ? { modalidades: { set: params.modalidadeIds.map((id) => ({ id })) } }
@@ -245,17 +266,31 @@ export async function atualizarAluno(
       include: {
         usuario: { select: { nome: true, fotoUrl: true } },
         modalidades: { select: { id: true, nome: true } },
+        plano: { select: { nome: true } },
         responsavel: true,
       },
     })
 
-    if (params.modalidadeIds) {
-      await tx.alunoPlanoModalidade.deleteMany({
-        where: {
-          alunoId: atual.id,
-          modalidadeId: { notIn: params.modalidadeIds },
-        },
-      })
+    if (params.planoId === null) {
+      await tx.alunoPlanoModalidade.deleteMany({ where: { alunoId: atual.id } })
+    } else {
+      if (params.modalidadeIds) {
+        await tx.alunoPlanoModalidade.deleteMany({
+          where: {
+            alunoId: atual.id,
+            modalidadeId: { notIn: params.modalidadeIds },
+          },
+        })
+      }
+
+      if (params.planoId && (!atual.planoId || atual.modalidadesPlano.length === 0)) {
+        const modalidadeIds =
+          params.modalidadeIds ?? atual.modalidades.map((modalidade) => modalidade.id)
+        await tx.alunoPlanoModalidade.createMany({
+          data: modalidadeIds.map((modalidadeId) => ({ alunoId: atual.id, modalidadeId })),
+          skipDuplicates: true,
+        })
+      }
     }
 
     const valorAntigo = serializarAluno({
@@ -273,6 +308,7 @@ export async function atualizarAluno(
       observacoesTecnicas: atual.observacoesTecnicas,
       observacoesAdmin: atual.observacoesAdmin,
       idExterno: atual.idExterno,
+      plano: atual.plano?.nome ?? null,
       diaVencimento: atual.diaVencimento,
       modalidades: atual.modalidades.map((modalidade) => modalidade.nome),
       responsavel: atual.responsavel,
@@ -292,6 +328,7 @@ export async function atualizarAluno(
       observacoesTecnicas: aluno.observacoesTecnicas,
       observacoesAdmin: aluno.observacoesAdmin,
       idExterno: aluno.idExterno,
+      plano: aluno.plano?.nome ?? null,
       diaVencimento: aluno.diaVencimento,
       modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
       responsavel: aluno.responsavel,
@@ -343,6 +380,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       observacoesTecnicas: true,
       observacoesAdmin: true,
       idExterno: true,
+      plano: { select: { nome: true } },
       diaVencimento: true,
       responsavel: true,
       modalidades: { select: { id: true, nome: true } },
@@ -381,6 +419,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
           observacoesTecnicas: aluno.observacoesTecnicas,
           observacoesAdmin: aluno.observacoesAdmin,
           idExterno: aluno.idExterno,
+          plano: aluno.plano?.nome ?? null,
           diaVencimento: aluno.diaVencimento,
           modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
           responsavel: aluno.responsavel,
@@ -410,6 +449,7 @@ function serializarAluno(dados: {
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
   idExterno: string | null
+  plano: string | null
   diaVencimento: number
   modalidades: string[]
   responsavel?: {
@@ -436,6 +476,7 @@ function serializarAluno(dados: {
     observacoesTecnicas: dados.observacoesTecnicas,
     observacoesAdmin: dados.observacoesAdmin,
     idExterno: dados.idExterno,
+    plano: dados.plano,
     diaVencimento: dados.diaVencimento,
     modalidades: dados.modalidades,
     responsavel: dados.responsavel

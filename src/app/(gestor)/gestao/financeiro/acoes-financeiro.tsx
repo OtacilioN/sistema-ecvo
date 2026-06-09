@@ -1,6 +1,6 @@
 "use client"
 
-import { CreditCard, FilePlus, LinkIcon, Pencil, WalletCards } from "lucide-react"
+import { CreditCard, FilePlus, LinkIcon, Pencil, Trash2, WalletCards } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
@@ -8,7 +8,7 @@ import { ItemMenu, MenuAcoes } from "@/components/ui/menu-acoes"
 import {
   FormBaixarMensalidade,
   FormEditarPlano,
-  FormGerarMensalidade,
+  FormExcluirPlano,
   FormPagamentoAvulso,
   FormPlano,
   FormStatusMensalidade,
@@ -31,17 +31,11 @@ type StatusMensalidade = "EM_ABERTO" | "PAGA" | "VENCIDA" | "CANCELADA" | "ISENT
 export function AcoesFinanceiro({
   planos,
   alunos,
-  alunosComPlano,
-  competenciaAtual,
 }: {
   planos: PlanoOpcao[]
   alunos: AlunoOpcao[]
-  alunosComPlano: AlunoOpcao[]
-  competenciaAtual: string
 }) {
-  const [painel, setPainel] = useState<"mensalidade" | "pagamento" | "plano" | "vinculo" | null>(
-    null,
-  )
+  const [painel, setPainel] = useState<"pagamento" | "plano" | "vinculo" | null>(null)
   const fechar = () => setPainel(null)
 
   return (
@@ -55,10 +49,6 @@ export function AcoesFinanceiro({
       <Button variant="outline" onClick={() => setPainel("pagamento")}>
         <WalletCards className="size-4" /> Pagamento avulso
       </Button>
-      <Button onClick={() => setPainel("mensalidade")}>
-        <CreditCard className="size-4" /> Gerar mensalidade
-      </Button>
-
       <Dialog
         aberto={painel === "plano"}
         aoFechar={fechar}
@@ -87,20 +77,6 @@ export function AcoesFinanceiro({
         descricao="Aula única, diária, pacote, exame ou produto."
       >
         <FormPagamentoAvulso alunos={alunos} aoConcluir={fechar} />
-      </Dialog>
-
-      <Dialog
-        aberto={painel === "mensalidade"}
-        aoFechar={fechar}
-        variante="centro"
-        titulo="Gerar mensalidade"
-        descricao="Cria a cobrança de um aluno com plano na competência."
-      >
-        <FormGerarMensalidade
-          alunos={alunosComPlano}
-          competenciaAtual={competenciaAtual}
-          aoConcluir={fechar}
-        />
       </Dialog>
     </>
   )
@@ -182,23 +158,43 @@ export function AcoesMensalidade({
 }
 
 /** Menu de ações por plano cadastrado. */
-export function AcoesPlano({ plano }: { plano: PlanoEdicao }) {
-  const [painel, setPainel] = useState<"editar" | null>(null)
+export function AcoesPlano({
+  plano,
+  planos,
+  alunosVinculados,
+}: {
+  plano: PlanoEdicao
+  planos: PlanoOpcao[]
+  alunosVinculados: number
+}) {
+  const [painel, setPainel] = useState<"editar" | "excluir" | null>(null)
   const fechar = () => setPainel(null)
 
   return (
     <>
       <MenuAcoes rotulo="Ações do plano">
         {(fecharMenu) => (
-          <ItemMenu
-            icone={Pencil}
-            onClick={() => {
-              fecharMenu()
-              setPainel("editar")
-            }}
-          >
-            Editar plano
-          </ItemMenu>
+          <>
+            <ItemMenu
+              icone={Pencil}
+              onClick={() => {
+                fecharMenu()
+                setPainel("editar")
+              }}
+            >
+              Editar plano
+            </ItemMenu>
+            <ItemMenu
+              icone={Trash2}
+              variante="destructive"
+              onClick={() => {
+                fecharMenu()
+                setPainel("excluir")
+              }}
+            >
+              Excluir plano
+            </ItemMenu>
+          </>
         )}
       </MenuAcoes>
 
@@ -210,6 +206,21 @@ export function AcoesPlano({ plano }: { plano: PlanoEdicao }) {
         descricao={plano.nome}
       >
         <FormEditarPlano plano={plano} aoConcluir={fechar} />
+      </Dialog>
+
+      <Dialog
+        aberto={painel === "excluir"}
+        aoFechar={fechar}
+        variante="centro"
+        titulo="Excluir plano"
+        descricao={plano.nome}
+      >
+        <FormExcluirPlano
+          plano={plano}
+          planos={planos}
+          alunosVinculados={alunosVinculados}
+          aoConcluir={fechar}
+        />
       </Dialog>
     </>
   )

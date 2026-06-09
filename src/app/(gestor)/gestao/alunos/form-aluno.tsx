@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { formatarBRL } from "@/lib/utils/formato"
 
 const TIPOS = [
   { v: "MENSALISTA", r: "Mensalista" },
@@ -26,11 +27,21 @@ const STATUS = [
   { v: "TRANCADO", r: "Trancado" },
 ]
 
+type Plano = {
+  id: string
+  nome: string
+  valor: number
+  periodicidade: string
+  ativo: boolean
+}
+
 export function FormAluno({
   modalidades,
+  planos,
   aoConcluir,
 }: {
   modalidades: { id: string; nome: string }[]
+  planos: Plano[]
   aoConcluir?: () => void
 }) {
   const [estado, acao] = useActionState<EstadoForm, FormData>(acaoCriarAluno, undefined)
@@ -80,6 +91,17 @@ export function FormAluno({
           {STATUS.map((status) => (
             <option key={status.v} value={status.v}>
               {status.r}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label htmlFor="planoId">Plano de pagamento</Label>
+        <Select id="planoId" name="planoId" defaultValue="">
+          <option value="">Sem plano</option>
+          {planos.map((plano) => (
+            <option key={plano.id} value={plano.id}>
+              {rotuloPlano(plano)}
             </option>
           ))}
         </Select>
@@ -179,4 +201,9 @@ export function FormAluno({
       </div>
     </form>
   )
+}
+
+function rotuloPlano(plano: Plano) {
+  const status = plano.ativo ? "" : " · inativo"
+  return `${plano.nome} · ${formatarBRL(plano.valor)} · ${plano.periodicidade}${status}`
 }

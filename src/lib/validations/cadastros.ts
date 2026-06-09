@@ -18,6 +18,12 @@ const textoOpcional = z
   .optional()
   .transform((v) => (v && v.length > 0 ? v : null))
 
+const idOpcional = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v && v.length > 0 ? v : null))
+
 const fotoUrlOpcional = z
   .union([
     z.url("Informe uma URL válida"),
@@ -192,6 +198,7 @@ export const alunoSchema = z.object({
   observacoesTecnicas: textoOpcional,
   observacoesAdmin: textoOpcional,
   idExterno: textoOpcional,
+  planoId: idOpcional,
   diaVencimento: diaVencimentoSchema,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
   responsavel: responsavelSchema.optional(),
@@ -214,6 +221,7 @@ export const dadosAlunoSchema = z.object({
   observacoesTecnicas: textoOpcional,
   observacoesAdmin: textoOpcional,
   idExterno: textoOpcional,
+  planoId: idOpcional,
   diaVencimento: diaVencimentoSchema,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
   responsavel: responsavelSchema.nullable().optional(),

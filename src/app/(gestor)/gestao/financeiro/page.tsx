@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirPapel } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
-import { chaveCompetencia, formatarData } from "@/lib/utils/datas"
+import { formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 import { AcoesFinanceiro, AcoesMensalidade, AcoesPlano } from "./acoes-financeiro"
 
@@ -55,20 +55,6 @@ export default async function Page() {
     })),
     modalidadeContratadaIds: aluno.modalidadesPlano.map((item) => item.modalidade.id),
   }))
-  const alunosComPlano = alunos
-    .filter((aluno) => aluno.planoId)
-    .map((aluno) => ({
-      id: aluno.id,
-      nome: aluno.usuario.nome,
-      detalhe: aluno.plano
-        ? `${aluno.tipo} · ${aluno.plano.nome} · ${rotuloModalidadesContratadas(aluno.modalidadesPlano)} · venc. dia ${aluno.diaVencimento}`
-        : `${aluno.tipo} · venc. dia ${aluno.diaVencimento}`,
-      modalidades: aluno.modalidades.map((modalidade) => ({
-        id: modalidade.id,
-        nome: modalidade.nome,
-      })),
-      modalidadeContratadaIds: aluno.modalidadesPlano.map((item) => item.modalidade.id),
-    }))
   const planosOpcao = planos.map((plano) => ({
     id: plano.id,
     nome: plano.nome,
@@ -84,12 +70,7 @@ export default async function Page() {
         <Button asChild variant="outline">
           <Link href="/gestao/financeiro/repasses">Ver repasses</Link>
         </Button>
-        <AcoesFinanceiro
-          planos={planosOpcao}
-          alunos={alunosOpcao}
-          alunosComPlano={alunosComPlano}
-          competenciaAtual={chaveCompetencia()}
-        />
+        <AcoesFinanceiro planos={planosOpcao} alunos={alunosOpcao} />
       </CabecalhoPagina>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
@@ -186,6 +167,8 @@ export default async function Page() {
                           limiteAulas: plano.limiteAulas,
                           ativo: plano.ativo,
                         }}
+                        planos={planosOpcao}
+                        alunosVinculados={plano._count.alunos}
                       />
                     </div>
                   </div>
@@ -234,11 +217,4 @@ export default async function Page() {
       </div>
     </div>
   )
-}
-
-function rotuloModalidadesContratadas(
-  modalidades: Array<{ modalidade: { nome: string } }>,
-): string {
-  if (modalidades.length === 0) return "sem modalidade contratada"
-  return modalidades.map((item) => item.modalidade.nome).join(", ")
 }

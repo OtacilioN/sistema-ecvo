@@ -140,6 +140,7 @@ export function ItemMenu({
         variante === "destructive"
           ? "text-destructive hover:bg-destructive/10 focus-visible:bg-destructive/10"
           : CLASSE_ITEM_PADRAO,
+        "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent",
       )}
       {...props}
     >

@@ -8,11 +8,19 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { formatarBRL } from "@/lib/utils/formato"
 
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
 type StatusAluno = "ATIVO" | "INATIVO" | "SUSPENSO" | "CANCELADO" | "INADIMPLENTE" | "TRANCADO"
 
 type Modalidade = { id: string; nome: string }
+type Plano = {
+  id: string
+  nome: string
+  valor: number
+  periodicidade: string
+  ativo: boolean
+}
 
 type AlunoParaEdicao = {
   id: string
@@ -30,6 +38,7 @@ type AlunoParaEdicao = {
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
   idExterno: string | null
+  planoId: string | null
   diaVencimento: number
   modalidades: string[]
   responsavel: {
@@ -54,10 +63,12 @@ const STATUS: StatusAluno[] = [
 
 export function FormDadosAluno({
   modalidades,
+  planos,
   aluno,
   aoConcluir,
 }: {
   modalidades: Modalidade[]
+  planos: Plano[]
   aluno: AlunoParaEdicao
   aoConcluir?: () => void
 }) {
@@ -96,6 +107,17 @@ export function FormDadosAluno({
           {STATUS.map((item) => (
             <option key={item} value={item}>
               {item}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="space-y-1.5 sm:col-span-2">
+        <Label htmlFor="planoId-aluno">Plano de pagamento</Label>
+        <Select id="planoId-aluno" name="planoId" defaultValue={aluno.planoId ?? ""}>
+          <option value="">Sem plano</option>
+          {planos.map((plano) => (
+            <option key={plano.id} value={plano.id}>
+              {rotuloPlano(plano)}
             </option>
           ))}
         </Select>
@@ -271,4 +293,9 @@ export function FormDadosAluno({
 
 function paraDataInput(valor?: Date | null) {
   return valor ? valor.toISOString().split("T")[0] : ""
+}
+
+function rotuloPlano(plano: Plano) {
+  const status = plano.ativo ? "" : " · inativo"
+  return `${plano.nome} · ${formatarBRL(plano.valor)} · ${plano.periodicidade}${status}`
 }

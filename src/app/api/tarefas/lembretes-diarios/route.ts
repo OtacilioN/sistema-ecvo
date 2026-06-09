@@ -1,4 +1,7 @@
-import { gerarLembretesFinanceirosGestores } from "@/lib/services/financeiro.service"
+import {
+  gerarLembretesFinanceirosGestores,
+  gerarMensalidadesRecorrentes,
+} from "@/lib/services/financeiro.service"
 import { gerarLembretesAniversario } from "@/lib/services/notificacao.service"
 
 export const dynamic = "force-dynamic"
@@ -16,6 +19,7 @@ export async function GET(request: Request) {
     return Response.json({ erro: "Não autorizado." }, { status: 401 })
   }
 
+  const mensalidades = await gerarMensalidadesRecorrentes()
   const [financeiro, aniversarios] = await Promise.all([
     gerarLembretesFinanceirosGestores(),
     gerarLembretesAniversario(),
@@ -23,6 +27,7 @@ export async function GET(request: Request) {
 
   return Response.json({
     ok: true,
+    mensalidades,
     financeiro,
     aniversarios,
   })
