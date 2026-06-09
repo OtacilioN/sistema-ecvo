@@ -8,31 +8,11 @@ import {
   acaoLancarCheckin,
   type EstadoTreino,
 } from "@/app/actions/treino"
-import { Badge, type BadgeProps } from "@/components/ui/badge"
+import { Badge } from "@/components/ui/badge"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-
-export type StatusLinha =
-  | "PRESENTE"
-  | "COMPARECEU"
-  | "LISTA_ESPERA"
-  | "PENDENTE_REVISAO"
-  | "INVALIDADO"
-  | "EXCLUIDO"
-  | "NO_SHOW"
-  | "AUSENTE"
-
-const ROTULO: Record<StatusLinha, { texto: string; variant: BadgeProps["variant"] }> = {
-  PRESENTE: { texto: "Presente", variant: "success" },
-  COMPARECEU: { texto: "Comparecimento", variant: "secondary" },
-  LISTA_ESPERA: { texto: "Lista de espera", variant: "warning" },
-  PENDENTE_REVISAO: { texto: "Pendente de revisão", variant: "warning" },
-  INVALIDADO: { texto: "Check-in invalidado", variant: "destructive" },
-  EXCLUIDO: { texto: "Check-in excluído", variant: "destructive" },
-  NO_SHOW: { texto: "No-show", variant: "warning" },
-  AUSENTE: { texto: "Ausente", variant: "outline" },
-}
+import { ROTULO_STATUS_LINHA, type StatusLinha } from "@/lib/aula-monitoramento"
 
 export function LinhaPresenca({
   aulaId,
@@ -60,7 +40,7 @@ export function LinhaPresenca({
   )
   const [abrindo, setAbrindo] = useState(false)
   const erro = lancar?.erro ?? invalidar?.erro ?? observacao?.erro
-  const rotulo = ROTULO[status]
+  const rotulo = ROTULO_STATUS_LINHA[status]
 
   return (
     <tr className="border-b border-border last:border-0 align-top">

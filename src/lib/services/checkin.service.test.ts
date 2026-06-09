@@ -3,6 +3,7 @@ import {
   avaliarCheckin,
   type ContextoCheckin,
   checkinRetroativo,
+  podeRealizarCheckinNaJanela,
   statusPresenca,
 } from "./checkin.service"
 
@@ -138,5 +139,44 @@ describe("checkinRetroativo", () => {
     const fimAula = new Date("2026-06-10T20:30:00Z")
     expect(checkinRetroativo({ fimAula, agora: new Date("2026-06-10T20:30:00Z") })).toBe(false)
     expect(checkinRetroativo({ fimAula, agora: new Date("2026-06-10T20:30:01Z") })).toBe(true)
+  })
+})
+
+describe("podeRealizarCheckinNaJanela", () => {
+  const inicioAula = new Date("2026-06-10T20:00:00Z")
+  const fimAula = new Date("2026-06-10T21:00:00Z")
+
+  it("libera de 30 minutos antes até o fim da aula", () => {
+    expect(
+      podeRealizarCheckinNaJanela({
+        inicioAula,
+        fimAula,
+        agora: new Date("2026-06-10T19:30:00Z"),
+      }),
+    ).toBe(true)
+    expect(
+      podeRealizarCheckinNaJanela({
+        inicioAula,
+        fimAula,
+        agora: new Date("2026-06-10T21:00:00Z"),
+      }),
+    ).toBe(true)
+  })
+
+  it("bloqueia fora da tolerância", () => {
+    expect(
+      podeRealizarCheckinNaJanela({
+        inicioAula,
+        fimAula,
+        agora: new Date("2026-06-10T19:29:59Z"),
+      }),
+    ).toBe(false)
+    expect(
+      podeRealizarCheckinNaJanela({
+        inicioAula,
+        fimAula,
+        agora: new Date("2026-06-10T21:00:01Z"),
+      }),
+    ).toBe(false)
   })
 })

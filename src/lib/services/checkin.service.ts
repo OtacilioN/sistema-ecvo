@@ -8,9 +8,11 @@ import type {
 } from "@prisma/client"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
 import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
 import { creditarPorCheckin, estornarCheckin } from "@/lib/services/horas.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
+import { formatarDataHora } from "@/lib/utils/datas"
 
 // Serviço de CHECK-IN — o coração do loop de treino (RF-019..031).
 // REGRAS INVIOLÁVEIS:
@@ -18,6 +20,8 @@ import { criarNotificacao } from "@/lib/services/notificacao.service"
 //  • A mesma aula nunca conta duas vezes para o mesmo aluno (@@unique alunoId+aulaId, RF-039).
 //  • Invalidar/excluir NÃO apaga horas: lança ESTORNO (minutos negativos) na MESMA transação
 //    que marca o check-in e grava o LogAuditoria (RN-005/RF-027/035).
+
+const MINUTO_MS = 60_000
 
 // ───────────────────────── Lógica pura (testável sem banco) ─────────────────────────
 
@@ -94,11 +98,28 @@ export function checkinRetroativo(params: { fimAula: Date; agora?: Date }): bool
   return (params.agora ?? new Date()).getTime() > params.fimAula.getTime()
 }
 
+export function podeRealizarCheckinNaJanela(params: {
+  inicioAula: Date
+  fimAula: Date
+  agora?: Date
+  toleranciaMinutos?: number
+}): boolean {
+  const tolerancia = params.toleranciaMinutos ?? 30
+  const agora = (params.agora ?? new Date()).getTime()
+  const inicio = params.inicioAula.getTime()
+  const fim = params.fimAula.getTime()
+  return agora >= inicio - tolerancia * MINUTO_MS && agora <= fim
+}
+
 // ───────────────────────── Operações no banco ─────────────────────────
 
 export type ResultadoCheckin =
   | { ok: true; checkinId: string; status?: "VALIDO" | "PENDENTE_REVISAO" }
-  | { ok: false; motivo: string }
+  | {
+      ok: false
+      motivo: string
+      codigo?: "FORA_DA_JANELA" | "INADIMPLENTE" | "TOKEN_INVALIDO"
+    }
 
 async function configuracao() {
   return (
@@ -122,6 +143,112 @@ async function mensalidadeEmDia(alunoId: string): Promise<boolean> {
   return pendente === null
 }
 
+async function registrarTentativaInadimplente(params: {
+  alunoId: string
+  aulaId: string
+  autorId: string
+  motivo: string
+  agora: Date
+}) {
+  await db.$transaction(async (tx) => {
+    const [aluno, aula, gestores] = await Promise.all([
+      tx.aluno.findUnique({
+        where: { id: params.alunoId },
+        select: { usuario: { select: { nome: true } } },
+      }),
+      tx.aula.findUnique({
+        where: { id: params.aulaId },
+        select: {
+          inicio: true,
+          professor: { select: { usuarioId: true } },
+          turma: {
+            select: {
+              nome: true,
+              modalidade: { select: { nome: true } },
+              professor: { select: { usuarioId: true } },
+            },
+          },
+        },
+      }),
+      tx.usuario.findMany({
+        where: { papel: "GESTOR", ativo: true },
+        select: { id: true },
+      }),
+    ])
+
+    const tentativa = await tx.tentativaCheckinInadimplente.create({
+      data: {
+        alunoId: params.alunoId,
+        aulaId: params.aulaId,
+        motivo: params.motivo,
+        criadoEm: params.agora,
+      },
+    })
+
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "CHECKIN_BLOQUEADO_INADIMPLENCIA",
+        entidade: "TentativaCheckinInadimplente",
+        entidadeId: tentativa.id,
+        valorNovo: {
+          alunoId: params.alunoId,
+          aulaId: params.aulaId,
+          aluno: aluno?.usuario.nome ?? null,
+          motivo: params.motivo,
+        },
+      },
+      tx,
+    )
+
+    if (!aluno || !aula) return
+
+    const destinatarios = new Set(gestores.map((gestor) => gestor.id))
+    if (aula.professor?.usuarioId) destinatarios.add(aula.professor.usuarioId)
+    if (aula.turma.professor?.usuarioId) destinatarios.add(aula.turma.professor.usuarioId)
+
+    const nomeAula = aula.turma.nome ?? aula.turma.modalidade.nome
+    const mensagem = `${aluno.usuario.nome} tentou fazer check-in em ${nomeAula} (${formatarDataHora(
+      aula.inicio,
+    )}) e foi bloqueado por inadimplência.`
+
+    for (const usuarioId of destinatarios) {
+      await criarNotificacao(tx, {
+        usuarioId,
+        tipo: "FINANCEIRO",
+        titulo: "Check-in bloqueado por inadimplência",
+        mensagem,
+      })
+    }
+  })
+}
+
+export async function realizarCheckinQr(params: {
+  alunoId: string
+  aulaId: string
+  autorId: string
+  token: string
+  agora?: Date
+}): Promise<ResultadoCheckin> {
+  if (!(await tokenCheckinValido(params.token))) {
+    return {
+      ok: false,
+      codigo: "TOKEN_INVALIDO",
+      motivo: "QR Code expirado. Leia o QR Code atual na entrada da academia.",
+    }
+  }
+
+  return realizarCheckin({
+    alunoId: params.alunoId,
+    aulaId: params.aulaId,
+    autorId: params.autorId,
+    origem: "QR_CODE",
+    exigirJanelaCheckin: true,
+    bloquearInadimplenciaSempre: true,
+    agora: params.agora,
+  })
+}
+
 /**
  * Realiza o check-in (RF-019..023). Em transação: cria o Checkin VÁLIDO, converte o
  * comparecimento (se houver), credita as horas (= duração da aula) e grava o LogAuditoria.
@@ -134,7 +261,11 @@ export async function realizarCheckin(params: {
   retroativo?: boolean
   lancadoPorId?: string // preenchido quando gestor/professor lança por outro
   justificativa?: string
+  exigirJanelaCheckin?: boolean
+  bloquearInadimplenciaSempre?: boolean
+  agora?: Date
 }): Promise<ResultadoCheckin> {
+  const agora = params.agora ?? new Date()
   const config = await configuracao()
 
   const [aluno, aula, jaCheckin, comparecimento] = await Promise.all([
@@ -151,6 +282,8 @@ export async function realizarCheckin(params: {
       where: { id: params.aulaId },
       select: {
         id: true,
+        inicio: true,
+        fim: true,
         cancelada: true,
         duracaoMin: true,
         turma: {
@@ -187,6 +320,16 @@ export async function realizarCheckin(params: {
 
   if (!aluno) return { ok: false, motivo: "Aluno não encontrado." }
   if (!aula) return { ok: false, motivo: "Aula não encontrada." }
+  if (
+    params.exigirJanelaCheckin &&
+    !podeRealizarCheckinNaJanela({ inicioAula: aula.inicio, fimAula: aula.fim, agora })
+  ) {
+    return {
+      ok: false,
+      codigo: "FORA_DA_JANELA",
+      motivo: "Check-in liberado apenas de 30 minutos antes até o fim da aula.",
+    }
+  }
   if (!aluno.modalidades.some((modalidade) => modalidade.id === aula.turma.modalidadeId)) {
     return { ok: false, motivo: "Aluno não está matriculado na modalidade desta aula." }
   }
@@ -199,6 +342,9 @@ export async function realizarCheckin(params: {
   const mensalidadeInternaNaModalidade = aluno.modalidadesPlano.some(
     (modalidade) => modalidade.modalidadeId === aula.turma.modalidadeId,
   )
+  const emDia = mensalidadeInternaNaModalidade ? await mensalidadeEmDia(params.alunoId) : true
+  const inadimplente =
+    aluno.status === "INADIMPLENTE" || (Boolean(mensalidadeInternaNaModalidade) && !emDia)
   const ocupacaoAula = new Set([
     ...aula.comparecimentos.map((item) => item.alunoId),
     ...aula.checkins.map((item) => item.alunoId),
@@ -215,13 +361,30 @@ export async function realizarCheckin(params: {
     lancadoPorTerceiro,
     exigirComparecimento: regras.exigirComparecimentoParaCheckin,
     politicaSemComparecimento: regras.politicaCheckinSemComparecimento,
-    bloqueioInadimplencia: config.bloqueioInadimplencia,
+    bloqueioInadimplencia: params.bloquearInadimplenciaSempre
+      ? "BLOQUEAR_CHECKIN"
+      : config.bloqueioInadimplencia,
     mensalidadeInternaNaModalidade: Boolean(mensalidadeInternaNaModalidade),
-    mensalidadeEmDia: mensalidadeInternaNaModalidade
-      ? await mensalidadeEmDia(params.alunoId)
-      : true,
+    mensalidadeEmDia: emDia,
   })
-  if (!avaliacao.ok) return avaliacao
+  if (!avaliacao.ok) {
+    if (params.bloquearInadimplenciaSempre && inadimplente) {
+      await registrarTentativaInadimplente({
+        alunoId: params.alunoId,
+        aulaId: params.aulaId,
+        autorId: params.autorId,
+        motivo: "Mensalidade em aberto.",
+        agora,
+      })
+      return {
+        ok: false,
+        codigo: "INADIMPLENTE",
+        motivo: "Regularize sua matrícula ou pagamento antes de iniciar a aula.",
+      }
+    }
+
+    return avaliacao
+  }
 
   const statusNovo = avaliacao.pendenteRevisao ? "PENDENTE_REVISAO" : "VALIDO"
   const checkinId = await db.$transaction(async (tx) => {

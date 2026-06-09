@@ -3,37 +3,11 @@
 import { Check, QrCode, ShieldAlert } from "lucide-react"
 import { useActionState } from "react"
 import { acaoCheckinAlunoQr, type EstadoTreino } from "@/app/actions/treino"
+import { Badge } from "@/components/ui/badge"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 
-export function FormCheckinQr({
-  aulaId,
-  token,
-  jaPresente,
-  pendenteRevisao,
-}: {
-  aulaId: string
-  token: string
-  jaPresente: boolean
-  pendenteRevisao: boolean
-}) {
+export function FormCheckinGlobal({ aulaId, token }: { aulaId: string; token: string }) {
   const [estado, acao] = useActionState<EstadoTreino, FormData>(acaoCheckinAlunoQr, undefined)
-
-  if (jaPresente || (estado?.ok && !estado.pendenteRevisao)) {
-    return (
-      <div className="rounded-md border border-success/30 bg-success/10 p-4 text-sm text-success">
-        <Check className="mr-2 inline size-4" />
-        Check-in confirmado.
-      </div>
-    )
-  }
-
-  if (pendenteRevisao || estado?.pendenteRevisao) {
-    return (
-      <div className="rounded-md border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
-        Check-in pendente de revisão.
-      </div>
-    )
-  }
 
   return (
     <form action={acao} className="space-y-3">
@@ -44,7 +18,7 @@ export function FormCheckinQr({
         Confirmar check-in
       </BotaoEnviar>
       {estado?.erro && (
-        <p
+        <div
           className={
             estado.inadimplente
               ? "rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
@@ -53,7 +27,12 @@ export function FormCheckinQr({
         >
           {estado.inadimplente && <ShieldAlert className="mr-2 inline size-4" />}
           {estado.erro}
-        </p>
+        </div>
+      )}
+      {estado?.ok && (
+        <Badge variant="success" className="gap-1">
+          <Check className="size-3.5" /> Confirmado
+        </Badge>
       )}
     </form>
   )

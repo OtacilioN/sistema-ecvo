@@ -1,10 +1,9 @@
 "use client"
 
-import { CalendarCheck, Check, X } from "lucide-react"
+import { Check, QrCode, X } from "lucide-react"
 import { useActionState } from "react"
 import {
   acaoCancelarComparecimento,
-  acaoCheckinAluno,
   acaoMarcarComparecimento,
   type EstadoTreino,
 } from "@/app/actions/treino"
@@ -36,8 +35,7 @@ export function AcoesAula({
     acaoCancelarComparecimento,
     undefined,
   )
-  const [checkin, acaoCheckin] = useActionState<EstadoTreino, FormData>(acaoCheckinAluno, undefined)
-  const erro = marcar?.erro ?? cancelar?.erro ?? checkin?.erro
+  const erro = marcar?.erro ?? cancelar?.erro
 
   if (presente) {
     return (
@@ -47,7 +45,7 @@ export function AcoesAula({
     )
   }
 
-  if (pendenteRevisao || checkin?.pendenteRevisao) {
+  if (pendenteRevisao) {
     return <Badge variant="warning">Pendente de revisão</Badge>
   }
 
@@ -56,12 +54,9 @@ export function AcoesAula({
       <div className="flex flex-wrap justify-end gap-2">
         {temComparecimento ? (
           <>
-            <form action={acaoCheckin}>
-              <input type="hidden" name="aulaId" value={aulaId} />
-              <BotaoEnviar size="sm">
-                <CalendarCheck className="size-4" /> Check-in
-              </BotaoEnviar>
-            </form>
+            <Badge variant="secondary" className="gap-1.5 py-1.5">
+              <QrCode className="size-3.5" /> QR na entrada
+            </Badge>
             <form action={acaoCancelar}>
               <input type="hidden" name="aulaId" value={aulaId} />
               <BotaoEnviar size="sm" variant="outline">
@@ -87,12 +82,9 @@ export function AcoesAula({
                 Marcar comparecimento
               </BotaoEnviar>
             </form>
-            <form action={acaoCheckin}>
-              <input type="hidden" name="aulaId" value={aulaId} />
-              <BotaoEnviar size="sm" variant="secondary">
-                <CalendarCheck className="size-4" /> Check-in
-              </BotaoEnviar>
-            </form>
+            <Badge variant="secondary" className="gap-1.5 py-1.5">
+              <QrCode className="size-3.5" /> QR na entrada
+            </Badge>
           </>
         )}
       </div>

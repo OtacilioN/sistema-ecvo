@@ -8,9 +8,17 @@ import { FormCheckinQr } from "./form-checkin-qr"
 
 export const dynamic = "force-dynamic"
 
-export default async function CheckinQrPage({ params }: { params: Promise<{ aulaId: string }> }) {
+export default async function CheckinQrPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ aulaId: string }>
+  searchParams: Promise<{ token?: string | string[] }>
+}) {
   const { alunoId } = await exigirAluno()
   const { aulaId } = await params
+  const query = await searchParams
+  const token = Array.isArray(query.token) ? query.token[0] : query.token
 
   const aula = await db.aula.findUnique({
     where: { id: aulaId },
@@ -61,6 +69,7 @@ export default async function CheckinQrPage({ params }: { params: Promise<{ aula
           ) : (
             <FormCheckinQr
               aulaId={aula.id}
+              token={token ?? ""}
               jaPresente={jaPresente}
               pendenteRevisao={pendenteRevisao}
             />

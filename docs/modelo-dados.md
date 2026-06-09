@@ -15,13 +15,16 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
   - ajuste manual ⇒ `AJUSTE_MANUAL` (com `autorId` e `motivo`).
   - **Total geral** = `SUM(minutos)` por aluno; **por modalidade** = `SUM(minutos)` filtrado por `modalidadeId`.
 - **Sem dupla contagem**: `@@unique([alunoId, aulaId])` em `Checkin` (RF-039).
+- **QR global de check-in**: `TokenCheckinAcademia` guarda o único token válido por vez. Ao rotacionar,
+  URLs antigas deixam de validar. Tentativas de aluno inadimplente ficam em
+  `TentativaCheckinInadimplente`; elas disparam alerta e auditoria, mas não criam `Checkin` nem horas.
 
 ## Entidades
 
 Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento · Checkin ·
-MovimentoHoras · Graduacao · GraduacaoAluno · Exame · InscricaoExame · Plano · AlunoPlanoModalidade ·
-Mensalidade · Pagamento · Importacao · RegistroImportado · LogAuditoria · ConfiguracaoAcademia ·
-Notificacao.
+TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · Graduacao · GraduacaoAluno ·
+Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · Importacao ·
+RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao.
 
 ## Diagrama (ER simplificado)
 
@@ -39,6 +42,7 @@ erDiagram
   Aluno ||--o| Responsavel : "tem"
   Aluno ||--o{ Comparecimento : ""
   Aluno ||--o{ Checkin : ""
+  Aluno ||--o{ TentativaCheckinInadimplente : ""
   Aluno ||--o{ MovimentoHoras : ""
   Aluno ||--o{ GraduacaoAluno : ""
   Aluno ||--o{ Mensalidade : ""
@@ -55,6 +59,7 @@ erDiagram
 
   Aula ||--o{ Comparecimento : ""
   Aula ||--o{ Checkin : ""
+  Aula ||--o{ TentativaCheckinInadimplente : ""
   Checkin ||--o{ MovimentoHoras : "credita/estorna"
 
   Graduacao ||--o{ GraduacaoAluno : ""

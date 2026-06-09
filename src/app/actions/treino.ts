@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 import { exigirAluno, exigirPapel } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { atualizarObservacoesTecnicas } from "@/lib/services/aluno.service"
@@ -8,6 +9,7 @@ import {
   checkinRetroativo,
   invalidarCheckin,
   realizarCheckin,
+  realizarCheckinQr,
 } from "@/lib/services/checkin.service"
 import {
   cancelarComparecimento,
@@ -16,7 +18,16 @@ import {
 } from "@/lib/services/comparecimento.service"
 import { observacaoTecnicaSchema } from "@/lib/validations/observacoes"
 
-export type EstadoTreino = { erro?: string; ok?: boolean; pendenteRevisao?: boolean } | undefined
+export type EstadoTreino =
+  | {
+      erro?: string
+      ok?: boolean
+      pendenteRevisao?: boolean
+      inadimplente?: boolean
+      tokenInvalido?: boolean
+      foraDaJanela?: boolean
+    }
+  | undefined
 
 // ───────────────────────── Aluno ─────────────────────────
 
@@ -45,14 +56,12 @@ export async function acaoCancelarComparecimento(
   return r.ok ? { ok: true } : { erro: r.motivo }
 }
 
-export async function acaoCheckinAluno(_: EstadoTreino, formData: FormData): Promise<EstadoTreino> {
-  const { alunoId, usuario } = await exigirAluno()
-  const aulaId = String(formData.get("aulaId"))
-  const r = await realizarCheckin({ alunoId, aulaId, autorId: usuario.id, origem: "BOTAO" })
-  revalidatePath("/aluno")
-  revalidatePath("/gestao/auditoria")
-  revalidatePath(`/professor/aula/${aulaId}`)
-  return r.ok ? { ok: true, pendenteRevisao: r.status === "PENDENTE_REVISAO" } : { erro: r.motivo }
+export async function acaoCheckinAluno(
+  _: EstadoTreino,
+  _formData: FormData,
+): Promise<EstadoTreino> {
+  await exigirAluno()
+  return { erro: "Leia o QR Code da entrada da academia para fazer check-in." }
 }
 
 export async function acaoCheckinAlunoQr(
@@ -61,12 +70,25 @@ export async function acaoCheckinAlunoQr(
 ): Promise<EstadoTreino> {
   const { alunoId, usuario } = await exigirAluno()
   const aulaId = String(formData.get("aulaId"))
-  const r = await realizarCheckin({ alunoId, aulaId, autorId: usuario.id, origem: "QR_CODE" })
+  const token = String(formData.get("token") ?? "")
+  const r = await realizarCheckinQr({ alunoId, aulaId, autorId: usuario.id, token })
   revalidatePath("/aluno")
+  revalidatePath("/aluno/checkin")
   revalidatePath(`/aluno/checkin/${aulaId}`)
   revalidatePath(`/professor/aula/${aulaId}`)
+  revalidatePath(`/gestao/turmas/aula/${aulaId}`)
   revalidatePath("/gestao/auditoria")
-  return r.ok ? { ok: true, pendenteRevisao: r.status === "PENDENTE_REVISAO" } : { erro: r.motivo }
+  revalidatePath("/gestao/notificacoes")
+  revalidatePath("/professor/notificacoes")
+
+  if (r.ok) redirect(`/aluno/checkin/passe/${r.checkinId}`)
+
+  return {
+    erro: r.motivo,
+    inadimplente: r.codigo === "INADIMPLENTE",
+    tokenInvalido: r.codigo === "TOKEN_INVALIDO",
+    foraDaJanela: r.codigo === "FORA_DA_JANELA",
+  }
 }
 
 // ───────────────────────── Professor / Gestor (lista da aula) ─────────────────────────
