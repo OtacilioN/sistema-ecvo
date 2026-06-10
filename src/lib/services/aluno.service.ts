@@ -1,5 +1,5 @@
 import "server-only"
-import type { Prisma, StatusAluno, TipoAluno } from "@prisma/client"
+import type { Plataforma, Prisma, StatusAluno, TipoAluno } from "@prisma/client"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
@@ -25,6 +25,7 @@ export function listarAlunos(opts?: { busca?: string; status?: StatusAluno }) {
     include: {
       usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
+      modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
       responsavel: true,
       plano: { select: { nome: true, valor: true } },
       _count: { select: { documentos: true } },
@@ -38,6 +39,7 @@ export function obterAluno(alunoId: string) {
     include: {
       usuario: { select: { nome: true, email: true, fotoUrl: true } },
       modalidades: { select: { id: true, nome: true } },
+      modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
       responsavel: true,
       plano: true,
     },
@@ -61,6 +63,10 @@ type DadosAluno = {
   planoId?: string | null
   diaVencimento?: number
   modalidadeIds: string[]
+  cobrancasModalidades?: Array<{
+    modalidadeId: string
+    plataformaExterna: Plataforma | null
+  }>
   responsavel?: {
     nome: string
     cpf?: string | null
@@ -106,6 +112,11 @@ export async function criarAluno(
   params: { nome: string; email: string; senha: string; autorId: string } & DadosAluno,
 ) {
   const senhaHash = await gerarHashSenha(params.senha)
+  const vinculosCobranca = vinculosCobrancaModalidade({
+    planoId: params.planoId ?? null,
+    modalidadeIds: params.modalidadeIds,
+    cobrancasModalidades: params.cobrancasModalidades,
+  })
   return db.$transaction(async (tx) => {
     const usuario = await tx.usuario.create({
       data: {
@@ -132,10 +143,10 @@ export async function criarAluno(
             planoId: params.planoId ?? null,
             diaVencimento: params.diaVencimento ?? 10,
             modalidades: { connect: params.modalidadeIds.map((id) => ({ id })) },
-            ...(params.planoId
+            ...(vinculosCobranca.length > 0
               ? {
                   modalidadesPlano: {
-                    create: params.modalidadeIds.map((modalidadeId) => ({ modalidadeId })),
+                    create: vinculosCobranca,
                   },
                 }
               : {}),
@@ -174,6 +185,7 @@ export async function criarAluno(
           diaVencimento: usuario.aluno?.diaVencimento,
           planoId: usuario.aluno?.planoId,
           modalidadeIds: params.modalidadeIds,
+          cobrancasModalidades: vinculosCobranca,
           responsavelInformado: Boolean(params.responsavel),
           cpfInformado: Boolean(params.cpf),
           fotoInformada: Boolean(params.fotoUrl),
@@ -214,7 +226,7 @@ export async function atualizarAluno(
       responsavel: true,
       usuario: { select: { nome: true, fotoUrl: true } },
       modalidades: { select: { id: true, nome: true } },
-      modalidadesPlano: { select: { modalidadeId: true } },
+      modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
     },
   })
   if (!atual) return { ok: false as const, motivo: "Aluno não encontrado." }
@@ -313,24 +325,28 @@ export async function atualizarAluno(
       })
     }
 
-    if (params.planoId === null) {
-      await tx.alunoPlanoModalidade.deleteMany({ where: { alunoId: atual.id } })
-    } else {
-      if (params.modalidadeIds) {
-        await tx.alunoPlanoModalidade.deleteMany({
-          where: {
-            alunoId: atual.id,
-            modalidadeId: { notIn: params.modalidadeIds },
-          },
-        })
-      }
+    if (
+      params.planoId !== undefined ||
+      params.modalidadeIds !== undefined ||
+      params.cobrancasModalidades !== undefined
+    ) {
+      const modalidadeIds =
+        params.modalidadeIds ?? atual.modalidades.map((modalidade) => modalidade.id)
+      const vinculosCobranca = vinculosCobrancaModalidade({
+        planoId: aluno.planoId,
+        modalidadeIds,
+        cobrancasModalidades:
+          params.cobrancasModalidades ??
+          atual.modalidadesPlano.map((modalidade) => ({
+            modalidadeId: modalidade.modalidadeId,
+            plataformaExterna: modalidade.plataformaExterna,
+          })),
+      })
 
-      if (params.planoId && (!atual.planoId || atual.modalidadesPlano.length === 0)) {
-        const modalidadeIds =
-          params.modalidadeIds ?? atual.modalidades.map((modalidade) => modalidade.id)
+      await tx.alunoPlanoModalidade.deleteMany({ where: { alunoId: atual.id } })
+      if (vinculosCobranca.length > 0) {
         await tx.alunoPlanoModalidade.createMany({
-          data: modalidadeIds.map((modalidadeId) => ({ alunoId: atual.id, modalidadeId })),
-          skipDuplicates: true,
+          data: vinculosCobranca.map((vinculo) => ({ alunoId: atual.id, ...vinculo })),
         })
       }
     }
@@ -353,6 +369,7 @@ export async function atualizarAluno(
       plano: atual.plano?.nome ?? null,
       diaVencimento: atual.diaVencimento,
       modalidades: atual.modalidades.map((modalidade) => modalidade.nome),
+      cobrancasModalidades: atual.modalidadesPlano,
       responsavel: atual.responsavel,
     })
     const valorNovo = {
@@ -374,6 +391,12 @@ export async function atualizarAluno(
         plano: aluno.plano?.nome ?? null,
         diaVencimento: aluno.diaVencimento,
         modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
+        cobrancasModalidades:
+          params.cobrancasModalidades ??
+          atual.modalidadesPlano.map((modalidade) => ({
+            modalidadeId: modalidade.modalidadeId,
+            plataformaExterna: modalidade.plataformaExterna,
+          })),
         responsavel: aluno.responsavel,
       }),
       ...(mensalidadesAbertasMigradas > 0 ? { mensalidadesAbertasMigradas } : {}),
@@ -497,6 +520,10 @@ function serializarAluno(dados: {
   plano: string | null
   diaVencimento: number
   modalidades: string[]
+  cobrancasModalidades?: Array<{
+    modalidadeId: string
+    plataformaExterna: Plataforma | null
+  }>
   responsavel?: {
     nome: string
     cpf: string | null
@@ -524,6 +551,7 @@ function serializarAluno(dados: {
     plano: dados.plano,
     diaVencimento: dados.diaVencimento,
     modalidades: dados.modalidades,
+    cobrancasModalidades: dados.cobrancasModalidades,
     responsavel: dados.responsavel
       ? {
           nome: dados.responsavel.nome,
@@ -535,6 +563,29 @@ function serializarAluno(dados: {
         }
       : null,
   }
+}
+
+function vinculosCobrancaModalidade(params: {
+  planoId: string | null
+  modalidadeIds: string[]
+  cobrancasModalidades?: Array<{
+    modalidadeId: string
+    plataformaExterna: Plataforma | null
+  }>
+}) {
+  const modalidadesSelecionadas = new Set(params.modalidadeIds)
+  const plataformas = new Map(
+    (params.cobrancasModalidades ?? [])
+      .filter((cobranca) => modalidadesSelecionadas.has(cobranca.modalidadeId))
+      .map((cobranca) => [cobranca.modalidadeId, cobranca.plataformaExterna] as const),
+  )
+
+  return params.modalidadeIds
+    .map((modalidadeId) => ({
+      modalidadeId,
+      plataformaExterna: plataformas.get(modalidadeId) ?? null,
+    }))
+    .filter((vinculo) => params.planoId || vinculo.plataformaExterna)
 }
 
 export async function atualizarStatusTipoAluno(params: {

@@ -516,14 +516,16 @@ model Plano {
 }
 
 model AlunoPlanoModalidade {
-  aluno        Aluno      @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  alunoId      String
-  modalidade   Modalidade @relation(fields: [modalidadeId], references: [id], onDelete: Cascade)
-  modalidadeId String
-  criadoEm     DateTime   @default(now())
+  aluno              Aluno       @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId            String
+  modalidade         Modalidade  @relation(fields: [modalidadeId], references: [id], onDelete: Cascade)
+  modalidadeId       String
+  plataformaExterna  Plataforma?
+  criadoEm           DateTime    @default(now())
 
   @@id([alunoId, modalidadeId])
   @@index([modalidadeId])
+  @@index([plataformaExterna])
 }
 
 model Mensalidade {

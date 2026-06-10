@@ -88,6 +88,17 @@ function responsavelDoFormData(formData: FormData) {
   }
 }
 
+function cobrancasModalidadesDoFormData(formData: FormData) {
+  const modalidadeIds = formData.getAll("modalidadeIds").map(String)
+  return modalidadeIds.map((modalidadeId) => {
+    const plataforma = formData.get(`plataformaModalidade:${modalidadeId}`)
+    return {
+      modalidadeId,
+      plataformaExterna: plataforma === "WELLHUB" || plataforma === "TOTALPASS" ? plataforma : null,
+    }
+  })
+}
+
 export async function acaoCriarModalidade(_: EstadoForm, formData: FormData): Promise<EstadoForm> {
   const usuario = await exigirPapel("GESTOR")
   const parsed = modalidadeSchema.safeParse({
@@ -354,6 +365,7 @@ export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise
     planoId: formData.get("planoId"),
     diaVencimento: formData.get("diaVencimento"),
     modalidadeIds: formData.getAll("modalidadeIds"),
+    cobrancasModalidades: cobrancasModalidadesDoFormData(formData),
     responsavel: responsavel ?? undefined,
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
@@ -392,6 +404,7 @@ export async function acaoAtualizarDadosAluno(
     planoId: formData.get("planoId"),
     diaVencimento: formData.get("diaVencimento"),
     modalidadeIds: formData.getAll("modalidadeIds"),
+    cobrancasModalidades: cobrancasModalidadesDoFormData(formData),
     responsavel: responsavelDoFormData(formData),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
@@ -415,12 +428,14 @@ export async function acaoAtualizarDadosAluno(
     planoId: parsed.data.planoId,
     diaVencimento: parsed.data.diaVencimento,
     modalidadeIds: parsed.data.modalidadeIds,
+    cobrancasModalidades: parsed.data.cobrancasModalidades,
     responsavel: parsed.data.responsavel,
   })
   if (!resultado.ok) return { erro: resultado.motivo }
 
   revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/financeiro/repasses")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")
   revalidatePath("/aluno/perfil")

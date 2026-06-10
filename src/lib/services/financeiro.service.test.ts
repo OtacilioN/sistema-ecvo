@@ -7,6 +7,7 @@ import {
   mensagemStatusMensalidade,
   mensalidadeBloqueiaTreino,
   mensalistaAdimplente,
+  modalidadesMensalidadeInterna,
   statusMensalidadeEfetivo,
   vencerMensalidadesAtrasadas,
 } from "./financeiro.service"
@@ -272,6 +273,33 @@ describe("calcularRepasseFinanceiro", () => {
       professores: [{ professorId: "prof-a", valor: 0 }],
       socioA: 0,
       socioB: 0,
+    })
+  })
+
+  it("exclui modalidade Wellhub da mensalidade interna de aluno misto", () => {
+    const itens = modalidadesMensalidadeInterna([
+      {
+        professorId: "prof-kickboxing",
+        modalidadeId: "kickboxing",
+        plataformaExterna: "WELLHUB",
+      },
+      {
+        professorId: "prof-oyama",
+        modalidadeId: "muay-thai",
+        plataformaExterna: null,
+      },
+    ])
+
+    expect(itens).toEqual([{ professorId: "prof-oyama", modalidadeId: "muay-thai" }])
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: 90,
+        itens,
+      }),
+    ).toMatchObject({
+      professores: [{ professorId: "prof-oyama", valor: 60 }],
+      socioA: 15,
+      socioB: 15,
     })
   })
 })

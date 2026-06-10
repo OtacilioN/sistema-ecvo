@@ -36,7 +36,12 @@ export default async function Page() {
         usuario: { select: { nome: true } },
         plano: { select: { nome: true } },
         modalidades: { select: { id: true, nome: true } },
-        modalidadesPlano: { select: { modalidade: { select: { id: true, nome: true } } } },
+        modalidadesPlano: {
+          select: {
+            plataformaExterna: true,
+            modalidade: { select: { id: true, nome: true } },
+          },
+        },
       },
     }),
     db.mensalidade.findMany({
@@ -64,7 +69,9 @@ export default async function Page() {
       id: modalidade.id,
       nome: modalidade.nome,
     })),
-    modalidadeContratadaIds: aluno.modalidadesPlano.map((item) => item.modalidade.id),
+    modalidadeContratadaIds: aluno.modalidadesPlano
+      .filter((item) => !item.plataformaExterna)
+      .map((item) => item.modalidade.id),
   }))
   const planosOpcao = planos.map((plano) => ({
     id: plano.id,

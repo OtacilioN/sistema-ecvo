@@ -3,7 +3,6 @@
 import { useActionState, useEffect, useRef, useState } from "react"
 import { acaoCriarAluno, type EstadoForm } from "@/app/actions/cadastros"
 import { CampoUploadFoto } from "@/components/campo-upload-foto"
-import { SeletorModalidades } from "@/components/seletor-modalidades"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -27,6 +26,12 @@ const STATUS = [
   { v: "TRANCADO", r: "Trancado" },
 ]
 
+const COBRANCAS_MODALIDADE = [
+  { v: "", r: "Plano interno" },
+  { v: "WELLHUB", r: "Wellhub" },
+  { v: "TOTALPASS", r: "TotalPass" },
+]
+
 type Plano = {
   id: string
   nome: string
@@ -48,14 +53,25 @@ export function FormAluno({
   const ref = useRef<HTMLFormElement>(null)
   const [uploadPendente, setUploadPendente] = useState(false)
   const [fotoKey, setFotoKey] = useState(0)
+  const [modalidadesSelecionadas, setModalidadesSelecionadas] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (estado?.ok) {
       ref.current?.reset()
       setFotoKey((key) => key + 1)
+      setModalidadesSelecionadas(new Set())
       aoConcluir?.()
     }
   }, [estado?.ok, aoConcluir])
+
+  function alternarModalidade(modalidadeId: string, selecionada: boolean) {
+    setModalidadesSelecionadas((atuais) => {
+      const proximas = new Set(atuais)
+      if (selecionada) proximas.add(modalidadeId)
+      else proximas.delete(modalidadeId)
+      return proximas
+    })
+  }
 
   return (
     <form ref={ref} action={acao} className="grid gap-4 sm:grid-cols-2">
@@ -143,9 +159,50 @@ export function FormAluno({
         <Label htmlFor="endereco">Endereço</Label>
         <Input id="endereco" name="endereco" />
       </div>
-      <div className="sm:col-span-2">
-        <SeletorModalidades modalidades={modalidades} />
-      </div>
+      <fieldset className="space-y-3 rounded-md border border-border p-4 sm:col-span-2">
+        <legend className="px-1 text-sm font-medium text-muted-foreground">Modalidades</legend>
+        <div className="grid gap-3">
+          {modalidades.map((modalidade) => {
+            const selecionada = modalidadesSelecionadas.has(modalidade.id)
+            return (
+              <div
+                key={modalidade.id}
+                className="grid gap-3 rounded-md border border-input p-3 sm:grid-cols-[1fr_180px] sm:items-center"
+              >
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="modalidadeIds"
+                    value={modalidade.id}
+                    onChange={(event) =>
+                      alternarModalidade(modalidade.id, event.currentTarget.checked)
+                    }
+                  />
+                  {modalidade.nome}
+                </label>
+                {selecionada && (
+                  <Select
+                    name={`plataformaModalidade:${modalidade.id}`}
+                    defaultValue=""
+                    aria-label={`Cobrança de ${modalidade.nome}`}
+                  >
+                    {COBRANCAS_MODALIDADE.map((cobranca) => (
+                      <option key={cobranca.v} value={cobranca.v}>
+                        {cobranca.r}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </div>
+            )
+          })}
+          {modalidades.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Cadastre uma modalidade antes de cadastrar alunos.
+            </p>
+          )}
+        </div>
+      </fieldset>
       <div className="space-y-1.5 sm:col-span-2">
         <Label htmlFor="contatoEmergencia">Contato de emergência</Label>
         <Input id="contatoEmergencia" name="contatoEmergencia" />

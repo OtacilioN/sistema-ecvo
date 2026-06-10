@@ -108,6 +108,7 @@ export async function acaoVincularPlano(
 
   const resultado = await vincularPlanoMensalista({ ...parsed.data, autorId: usuario.id })
   revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/financeiro/repasses")
   revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")

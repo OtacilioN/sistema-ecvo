@@ -41,6 +41,10 @@ type AlunoParaEdicao = {
   planoId: string | null
   diaVencimento: number
   modalidades: string[]
+  cobrancasModalidades: Array<{
+    modalidadeId: string
+    plataformaExterna: "WELLHUB" | "TOTALPASS" | null
+  }>
   responsavel: {
     nome: string
     cpf: string | null
@@ -61,6 +65,12 @@ const STATUS: StatusAluno[] = [
   "TRANCADO",
 ]
 
+const COBRANCAS_MODALIDADE = [
+  { v: "", r: "Plano interno" },
+  { v: "WELLHUB", r: "Wellhub" },
+  { v: "TOTALPASS", r: "TotalPass" },
+]
+
 export function FormDadosAluno({
   modalidades,
   planos,
@@ -73,12 +83,27 @@ export function FormDadosAluno({
   aoConcluir?: () => void
 }) {
   const [estado, acao] = useActionState<EstadoForm, FormData>(acaoAtualizarDadosAluno, undefined)
-  const modalidadeIds = new Set(aluno.modalidades)
+  const [modalidadeIds, setModalidadeIds] = useState<Set<string>>(new Set(aluno.modalidades))
+  const cobrancas = new Map(
+    aluno.cobrancasModalidades.map((cobranca) => [
+      cobranca.modalidadeId,
+      cobranca.plataformaExterna ?? "",
+    ]),
+  )
   const [uploadPendente, setUploadPendente] = useState(false)
 
   useEffect(() => {
     if (estado?.ok) aoConcluir?.()
   }, [estado?.ok, aoConcluir])
+
+  function alternarModalidade(modalidadeId: string, selecionada: boolean) {
+    setModalidadeIds((atuais) => {
+      const proximas = new Set(atuais)
+      if (selecionada) proximas.add(modalidadeId)
+      else proximas.delete(modalidadeId)
+      return proximas
+    })
+  }
 
   return (
     <form action={acao} className="grid gap-4 sm:grid-cols-2">
@@ -181,21 +206,42 @@ export function FormDadosAluno({
 
       <div className="space-y-1.5 sm:col-span-2">
         <Label>Modalidades</Label>
-        <div className="flex flex-wrap gap-2">
-          {modalidades.map((m) => (
-            <label
-              key={m.id}
-              className="flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm has-[:checked]:border-primary has-[:checked]:bg-accent"
-            >
-              <input
-                type="checkbox"
-                name="modalidadeIds"
-                value={m.id}
-                defaultChecked={modalidadeIds.has(m.id)}
-              />
-              {m.nome}
-            </label>
-          ))}
+        <div className="grid gap-3">
+          {modalidades.map((modalidade) => {
+            const selecionada = modalidadeIds.has(modalidade.id)
+            return (
+              <div
+                key={modalidade.id}
+                className="grid gap-3 rounded-md border border-input p-3 sm:grid-cols-[1fr_180px] sm:items-center"
+              >
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="modalidadeIds"
+                    value={modalidade.id}
+                    checked={selecionada}
+                    onChange={(event) =>
+                      alternarModalidade(modalidade.id, event.currentTarget.checked)
+                    }
+                  />
+                  {modalidade.nome}
+                </label>
+                {selecionada && (
+                  <Select
+                    name={`plataformaModalidade:${modalidade.id}`}
+                    defaultValue={cobrancas.get(modalidade.id) ?? ""}
+                    aria-label={`Cobrança de ${modalidade.nome}`}
+                  >
+                    {COBRANCAS_MODALIDADE.map((cobranca) => (
+                      <option key={cobranca.v} value={cobranca.v}>
+                        {cobranca.r}
+                      </option>
+                    ))}
+                  </Select>
+                )}
+              </div>
+            )
+          })}
           {modalidades.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Cadastre uma modalidade antes de editar alunos.

@@ -55,6 +55,10 @@ export type AlunoLinha = {
   planoValor: number | null
   diaVencimento: number
   modalidades: string[]
+  cobrancasModalidades: Array<{
+    modalidadeId: string
+    plataformaExterna: "WELLHUB" | "TOTALPASS" | null
+  }>
   responsavel: ResponsavelAluno
 }
 

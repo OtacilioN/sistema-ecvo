@@ -180,53 +180,104 @@ const responsavelSchema = z.object({
   responsavelFinanceiro: z.coerce.boolean().optional().default(false),
 })
 
-export const alunoSchema = z.object({
-  nome: z.string().trim().min(2, "Informe o nome"),
-  email: z.email("E-mail inválido").trim().toLowerCase(),
-  senha: z.string().min(6, "Senha de no mínimo 6 caracteres"),
-  tipo: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]),
-  status: z
-    .enum(["ATIVO", "INATIVO", "SUSPENSO", "CANCELADO", "INADIMPLENTE", "TRANCADO"])
-    .optional(),
-  cpf: cpfOpcional,
-  telefone: textoOpcional,
-  fotoUrl: fotoUrlOpcional,
-  dataNascimento: z.coerce.date().optional(),
-  dataInicio: z.coerce.date().optional(),
-  endereco: textoOpcional,
-  contatoEmergencia: textoOpcional,
-  restricoesMedicas: textoOpcional,
-  observacoesTecnicas: textoOpcional,
-  observacoesAdmin: textoOpcional,
-  idExterno: textoOpcional,
-  planoId: idOpcional,
-  diaVencimento: diaVencimentoSchema,
-  modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
-  responsavel: responsavelSchema.optional(),
+const cobrancaModalidadeSchema = z.object({
+  modalidadeId: z.string().min(1, "Selecione a modalidade"),
+  plataformaExterna: z.enum(["WELLHUB", "TOTALPASS"]).nullable(),
 })
+
+function validarCobrancasModalidades(
+  dados: {
+    planoId?: string | null
+    modalidadeIds: string[]
+    cobrancasModalidades: Array<{ modalidadeId: string; plataformaExterna: string | null }>
+  },
+  ctx: z.RefinementCtx,
+) {
+  const modalidadeIds = new Set(dados.modalidadeIds)
+  const cobrancasInvalidas = dados.cobrancasModalidades.filter(
+    (cobranca) => !modalidadeIds.has(cobranca.modalidadeId),
+  )
+  if (cobrancasInvalidas.length > 0) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["cobrancasModalidades"],
+      message: "Informe cobrança apenas para modalidades selecionadas.",
+    })
+  }
+
+  if (dados.planoId) {
+    const plataformas = new Map(
+      dados.cobrancasModalidades.map((cobranca) => [
+        cobranca.modalidadeId,
+        cobranca.plataformaExterna,
+      ]),
+    )
+    const temModalidadeInterna = dados.modalidadeIds.some(
+      (modalidadeId) => !plataformas.get(modalidadeId),
+    )
+    if (!temModalidadeInterna) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["cobrancasModalidades"],
+        message: "Plano de pagamento exige ao menos uma modalidade com cobrança interna.",
+      })
+    }
+  }
+}
+
+export const alunoSchema = z
+  .object({
+    nome: z.string().trim().min(2, "Informe o nome"),
+    email: z.email("E-mail inválido").trim().toLowerCase(),
+    senha: z.string().min(6, "Senha de no mínimo 6 caracteres"),
+    tipo: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]),
+    status: z
+      .enum(["ATIVO", "INATIVO", "SUSPENSO", "CANCELADO", "INADIMPLENTE", "TRANCADO"])
+      .optional(),
+    cpf: cpfOpcional,
+    telefone: textoOpcional,
+    fotoUrl: fotoUrlOpcional,
+    dataNascimento: z.coerce.date().optional(),
+    dataInicio: z.coerce.date().optional(),
+    endereco: textoOpcional,
+    contatoEmergencia: textoOpcional,
+    restricoesMedicas: textoOpcional,
+    observacoesTecnicas: textoOpcional,
+    observacoesAdmin: textoOpcional,
+    idExterno: textoOpcional,
+    planoId: idOpcional,
+    diaVencimento: diaVencimentoSchema,
+    modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
+    cobrancasModalidades: z.array(cobrancaModalidadeSchema).default([]),
+    responsavel: responsavelSchema.optional(),
+  })
+  .superRefine(validarCobrancasModalidades)
 export type AlunoInput = z.infer<typeof alunoSchema>
 
-export const dadosAlunoSchema = z.object({
-  alunoId: z.string().min(1, "Selecione o aluno"),
-  nome: z.string().trim().min(2, "Informe o nome"),
-  tipo: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]),
-  status: z.enum(["ATIVO", "INATIVO", "SUSPENSO", "CANCELADO", "INADIMPLENTE", "TRANCADO"]),
-  cpf: cpfOpcional,
-  telefone: textoOpcional,
-  fotoUrl: fotoUrlOpcional,
-  dataNascimento: z.coerce.date().optional(),
-  dataInicio: z.coerce.date().optional(),
-  endereco: textoOpcional,
-  contatoEmergencia: textoOpcional,
-  restricoesMedicas: textoOpcional,
-  observacoesTecnicas: textoOpcional,
-  observacoesAdmin: textoOpcional,
-  idExterno: textoOpcional,
-  planoId: idOpcional,
-  diaVencimento: diaVencimentoSchema,
-  modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
-  responsavel: responsavelSchema.nullable().optional(),
-})
+export const dadosAlunoSchema = z
+  .object({
+    alunoId: z.string().min(1, "Selecione o aluno"),
+    nome: z.string().trim().min(2, "Informe o nome"),
+    tipo: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]),
+    status: z.enum(["ATIVO", "INATIVO", "SUSPENSO", "CANCELADO", "INADIMPLENTE", "TRANCADO"]),
+    cpf: cpfOpcional,
+    telefone: textoOpcional,
+    fotoUrl: fotoUrlOpcional,
+    dataNascimento: z.coerce.date().optional(),
+    dataInicio: z.coerce.date().optional(),
+    endereco: textoOpcional,
+    contatoEmergencia: textoOpcional,
+    restricoesMedicas: textoOpcional,
+    observacoesTecnicas: textoOpcional,
+    observacoesAdmin: textoOpcional,
+    idExterno: textoOpcional,
+    planoId: idOpcional,
+    diaVencimento: diaVencimentoSchema,
+    modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
+    cobrancasModalidades: z.array(cobrancaModalidadeSchema).default([]),
+    responsavel: responsavelSchema.nullable().optional(),
+  })
+  .superRefine(validarCobrancasModalidades)
 export type DadosAlunoInput = z.infer<typeof dadosAlunoSchema>
 
 export const excluirAlunoSchema = z.object({

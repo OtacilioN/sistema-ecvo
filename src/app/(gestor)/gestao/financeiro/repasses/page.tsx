@@ -84,6 +84,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             usuario: { select: { nome: true } },
             modalidadesPlano: {
               select: {
+                plataformaExterna: true,
                 modalidade: {
                   select: {
                     id: true,
@@ -162,9 +163,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   for (const mensalidade of mensalidades) {
     const valorRecebido = mensalidade.status === "PAGA" ? Number(mensalidade.valor) : 0
-    const itens = mensalidade.aluno.modalidadesPlano.map(({ modalidade }) =>
-      itemModalidadeMensalidade(modalidade, pendencias),
-    )
+    const itens = mensalidade.aluno.modalidadesPlano
+      .filter(({ plataformaExterna }) => !plataformaExterna)
+      .map(({ modalidade }) => itemModalidadeMensalidade(modalidade, pendencias))
     if (itens.length === 0) {
       pendencias.push({
         chave: `mensalidade:${mensalidade.id}`,

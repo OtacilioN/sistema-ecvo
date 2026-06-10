@@ -1,6 +1,7 @@
 import "server-only"
 import type {
   Periodicidade,
+  Plataforma,
   Prisma,
   StatusMensalidade,
   TipoAluno,
@@ -31,6 +32,10 @@ export type ItemRepasseModalidade = {
   modalidadeId?: string | null
   modalidadeNome?: string | null
   valorBase?: number | null
+}
+
+export type ItemRepasseModalidadeCobranca = ItemRepasseModalidade & {
+  plataformaExterna?: Plataforma | null
 }
 
 export type PoliticaRepasseFinanceiro = "MENSALIDADE_INTERNA" | "REPASSE_EXTERNO"
@@ -173,6 +178,14 @@ export function calcularRepasseFinanceiro(params: {
     socioA: deCentavos(socioACentavos),
     socioB: deCentavos(socioBCentavos),
   }
+}
+
+export function modalidadesMensalidadeInterna(
+  itens: ItemRepasseModalidadeCobranca[],
+): ItemRepasseModalidade[] {
+  return itens
+    .filter((item) => !item.plataformaExterna)
+    .map(({ plataformaExterna: _, ...item }) => item)
 }
 
 export function mensagemStatusMensalidade(params: {
@@ -411,7 +424,7 @@ export async function vincularPlanoMensalista(params: {
       planoId: true,
       diaVencimento: true,
       modalidades: { select: { id: true } },
-      modalidadesPlano: { select: { modalidadeId: true } },
+      modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
     },
   })
   if (!anterior) return { ok: false as const, motivo: "Aluno não encontrado." }
@@ -437,11 +450,26 @@ export async function vincularPlanoMensalista(params: {
     })
 
     await tx.alunoPlanoModalidade.deleteMany({ where: { alunoId: params.alunoId } })
+    const modalidadesExternas = anterior.modalidadesPlano.filter(
+      (modalidade) =>
+        modalidade.plataformaExterna &&
+        modalidadesDoAluno.has(modalidade.modalidadeId) &&
+        !modalidadeIds.includes(modalidade.modalidadeId),
+    )
     await tx.alunoPlanoModalidade.createMany({
-      data: modalidadeIds.map((modalidadeId) => ({
-        alunoId: params.alunoId,
-        modalidadeId,
-      })),
+      data: [
+        ...modalidadeIds.map((modalidadeId) => ({
+          alunoId: params.alunoId,
+          modalidadeId,
+          plataformaExterna: null,
+        })),
+        ...modalidadesExternas.map((modalidade) => ({
+          alunoId: params.alunoId,
+          modalidadeId: modalidade.modalidadeId,
+          plataformaExterna: modalidade.plataformaExterna,
+        })),
+      ],
+      skipDuplicates: true,
     })
 
     await registrarLog(
@@ -452,13 +480,17 @@ export async function vincularPlanoMensalista(params: {
         entidadeId: params.alunoId,
         valorAntigo: serializarVinculo({
           ...anterior,
-          modalidadeIds: anterior.modalidadesPlano.map((modalidade) => modalidade.modalidadeId),
+          modalidadeIds: anterior.modalidadesPlano
+            .filter((modalidade) => !modalidade.plataformaExterna)
+            .map((modalidade) => modalidade.modalidadeId),
+          modalidadesExternas,
         }),
         valorNovo: serializarVinculo({
           tipo: atualizado.tipo,
           planoId: atualizado.planoId,
           diaVencimento: atualizado.diaVencimento,
           modalidadeIds,
+          modalidadesExternas,
         }),
       },
       tx,
@@ -489,7 +521,7 @@ async function obterOuCriarMensalidade(params: {
     where: { id: params.alunoId },
     include: {
       plano: true,
-      modalidadesPlano: { select: { modalidadeId: true } },
+      modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
     },
   })
 
@@ -500,7 +532,10 @@ async function obterOuCriarMensalidade(params: {
       motivo: "Mensalidade interna exige plano vinculado ao aluno.",
     }
   }
-  if (aluno.modalidadesPlano.length === 0) {
+  const modalidadesInternas = aluno.modalidadesPlano.filter(
+    (modalidade) => !modalidade.plataformaExterna,
+  )
+  if (modalidadesInternas.length === 0) {
     return {
       ok: false as const,
       motivo: "Mensalidade interna exige ao menos uma modalidade contratada no vínculo do aluno.",
@@ -538,7 +573,7 @@ async function obterOuCriarMensalidade(params: {
             competencia: criada.competencia,
             valor: Number(criada.valor),
             diaVencimento: aluno.diaVencimento,
-            modalidadeIds: aluno.modalidadesPlano.map((modalidade) => modalidade.modalidadeId),
+            modalidadeIds: modalidadesInternas.map((modalidade) => modalidade.modalidadeId),
             vencimento: criada.vencimento.toISOString(),
             status: criada.status,
           },
@@ -988,12 +1023,17 @@ function serializarVinculo(vinculo: {
   planoId: string | null
   diaVencimento: number
   modalidadeIds: string[]
+  modalidadesExternas?: Array<{
+    modalidadeId: string
+    plataformaExterna: Plataforma | null
+  }>
 }): Prisma.InputJsonObject {
   return {
     tipo: vinculo.tipo,
     planoId: vinculo.planoId,
     diaVencimento: vinculo.diaVencimento,
     modalidadeIds: vinculo.modalidadeIds,
+    modalidadesExternas: vinculo.modalidadesExternas,
   }
 }
 

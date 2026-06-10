@@ -60,6 +60,10 @@ export default async function AlunosPage() {
           planoValor: a.plano ? Number(a.plano.valor) : null,
           diaVencimento: a.diaVencimento,
           modalidades: a.modalidades.map((m) => m.id),
+          cobrancasModalidades: a.modalidadesPlano.map((modalidade) => ({
+            modalidadeId: modalidade.modalidadeId,
+            plataformaExterna: modalidade.plataformaExterna,
+          })),
           responsavel: a.responsavel,
           modalidadeNomes: a.modalidades.map((m) => m.nome),
           documentos: a._count.documentos,
