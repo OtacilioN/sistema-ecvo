@@ -8,6 +8,7 @@ import { db } from "@/lib/db"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
 import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
 import { FormCheckinGlobal } from "./form-checkin-global"
+import { LeitorQRCodeAluno } from "./leitor-qrcode-aluno"
 
 export const dynamic = "force-dynamic"
 
@@ -70,6 +71,8 @@ export default async function CheckinGlobalPage({
           </p>
         </div>
       </div>
+
+      <LeitorQRCodeAluno />
 
       {!tokenAtual && (
         <Card className="border-destructive/40 bg-destructive/5">

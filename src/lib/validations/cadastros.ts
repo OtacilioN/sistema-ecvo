@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { fotoPathnameDeUrl, pathnameFotoValido } from "@/lib/fotos"
+import { dataCivilParaDate } from "@/lib/utils/datas"
 import { cpfValido } from "@/lib/utils/formato"
 
 // Schemas de validação dos cadastros da Fase 1 (RF-001..012).
@@ -45,6 +46,12 @@ const diaVencimentoSchema = z.preprocess(
   (v) => (v === "" || v === null || v === undefined ? 10 : v),
   z.coerce.number().int().min(1, "Informe um dia entre 1 e 28").max(28),
 )
+
+const dataCivilOpcional = z.preprocess((v) => {
+  if (v === "" || v === null || v === undefined) return undefined
+  if (typeof v === "string") return dataCivilParaDate(v)
+  return v
+}, z.date().optional())
 
 const numeroInteiroOpcional = (min: number, max?: number) =>
   z
@@ -237,8 +244,8 @@ export const alunoSchema = z
     cpf: cpfOpcional,
     telefone: textoOpcional,
     fotoUrl: fotoUrlOpcional,
-    dataNascimento: z.coerce.date().optional(),
-    dataInicio: z.coerce.date().optional(),
+    dataNascimento: dataCivilOpcional,
+    dataInicio: dataCivilOpcional,
     endereco: textoOpcional,
     contatoEmergencia: textoOpcional,
     restricoesMedicas: textoOpcional,
@@ -263,8 +270,8 @@ export const dadosAlunoSchema = z
     cpf: cpfOpcional,
     telefone: textoOpcional,
     fotoUrl: fotoUrlOpcional,
-    dataNascimento: z.coerce.date().optional(),
-    dataInicio: z.coerce.date().optional(),
+    dataNascimento: dataCivilOpcional,
+    dataInicio: dataCivilOpcional,
     endereco: textoOpcional,
     contatoEmergencia: textoOpcional,
     restricoesMedicas: textoOpcional,

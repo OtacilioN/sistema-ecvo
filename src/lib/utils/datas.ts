@@ -24,6 +24,18 @@ export function formatarData(data: Date): string {
   return formatInTimeZone(data, TIMEZONE, "dd/MM/yyyy", { locale: ptBR })
 }
 
+export function formatarDataInput(data: Date): string {
+  return formatInTimeZone(data, TIMEZONE, "yyyy-MM-dd")
+}
+
+export function dataCivilParaDate(valor: string): Date {
+  const data = valor.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    return fromZonedTime(`${data}T12:00:00`, TIMEZONE)
+  }
+  return new Date(data)
+}
+
 export function formatarDataHora(data: Date): string {
   return formatInTimeZone(data, TIMEZONE, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
 }

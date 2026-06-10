@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { dadosTurmaSchema, turmaRecorrenteSchema } from "./cadastros"
+import { formatarData } from "@/lib/utils/datas"
+import { dadosAlunoSchema, dadosTurmaSchema, turmaRecorrenteSchema } from "./cadastros"
 
 const turmaValida = {
   modalidadeId: "modalidade-1",
@@ -49,5 +50,24 @@ describe("dadosTurmaSchema", () => {
       horaFim: "21:00",
       ativa: true,
     })
+  })
+})
+
+describe("dadosAlunoSchema", () => {
+  it("interpreta nascimento e início como datas civis da academia", () => {
+    const parsed = dadosAlunoSchema.parse({
+      alunoId: "aluno-1",
+      nome: "Otacilio Maia",
+      tipo: "MENSALISTA",
+      status: "ATIVO",
+      fotoUrl: "",
+      dataNascimento: "1996-12-14",
+      dataInicio: "2026-06-10",
+      modalidadeIds: ["modalidade-1"],
+      cobrancasModalidades: [],
+    })
+
+    expect(formatarData(parsed.dataNascimento as Date)).toBe("14/12/1996")
+    expect(formatarData(parsed.dataInicio as Date)).toBe("10/06/2026")
   })
 })

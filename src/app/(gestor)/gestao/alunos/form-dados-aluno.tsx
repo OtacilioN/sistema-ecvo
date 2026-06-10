@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { formatarDataInput } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
@@ -338,7 +339,7 @@ export function FormDadosAluno({
 }
 
 function paraDataInput(valor?: Date | null) {
-  return valor ? valor.toISOString().split("T")[0] : ""
+  return valor ? formatarDataInput(valor) : ""
 }
 
 function rotuloPlano(plano: Plano) {
