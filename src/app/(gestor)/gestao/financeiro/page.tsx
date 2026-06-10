@@ -4,6 +4,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
@@ -14,6 +16,8 @@ import { AcoesFinanceiro, AcoesMensalidade, AcoesPlano } from "./acoes-financeir
 
 export const dynamic = "force-dynamic"
 
+type SearchParams = Promise<Record<string, string | string[] | undefined>>
+
 const rotulosStatusMensalidade: Record<StatusMensalidade, string> = {
   EM_ABERTO: "Em aberto",
   PAGA: "Paga",
@@ -22,10 +26,31 @@ const rotulosStatusMensalidade: Record<StatusMensalidade, string> = {
   ISENTA: "Isenta",
 }
 
-export default async function Page() {
+const ordemStatusMensalidade: Record<StatusMensalidade, number> = {
+  VENCIDA: 0,
+  EM_ABERTO: 1,
+  PAGA: 2,
+  ISENTA: 3,
+  CANCELADA: 4,
+}
+
+const limitesMensalidades = [20, 50, 100] as const
+
+function valorUnico(valor: string | string[] | undefined) {
+  return Array.isArray(valor) ? valor[0] : valor
+}
+
+function limiteMensalidadesValido(valor: string | undefined) {
+  const limite = Number(valor)
+  return limitesMensalidades.includes(limite as (typeof limitesMensalidades)[number]) ? limite : 20
+}
+
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const usuario = await exigirGestao()
+  const params = await searchParams
+  const limiteMensalidades = limiteMensalidadesValido(valorUnico(params.limite))
   const podeEditar = usuario.papel === "GESTOR"
-  const [planos, alunos, mensalidades, pagamentos] = await Promise.all([
+  const [planos, alunos, mensalidadesEncontradas, pagamentos] = await Promise.all([
     db.plano.findMany({
       orderBy: { criadoEm: "desc" },
       include: { _count: { select: { alunos: true } } },
@@ -45,8 +70,7 @@ export default async function Page() {
       },
     }),
     db.mensalidade.findMany({
-      orderBy: [{ status: "asc" }, { vencimento: "asc" }],
-      take: 20,
+      orderBy: [{ vencimento: "asc" }, { criadoEm: "desc" }],
       include: {
         aluno: { select: { usuario: { select: { nome: true } } } },
         plano: { select: { nome: true } },
@@ -58,6 +82,19 @@ export default async function Page() {
       include: { aluno: { select: { usuario: { select: { nome: true } } } } },
     }),
   ])
+
+  const mensalidades = [...mensalidadesEncontradas]
+    .sort((a, b) => {
+      const prioridadeA = ordemStatusMensalidade[statusMensalidadeEfetivo(a)]
+      const prioridadeB = ordemStatusMensalidade[statusMensalidadeEfetivo(b)]
+
+      return (
+        prioridadeA - prioridadeB ||
+        a.vencimento.getTime() - b.vencimento.getTime() ||
+        a.aluno.usuario.nome.localeCompare(b.aluno.usuario.nome)
+      )
+    })
+    .slice(0, limiteMensalidades)
 
   const alunosOpcao = alunos.map((aluno) => ({
     id: aluno.id,
@@ -93,8 +130,28 @@ export default async function Page() {
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.9fr]">
         <Card>
-          <CardHeader>
+          <CardHeader className="gap-4 sm:flex-row sm:items-end sm:justify-between">
             <CardTitle>Mensalidades recentes</CardTitle>
+            <form className="flex items-end gap-2">
+              <div className="grid gap-2">
+                <Label htmlFor="limite-mensalidades">Exibir</Label>
+                <Select
+                  id="limite-mensalidades"
+                  name="limite"
+                  defaultValue={String(limiteMensalidades)}
+                  className="w-28"
+                >
+                  {limitesMensalidades.map((limite) => (
+                    <option key={limite} value={limite}>
+                      {limite}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <Button type="submit" variant="outline">
+                Aplicar
+              </Button>
+            </form>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">

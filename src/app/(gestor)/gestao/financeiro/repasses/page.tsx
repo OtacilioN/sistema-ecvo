@@ -11,7 +11,7 @@ import {
   calcularRepasseFinanceiro,
   type ItemRepasseModalidade,
 } from "@/lib/services/financeiro.service"
-import { chaveCompetencia } from "@/lib/utils/datas"
+import { chaveCompetencia, formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
 export const dynamic = "force-dynamic"
@@ -43,6 +43,20 @@ type LinhaProfessor = {
   total: number
   eventos: number
   origens: string[]
+}
+
+type LinhaExtratoRepasse = {
+  chave: string
+  origem: string
+  status: string
+  pagador: string
+  data: Date | null
+  formaPagamento: string | null
+  valorRecebido: number
+  professores: string
+  repasseProfessores: number
+  socioA: number
+  socioB: number
 }
 
 function valorUnico(valor: string | string[] | undefined) {
@@ -142,6 +156,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   let totalProfessores = 0
   let totalSocioA = 0
   let totalSocioB = 0
+  const extrato: LinhaExtratoRepasse[] = []
 
   function somarLinha(params: Omit<LinhaRepasse, "chave" | "eventos">) {
     const chave = `${params.papel}:${params.destinatarioId}:${params.origem}`
@@ -185,6 +200,22 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     totalProfessores += repasse.professores.reduce((total, professor) => total + professor.valor, 0)
     totalSocioA += repasse.socioA
     totalSocioB += repasse.socioB
+    extrato.push({
+      chave: `mensalidade:${mensalidade.id}`,
+      origem: "Mensalidade interna",
+      status: mensalidade.status === "PAGA" ? "Paga" : "Isenta",
+      pagador: mensalidade.aluno.usuario.nome,
+      data: mensalidade.pagoEm ?? mensalidade.atualizadoEm,
+      formaPagamento: mensalidade.formaPagamento,
+      valorRecebido: repasse.valorRecebido,
+      professores: nomesProfessoresRepasse(repasse.professores),
+      repasseProfessores: repasse.professores.reduce(
+        (total, professor) => total + professor.valor,
+        0,
+      ),
+      socioA: repasse.socioA,
+      socioB: repasse.socioB,
+    })
 
     for (const professor of repasse.professores) {
       somarLinha({
@@ -245,6 +276,22 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     totalProfessores += repasse.professores.reduce((total, professor) => total + professor.valor, 0)
     totalSocioA += repasse.socioA
     totalSocioB += repasse.socioB
+    extrato.push({
+      chave: `externo:${registro.id}`,
+      origem,
+      status: "Conciliado",
+      pagador: registro.aluno?.usuario.nome ?? registro.nome ?? registro.email ?? "Sem aluno",
+      data: registro.dataReferencia,
+      formaPagamento: origem,
+      valorRecebido: repasse.valorRecebido,
+      professores: nomesProfessoresRepasse(repasse.professores),
+      repasseProfessores: repasse.professores.reduce(
+        (total, professor) => total + professor.valor,
+        0,
+      ),
+      socioA: repasse.socioA,
+      socioB: repasse.socioB,
+    })
 
     for (const professor of repasse.professores) {
       somarLinha({
@@ -273,6 +320,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   const linhasOrdenadas = Array.from(linhas.values()).sort(
     (a, b) => ordemPapel(a.papel) - ordemPapel(b.papel) || b.valor - a.valor,
+  )
+  const extratoOrdenado = extrato.sort(
+    (a, b) =>
+      (b.data?.getTime() ?? 0) - (a.data?.getTime() ?? 0) || a.pagador.localeCompare(b.pagador),
   )
   const professoresOrdenados = consolidarProfessores(linhasOrdenadas)
   const valorPendenteProfessor = linhasOrdenadas
@@ -312,6 +363,77 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <Resumo rotulo="Sócio B" valor={formatarBRL(totalSocioB)} />
         <Resumo rotulo="Pendências" valor={formatarBRL(valorPendenteProfessor)} />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Receitas usadas no repasse</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="tabela-responsiva w-full text-sm">
+              <thead className="border-b border-border text-left text-muted-foreground">
+                <tr>
+                  <th className="p-4 font-medium">Pagador</th>
+                  <th className="p-4 font-medium">Origem</th>
+                  <th className="p-4 font-medium">Status</th>
+                  <th className="p-4 font-medium">Data</th>
+                  <th className="p-4 font-medium">Forma</th>
+                  <th className="p-4 font-medium">Professores</th>
+                  <th className="p-4 text-right font-medium">Recebido</th>
+                  <th className="p-4 text-right font-medium">Professor</th>
+                  <th className="p-4 text-right font-medium">Sócio A</th>
+                  <th className="p-4 text-right font-medium">Sócio B</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extratoOrdenado.map((linha) => (
+                  <tr key={linha.chave} className="border-b border-border last:border-0">
+                    <td className="p-4 font-medium" data-label="Pagador">
+                      {linha.pagador}
+                    </td>
+                    <td className="p-4" data-label="Origem">
+                      {linha.origem}
+                    </td>
+                    <td className="p-4" data-label="Status">
+                      <Badge variant={linha.status === "Isenta" ? "secondary" : "outline"}>
+                        {linha.status}
+                      </Badge>
+                    </td>
+                    <td className="p-4" data-label="Data">
+                      {linha.data ? formatarData(linha.data) : "—"}
+                    </td>
+                    <td className="p-4" data-label="Forma">
+                      {linha.formaPagamento ?? "—"}
+                    </td>
+                    <td className="p-4" data-label="Professores">
+                      {linha.professores}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Recebido">
+                      {formatarBRL(linha.valorRecebido)}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Professor">
+                      {formatarBRL(linha.repasseProfessores)}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Sócio A">
+                      {formatarBRL(linha.socioA)}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Sócio B">
+                      {formatarBRL(linha.socioB)}
+                    </td>
+                  </tr>
+                ))}
+                {extratoOrdenado.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="p-10 text-center text-muted-foreground">
+                      Nenhuma receita encontrada na competência.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -495,6 +617,13 @@ function ordemPapel(papel: LinhaRepasse["papel"]) {
     Pendência: 3,
   }
   return ordem[papel]
+}
+
+function nomesProfessoresRepasse(
+  professores: Array<{ professorNome: string | null; professorId: string }>,
+) {
+  const nomes = professores.map((professor) => professor.professorNome ?? professor.professorId)
+  return nomes.length > 0 ? nomes.join(", ") : "Sem repasse para professor"
 }
 
 function consolidarProfessores(linhas: LinhaRepasse[]): LinhaProfessor[] {
