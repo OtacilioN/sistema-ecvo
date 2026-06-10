@@ -176,19 +176,20 @@ enum TipoNotificacao {
 // ───────────────────────── Identidade ─────────────────────────
 
 model Usuario {
-  id           String         @id @default(cuid())
-  email        String         @unique
-  senhaHash    String
-  nome         String
-  fotoUrl      String?
-  papel        Papel
-  ativo        Boolean        @default(true)
-  aluno        Aluno?
-  professor    Professor?
-  logs         LogAuditoria[] @relation("AutorLog")
-  notificacoes Notificacao[]
-  criadoEm     DateTime       @default(now())
-  atualizadoEm DateTime       @updatedAt
+  id             String          @id @default(cuid())
+  email          String          @unique
+  senhaHash      String
+  nome           String
+  fotoUrl        String?
+  papel          Papel
+  ativo          Boolean         @default(true)
+  aluno          Aluno?
+  professor      Professor?
+  logs           LogAuditoria[]  @relation("AutorLog")
+  notificacoes   Notificacao[]
+  inscricoesPush InscricaoPush[]
+  criadoEm       DateTime        @default(now())
+  atualizadoEm   DateTime        @updatedAt
 }
 
 model Aluno {
@@ -516,12 +517,12 @@ model Plano {
 }
 
 model AlunoPlanoModalidade {
-  aluno              Aluno       @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  alunoId            String
-  modalidade         Modalidade  @relation(fields: [modalidadeId], references: [id], onDelete: Cascade)
-  modalidadeId       String
-  plataformaExterna  Plataforma?
-  criadoEm           DateTime    @default(now())
+  aluno             Aluno       @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId           String
+  modalidade        Modalidade  @relation(fields: [modalidadeId], references: [id], onDelete: Cascade)
+  modalidadeId      String
+  plataformaExterna Plataforma?
+  criadoEm          DateTime    @default(now())
 
   @@id([alunoId, modalidadeId])
   @@index([modalidadeId])
@@ -659,4 +660,22 @@ model Notificacao {
   criadoEm  DateTime        @default(now())
 
   @@index([usuarioId, lida])
+}
+
+model InscricaoPush {
+  id           String    @id @default(cuid())
+  usuario      Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuarioId    String
+  endpoint     String    @unique
+  p256dh       String
+  auth         String
+  expiraEm     DateTime?
+  userAgent    String?
+  ultimoUsoEm  DateTime?
+  revogadaEm   DateTime?
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  @@index([usuarioId, revogadaEm])
+  @@index([atualizadoEm])
 }

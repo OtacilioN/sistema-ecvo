@@ -233,6 +233,19 @@ export function mensagemInadimplenciaMensalidade(params: {
   }
 }
 
+export function mensagemInadimplenciaMensalidadeAluno(params: {
+  competencia: string
+  vencimento: Date
+  valor: number
+}): { titulo: string; mensagem: string } {
+  return {
+    titulo: "Mensalidade vencida",
+    mensagem: `${params.competencia}: vencida desde ${formatarData(
+      params.vencimento,
+    )}, valor ${formatarBRL(params.valor)}.`,
+  }
+}
+
 export function mensagemPagamentoAvulso(params: {
   tipo: TipoPagamento
   valor: number
@@ -892,6 +905,7 @@ export async function gerarLembretesFinanceirosGestores(
     ok: true as const,
     gestoresNotificados: gestores.length,
     mensalidadesVencidasAtualizadas: vencidas.mensalidadesVencidas,
+    alunosInadimplentesNotificados: vencidas.alunosNotificados,
     mensalidadesAVencer: vencemAmanha.length,
     mensalidadesInadimplentes: inadimplentes.length,
     lembretesCriados,
@@ -905,15 +919,44 @@ export async function vencerMensalidadesAtrasadas(
   params?: { agora?: Date },
 ) {
   const hoje = inicioDoDia(params?.agora ?? new Date())
-  const resultado = await cliente.mensalidade.updateMany({
+
+  const candidatas = await cliente.mensalidade.findMany({
     where: {
       status: "EM_ABERTO",
       vencimento: { lt: hoje },
     },
-    data: { status: "VENCIDA" },
+    select: {
+      id: true,
+      competencia: true,
+      vencimento: true,
+      valor: true,
+      aluno: { select: { usuarioId: true } },
+    },
+    orderBy: { vencimento: "asc" },
   })
 
-  return { ok: true as const, mensalidadesVencidas: resultado.count }
+  let mensalidadesVencidas = 0
+  let alunosNotificados = 0
+
+  for (const mensalidade of candidatas) {
+    const resultado = await cliente.mensalidade.updateMany({
+      where: { id: mensalidade.id, status: "EM_ABERTO" },
+      data: { status: "VENCIDA" },
+    })
+    if (resultado.count === 0) continue
+
+    mensalidadesVencidas += resultado.count
+    const conteudo = mensagemInadimplenciaMensalidadeAluno({
+      competencia: mensalidade.competencia,
+      vencimento: mensalidade.vencimento,
+      valor: Number(mensalidade.valor),
+    })
+    if (await criarNotificacaoFinanceiraUnica(cliente, mensalidade.aluno.usuarioId, conteudo)) {
+      alunosNotificados++
+    }
+  }
+
+  return { ok: true as const, mensalidadesVencidas, alunosNotificados }
 }
 
 function vencimentoDaCompetencia(competencia: string, diaVencimento: number): Date {

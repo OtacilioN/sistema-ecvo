@@ -15,6 +15,8 @@ const ARQUIVOS_APP = [
   "/logo.jpeg",
 ]
 
+const URL_NOTIFICACOES_PADRAO = "/aluno/notificacoes"
+
 function mesmaOrigem(url) {
   return url.origin === self.location.origin
 }
@@ -80,6 +82,52 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkFirstPagina(request))
   }
 })
+
+self.addEventListener("push", (event) => {
+  const dados = dadosPush(event)
+  const titulo = dados.titulo || "ECVO"
+  const mensagem = dados.mensagem || "Nova notificação."
+  const url = typeof dados.url === "string" ? dados.url : URL_NOTIFICACOES_PADRAO
+
+  event.waitUntil(
+    self.registration.showNotification(titulo, {
+      body: mensagem,
+      icon: "/pwa/icon-192.png",
+      badge: "/pwa/maskable-192.png",
+      tag: dados.notificacaoId || dados.tipo || "ecvo-notificacao",
+      data: {
+        url,
+        notificacaoId: dados.notificacaoId || null,
+      },
+    }),
+  )
+})
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close()
+  const url = new URL(event.notification.data?.url || URL_NOTIFICACOES_PADRAO, self.location.origin)
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((janelas) => {
+      const aberta = janelas.find((janela) => new URL(janela.url).origin === url.origin)
+      if (aberta) {
+        aberta.navigate(url.href)
+        return aberta.focus()
+      }
+      return clients.openWindow(url.href)
+    }),
+  )
+})
+
+function dadosPush(event) {
+  if (!event.data) return {}
+
+  try {
+    return event.data.json()
+  } catch (_erro) {
+    return { mensagem: event.data.text() }
+  }
+}
 
 async function cacheFirst(request) {
   const cache = await caches.open(CACHE_ESTATICOS)

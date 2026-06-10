@@ -24,7 +24,7 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
 Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento · Checkin ·
 TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · Graduacao · GraduacaoAluno ·
 Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · Importacao ·
-RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao.
+RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao · InscricaoPush.
 
 ## Diagrama (ER simplificado)
 
@@ -34,6 +34,7 @@ erDiagram
   Usuario ||--o| Professor : "é"
   Usuario ||--o{ LogAuditoria : "autor"
   Usuario ||--o{ Notificacao : "recebe"
+  Usuario ||--o{ InscricaoPush : "autoriza"
 
   Aluno }o--o| Plano : "assinado"
   Aluno ||--o{ AlunoPlanoModalidade : "contrata"
@@ -93,3 +94,5 @@ erDiagram
 - **GraduacaoAluno** guarda a graduação concedida e, quando houver, `graduacaoAnteriorId`; isso preserva o
   histórico `anterior -> nova` exigido por RF-042 sem depender do log de auditoria para reconstruir a troca.
 - **LogAuditoria** guarda `valorAntigo`/`valorNovo` como JSON, gravado na mesma transação da ação crítica.
+- **InscricaoPush** guarda as inscrições Web Push autorizadas por usuário/dispositivo; `Notificacao` continua
+  sendo a caixa interna de referência, e o push é um canal adicional quando configurado.

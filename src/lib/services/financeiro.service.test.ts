@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   calcularRepasseFinanceiro,
   mensagemInadimplenciaMensalidade,
+  mensagemInadimplenciaMensalidadeAluno,
   mensagemLembreteVencimentoMensalidade,
   mensagemPagamentoAvulso,
   mensagemStatusMensalidade,
@@ -82,14 +83,45 @@ describe("mensalidadeBloqueiaTreino", () => {
 })
 
 describe("vencerMensalidadesAtrasadas", () => {
-  it("marca como vencidas apenas mensalidades em aberto com vencimento passado", async () => {
-    const chamadas: unknown[] = []
+  it("marca como vencidas mensalidades em aberto com vencimento passado e notifica alunos", async () => {
+    const buscas: unknown[] = []
+    const atualizacoes: unknown[] = []
+    const notificacoes: unknown[] = []
     const cliente = {
       mensalidade: {
-        updateMany: async (params: unknown) => {
-          chamadas.push(params)
-          return { count: 2 }
+        findMany: async (params: unknown) => {
+          buscas.push(params)
+          return [
+            {
+              id: "mensalidade-1",
+              competencia: "2026-06",
+              vencimento: new Date("2026-06-10T12:00:00Z"),
+              valor: 250,
+              aluno: { usuarioId: "usuario-aluno-1" },
+            },
+            {
+              id: "mensalidade-2",
+              competencia: "2026-06",
+              vencimento: new Date("2026-06-09T12:00:00Z"),
+              valor: 300,
+              aluno: { usuarioId: "usuario-aluno-2" },
+            },
+          ]
         },
+        updateMany: async (params: unknown) => {
+          atualizacoes.push(params)
+          return { count: atualizacoes.length === 1 ? 1 : 0 }
+        },
+      },
+      notificacao: {
+        findFirst: async () => null,
+        create: async (params: unknown) => {
+          notificacoes.push(params)
+          return { id: "notificacao-1" }
+        },
+      },
+      configuracaoAcademia: {
+        findUnique: async () => ({ notificarFinanceiro: true }),
       },
     } as never
 
@@ -97,16 +129,79 @@ describe("vencerMensalidadesAtrasadas", () => {
       agora: new Date("2026-06-11T12:00:00Z"),
     })
 
-    expect(resultado).toEqual({ ok: true, mensalidadesVencidas: 2 })
-    expect(chamadas).toEqual([
+    expect(resultado).toEqual({ ok: true, mensalidadesVencidas: 1, alunosNotificados: 1 })
+    expect(buscas).toEqual([
       {
         where: {
           status: "EM_ABERTO",
           vencimento: { lt: expect.any(Date) },
         },
+        select: {
+          id: true,
+          competencia: true,
+          vencimento: true,
+          valor: true,
+          aluno: { select: { usuarioId: true } },
+        },
+        orderBy: { vencimento: "asc" },
+      },
+    ])
+    expect(atualizacoes).toEqual([
+      {
+        where: { id: "mensalidade-1", status: "EM_ABERTO" },
+        data: { status: "VENCIDA" },
+      },
+      {
+        where: { id: "mensalidade-2", status: "EM_ABERTO" },
         data: { status: "VENCIDA" },
       },
     ])
+    expect(notificacoes).toEqual([
+      {
+        data: {
+          usuarioId: "usuario-aluno-1",
+          tipo: "FINANCEIRO",
+          titulo: "Mensalidade vencida",
+          mensagem: expect.stringContaining("2026-06: vencida desde 10/06/2026, valor"),
+        },
+      },
+    ])
+    expect(JSON.stringify(notificacoes[0])).toContain("250,00")
+  })
+
+  it("não duplica notificação de inadimplência do aluno", async () => {
+    const notificacoesCriadas: unknown[] = []
+    const cliente = {
+      mensalidade: {
+        findMany: async () => [
+          {
+            id: "mensalidade-1",
+            competencia: "2026-06",
+            vencimento: new Date("2026-06-10T12:00:00Z"),
+            valor: 250,
+            aluno: { usuarioId: "usuario-aluno-1" },
+          },
+        ],
+        updateMany: async () => ({ count: 1 }),
+      },
+      notificacao: {
+        findFirst: async () => ({ id: "notificacao-existente" }),
+        create: async (params: unknown) => {
+          notificacoesCriadas.push(params)
+          return { id: "notificacao-nova" }
+        },
+      },
+      configuracaoAcademia: {
+        findUnique: async () => ({ notificarFinanceiro: true }),
+      },
+    } as never
+
+    const resultado = await vencerMensalidadesAtrasadas(cliente, {
+      agora: new Date("2026-06-11T12:00:00Z"),
+    })
+
+    expect(resultado).toEqual({ ok: true, mensalidadesVencidas: 1, alunosNotificados: 0 })
+    expect(notificacoesCriadas).toEqual([])
   })
 })
 
@@ -122,7 +217,7 @@ describe("mensagemStatusMensalidade", () => {
   })
 })
 
-describe("mensagens de lembrete financeiro para gestores", () => {
+describe("mensagens de lembrete financeiro", () => {
   it("gera lembrete de vencimento no padrão pt-BR", () => {
     const mensagem = mensagemLembreteVencimentoMensalidade({
       alunoNome: "Ana Silva",
@@ -146,6 +241,19 @@ describe("mensagens de lembrete financeiro para gestores", () => {
     expect(mensagem.titulo).toBe("Mensalidade inadimplente")
     expect(mensagem.mensagem).toContain("Ana Silva · 2026-06")
     expect(mensagem.mensagem).toContain("vencida desde 10/06/2026")
+    expect(mensagem.mensagem).toContain("250,00")
+  })
+
+  it("gera alerta de inadimplência para o aluno sem repetir o próprio nome", () => {
+    const mensagem = mensagemInadimplenciaMensalidadeAluno({
+      competencia: "2026-06",
+      vencimento: new Date("2026-06-10T12:00:00Z"),
+      valor: 250,
+    })
+    expect(mensagem).toEqual({
+      titulo: "Mensalidade vencida",
+      mensagem: expect.stringContaining("2026-06: vencida desde 10/06/2026, valor"),
+    })
     expect(mensagem.mensagem).toContain("250,00")
   })
 })

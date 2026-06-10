@@ -2,6 +2,7 @@ import "server-only"
 import type { Prisma, TipoNotificacao } from "@prisma/client"
 import { formatInTimeZone } from "date-fns-tz"
 import { db } from "@/lib/db"
+import { enviarPushParaNotificacao } from "@/lib/services/push.service"
 import { formatarDataHora, TIMEZONE } from "@/lib/utils/datas"
 
 type Cliente = Prisma.TransactionClient | typeof db
@@ -49,7 +50,7 @@ export async function criarNotificacao(
 ) {
   if (!(await notificacaoAtiva(cliente, params.tipo))) return null
 
-  return cliente.notificacao.create({
+  const notificacao = await cliente.notificacao.create({
     data: {
       usuarioId: params.usuarioId,
       tipo: params.tipo,
@@ -57,6 +58,14 @@ export async function criarNotificacao(
       mensagem: params.mensagem,
     },
   })
+
+  try {
+    await enviarPushParaNotificacao(notificacao)
+  } catch {
+    // Push é um canal secundário; a notificação interna continua sendo a fonte de verdade.
+  }
+
+  return notificacao
 }
 
 export async function gerarLembretesTreino(

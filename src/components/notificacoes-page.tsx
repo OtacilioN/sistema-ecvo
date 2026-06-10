@@ -3,6 +3,7 @@ import {
   acaoMarcarNotificacaoLida,
   acaoMarcarTodasNotificacoesLidas,
 } from "@/app/actions/notificacoes"
+import { PushNotificacoesControle } from "@/components/push-notificacoes-controle"
 import { Badge } from "@/components/ui/badge"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,6 +30,7 @@ export async function PaginaNotificacoes() {
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
+          <PushNotificacoesControle />
           {usuario.papel === "GESTOR" && (
             <form action={acaoGerarLembretesTreino}>
               <BotaoEnviar variant="secondary" size="sm">
