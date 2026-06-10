@@ -22,6 +22,7 @@ export default async function CheckinGlobalPage({
   const { alunoId } = await exigirAluno()
   const query = await searchParams
   const token = Array.isArray(query.token) ? query.token[0] : query.token
+  const tokenInformado = Boolean(token)
   const tokenAtual = token ? await tokenCheckinValido(token) : false
 
   const aluno = await db.aluno.findUnique({
@@ -74,7 +75,7 @@ export default async function CheckinGlobalPage({
 
       <LeitorQRCodeAluno />
 
-      {!tokenAtual && (
+      {tokenInformado && !tokenAtual && (
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="flex gap-3 py-5 text-sm text-destructive">
             <AlertTriangle className="mt-0.5 size-5 shrink-0" />
