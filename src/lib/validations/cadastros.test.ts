@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest"
 import { formatarData } from "@/lib/utils/datas"
-import { dadosAlunoSchema, dadosTurmaSchema, turmaRecorrenteSchema } from "./cadastros"
+import {
+  dadosAlunoSchema,
+  dadosTurmaSchema,
+  meusDadosAlunoSchema,
+  turmaRecorrenteSchema,
+} from "./cadastros"
 
 const turmaValida = {
   modalidadeId: "modalidade-1",
@@ -69,5 +74,45 @@ describe("dadosAlunoSchema", () => {
 
     expect(formatarData(parsed.dataNascimento as Date)).toBe("14/12/1996")
     expect(formatarData(parsed.dataInicio as Date)).toBe("10/06/2026")
+  })
+})
+
+describe("meusDadosAlunoSchema", () => {
+  it("normaliza dados pessoais editáveis pelo aluno", () => {
+    const parsed = meusDadosAlunoSchema.parse({
+      nome: "  Aluno ECVO  ",
+      email: "ALUNO@ECVO.COM.BR",
+      cpf: "390.533.447-05",
+      telefone: "  (85) 99999-0000  ",
+      dataNascimento: "1996-12-14",
+      endereco: "  Rua A  ",
+      contatoEmergencia: "",
+      restricoesMedicas: "  Asma  ",
+      responsavel: {
+        nome: "Responsável",
+        cpf: "",
+        telefone: "",
+        email: "",
+        grauParentesco: "Pai",
+        responsavelFinanceiro: true,
+      },
+    })
+
+    expect(parsed).toMatchObject({
+      nome: "Aluno ECVO",
+      email: "aluno@ecvo.com.br",
+      cpf: "39053344705",
+      telefone: "(85) 99999-0000",
+      endereco: "Rua A",
+      contatoEmergencia: null,
+      restricoesMedicas: "Asma",
+      responsavel: {
+        cpf: null,
+        email: null,
+        telefone: null,
+        responsavelFinanceiro: true,
+      },
+    })
+    expect(formatarData(parsed.dataNascimento as Date)).toBe("14/12/1996")
   })
 })

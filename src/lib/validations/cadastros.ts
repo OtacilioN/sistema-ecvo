@@ -287,6 +287,19 @@ export const dadosAlunoSchema = z
   .superRefine(validarCobrancasModalidades)
 export type DadosAlunoInput = z.infer<typeof dadosAlunoSchema>
 
+export const meusDadosAlunoSchema = z.object({
+  nome: z.string().trim().min(2, "Informe o nome"),
+  email: z.email("E-mail inválido").trim().toLowerCase(),
+  cpf: cpfOpcional,
+  telefone: textoOpcional,
+  dataNascimento: dataCivilOpcional,
+  endereco: textoOpcional,
+  contatoEmergencia: textoOpcional,
+  restricoesMedicas: textoOpcional,
+  responsavel: responsavelSchema.nullable().optional(),
+})
+export type MeusDadosAlunoInput = z.infer<typeof meusDadosAlunoSchema>
+
 export const excluirAlunoSchema = z.object({
   alunoId: z.string().min(1, "Selecione o aluno"),
 })

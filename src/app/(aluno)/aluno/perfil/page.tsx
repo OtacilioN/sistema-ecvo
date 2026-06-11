@@ -16,6 +16,7 @@ import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/f
 import { resumoHoras } from "@/lib/services/horas.service"
 import { formatarData, formatarDataHora, minutosParaHoras } from "@/lib/utils/datas"
 import { formatarBRL, formatarCPF } from "@/lib/utils/formato"
+import { FormMeusDadosAluno } from "./form-meus-dados-aluno"
 
 export const dynamic = "force-dynamic"
 
@@ -234,6 +235,28 @@ export default async function Page() {
   const tipoSomenteExterno =
     !temMensalidadeInterna && (aluno.tipo === "WELLHUB" || aluno.tipo === "TOTALPASS")
   const fotoPerfilUrl = aluno.usuario.fotoUrl ?? aluno.fotoUrl
+  const dadosPessoaisAluno = {
+    usuario: {
+      nome: aluno.usuario.nome,
+      email: aluno.usuario.email,
+    },
+    cpf: aluno.cpf,
+    telefone: aluno.telefone,
+    dataNascimento: aluno.dataNascimento,
+    endereco: aluno.endereco,
+    contatoEmergencia: aluno.contatoEmergencia,
+    restricoesMedicas: aluno.restricoesMedicas,
+    responsavel: aluno.responsavel
+      ? {
+          nome: aluno.responsavel.nome,
+          cpf: aluno.responsavel.cpf,
+          telefone: aluno.responsavel.telefone,
+          email: aluno.responsavel.email,
+          grauParentesco: aluno.responsavel.grauParentesco,
+          responsavelFinanceiro: aluno.responsavel.responsavelFinanceiro,
+        }
+      : null,
+  }
 
   return (
     <div className="space-y-6">
@@ -281,38 +304,10 @@ export default async function Page() {
       <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Cadastro</CardTitle>
+            <CardTitle>Dados pessoais</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <Campo rotulo="Nome" valor={aluno.usuario.nome} />
-            <Campo rotulo="E-mail" valor={aluno.usuario.email} />
-            <Campo rotulo="CPF" valor={aluno.cpf ? formatarCPF(aluno.cpf) : null} />
-            <Campo rotulo="Telefone" valor={aluno.telefone} />
-            <Campo rotulo="Foto" valor={fotoPerfilUrl ? "Informada" : null} />
-            <Campo
-              rotulo="Nascimento"
-              valor={aluno.dataNascimento ? formatarData(aluno.dataNascimento) : null}
-            />
-            <Campo
-              rotulo="Início"
-              valor={aluno.dataInicio ? formatarData(aluno.dataInicio) : null}
-            />
-            <Campo rotulo="Endereço" valor={aluno.endereco} className="sm:col-span-2" />
-            <Campo
-              rotulo="Contato de emergência"
-              valor={aluno.contatoEmergencia}
-              className="sm:col-span-2"
-            />
-            <Campo
-              rotulo="Restrições médicas"
-              valor={aluno.restricoesMedicas}
-              className="sm:col-span-2"
-            />
-            <Campo
-              rotulo="Observações técnicas"
-              valor={aluno.observacoesTecnicas}
-              className="sm:col-span-2"
-            />
+          <CardContent>
+            <FormMeusDadosAluno aluno={dadosPessoaisAluno} />
           </CardContent>
         </Card>
 

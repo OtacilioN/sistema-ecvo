@@ -201,7 +201,7 @@ export async function criarAluno(
 
 export async function atualizarAluno(
   alunoId: string,
-  params: Partial<DadosAluno> & { nome?: string; autorId: string },
+  params: Partial<DadosAluno> & { nome?: string; email?: string; autorId: string },
 ) {
   const atual = await db.aluno.findUnique({
     where: { id: alunoId },
@@ -224,7 +224,7 @@ export async function atualizarAluno(
       plano: { select: { nome: true } },
       diaVencimento: true,
       responsavel: true,
-      usuario: { select: { nome: true, fotoUrl: true } },
+      usuario: { select: { nome: true, email: true, fotoUrl: true } },
       modalidades: { select: { id: true, nome: true } },
       modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
     },
@@ -264,11 +264,12 @@ export async function atualizarAluno(
     const aluno = await tx.aluno.update({
       where: { id: atual.id },
       data: {
-        ...(params.nome !== undefined || params.fotoUrl !== undefined
+        ...(params.nome !== undefined || params.email !== undefined || params.fotoUrl !== undefined
           ? {
               usuario: {
                 update: {
                   ...(params.nome !== undefined ? { nome: params.nome } : {}),
+                  ...(params.email !== undefined ? { email: params.email } : {}),
                   ...(params.fotoUrl !== undefined ? { fotoUrl: params.fotoUrl } : {}),
                 },
               },
@@ -309,7 +310,7 @@ export async function atualizarAluno(
           : {}),
       },
       include: {
-        usuario: { select: { nome: true, fotoUrl: true } },
+        usuario: { select: { nome: true, email: true, fotoUrl: true } },
         modalidades: { select: { id: true, nome: true } },
         plano: { select: { nome: true, valor: true } },
         responsavel: true,
@@ -353,6 +354,7 @@ export async function atualizarAluno(
 
     const valorAntigo = serializarAluno({
       nome: atual.usuario.nome,
+      email: atual.usuario.email,
       tipo: atual.tipo,
       status: atual.status,
       cpf: atual.cpf,
@@ -375,6 +377,7 @@ export async function atualizarAluno(
     const valorNovo = {
       ...serializarAluno({
         nome: aluno.usuario.nome,
+        email: aluno.usuario.email,
         tipo: aluno.tipo,
         status: aluno.status,
         cpf: aluno.cpf,
@@ -474,6 +477,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
         entidadeId: aluno.id,
         valorAntigo: serializarAluno({
           nome: aluno.usuario.nome,
+          email: aluno.usuario.email,
           tipo: aluno.tipo,
           status: aluno.status,
           cpf: aluno.cpf,
@@ -504,6 +508,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
 
 function serializarAluno(dados: {
   nome: string
+  email: string
   tipo: TipoAluno
   status: StatusAluno
   cpf: string | null
@@ -535,6 +540,7 @@ function serializarAluno(dados: {
 }) {
   return {
     nome: dados.nome,
+    email: dados.email,
     tipo: dados.tipo,
     status: dados.status,
     cpf: dados.cpf,
