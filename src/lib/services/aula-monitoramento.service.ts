@@ -42,6 +42,7 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       observacoesTecnicas: matriculado.observacoesTecnicas,
       status: "AUSENTE",
       checkinId: null,
+      temComparecimento: false,
     })
   }
 
@@ -52,6 +53,7 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       (comparecimento.status === "CONFIRMADO" || comparecimento.status === "CONVERTIDO_CHECKIN")
     ) {
       linha.status = "COMPARECEU"
+      linha.temComparecimento = true
     } else if (linha && comparecimento.status === "LISTA_ESPERA") {
       linha.status = "LISTA_ESPERA"
     } else if (linha && comparecimento.status === "NO_SHOW") {
@@ -67,6 +69,7 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       observacoesTecnicas: null,
       status: "AUSENTE" as StatusLinha,
       checkinId: null,
+      temComparecimento: false,
     }
     if (checkin.status === "VALIDO") {
       linha.status = "PRESENTE"

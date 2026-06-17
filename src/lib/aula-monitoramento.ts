@@ -16,6 +16,7 @@ export type LinhaMonitoramentoAula = {
   observacoesTecnicas: string | null
   status: StatusLinha
   checkinId: string | null
+  temComparecimento: boolean
 }
 
 export type TentativaInadimplenteAula = {
