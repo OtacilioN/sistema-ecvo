@@ -13,6 +13,7 @@ import {
   WalletCards,
 } from "lucide-react"
 import Link from "next/link"
+import type { CSSProperties } from "react"
 import { LembreteAtivarNotificacoes } from "@/components/lembrete-ativar-notificacoes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -659,17 +660,29 @@ function BarraDia({
   tom: "positivo" | "atencao"
 }) {
   const altura = valor > 0 ? Math.max(10, Math.round((valor / maiorValor) * 100)) : 3
+  const valorFormatado = formatarBRL(valor)
+  const rotulo = tom === "positivo" ? "Recebido" : "A receber"
+
   return (
-    <div
-      title={formatarBRL(valor)}
-      className={cn(
-        "w-full max-w-5 rounded-t-sm transition-colors",
-        tom === "positivo" && "bg-success",
-        tom === "atencao" && "bg-warning",
-        valor === 0 && "opacity-25",
-      )}
-      style={{ height: `${altura}%` }}
-    />
+    <button
+      aria-label={`${rotulo}: ${valorFormatado}`}
+      className="group relative flex h-full w-full max-w-5 cursor-default appearance-none items-end justify-center rounded-sm border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+      style={{ "--altura-barra": `${altura}%` } as CSSProperties}
+      type="button"
+    >
+      <div
+        className={cn(
+          "w-full rounded-t-sm transition-colors",
+          tom === "positivo" && "bg-success",
+          tom === "atencao" && "bg-warning",
+          valor === 0 && "opacity-25",
+        )}
+        style={{ height: "var(--altura-barra)" }}
+      />
+      <span className="pointer-events-none absolute bottom-[calc(var(--altura-barra)+0.5rem)] left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium text-popover-foreground opacity-0 shadow-md transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+        {valorFormatado}
+      </span>
+    </button>
   )
 }
 
