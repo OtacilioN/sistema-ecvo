@@ -211,6 +211,10 @@ export default async function GestaoInicio() {
       mensalidade.vencimento.getTime() >= inicioHoje.getTime() &&
       mensalidade.vencimento.getTime() < inicioProximoMes.getTime(),
   )
+  const valorPrevistoMes = mensalidadesVencemMes.reduce(
+    (total, mensalidade) => total + mensalidade.valorNumero,
+    0,
+  )
 
   const totalSemanasMes = Math.ceil((inicioProximoMes.getTime() - inicioMes.getTime()) / MS_DIA / 7)
   const semanasMes = Array.from({ length: totalSemanasMes }, (_, indice) => ({
@@ -384,11 +388,11 @@ export default async function GestaoInicio() {
                 tom="positivo"
               />
               <MiniIndicador
-                rotulo="Recebido no mês"
-                valor={formatarBRL(valorRecebidoMes)}
-                detalhe={`Esta semana ${formatarBRL(valorRecebidoSemana)}`}
-                icone={TrendingUp}
-                tom="neutro"
+                rotulo="A receber ainda este mês"
+                valor={formatarBRL(valorPrevistoMes)}
+                detalhe={`Esta semana ${formatarBRL(valorPrevistoSemana)}`}
+                icone={CalendarClock}
+                tom="atencao"
               />
             </div>
 
