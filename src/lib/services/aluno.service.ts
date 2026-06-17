@@ -3,6 +3,7 @@ import type { Plataforma, Prisma, StatusAluno, TipoAluno } from "@prisma/client"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import { atualizarVencimentosMensalidadesAluno } from "@/lib/services/financeiro.service"
 import { excluirFotosInternasAntigas } from "@/lib/storage/blob-fotos"
 
 // Serviço de ALUNOS (RF-001..004). Criar um aluno cria o Usuario (papel ALUNO) + Aluno,
@@ -233,6 +234,7 @@ export async function atualizarAluno(
 
   const atualizado = await db.$transaction(async (tx) => {
     let mensalidadesAbertasMigradas = 0
+    let mensalidadesVencimentoAtualizadas = 0
 
     if (params.responsavel !== undefined) {
       if (params.responsavel) {
@@ -326,6 +328,15 @@ export async function atualizarAluno(
       })
     }
 
+    if (params.diaVencimento !== undefined) {
+      mensalidadesVencimentoAtualizadas = await atualizarVencimentosMensalidadesAluno(tx, {
+        alunoId: atual.id,
+        diaVencimentoAnterior: atual.diaVencimento,
+        diaVencimentoNovo: params.diaVencimento,
+        autorId: params.autorId,
+      })
+    }
+
     if (
       params.planoId !== undefined ||
       params.modalidadeIds !== undefined ||
@@ -403,6 +414,7 @@ export async function atualizarAluno(
         responsavel: aluno.responsavel,
       }),
       ...(mensalidadesAbertasMigradas > 0 ? { mensalidadesAbertasMigradas } : {}),
+      ...(mensalidadesVencimentoAtualizadas > 0 ? { mensalidadesVencimentoAtualizadas } : {}),
     }
 
     if (JSON.stringify(valorAntigo) !== JSON.stringify(valorNovo)) {

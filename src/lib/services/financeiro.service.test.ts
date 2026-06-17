@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  atualizarVencimentosMensalidadesAluno,
   calcularRepasseFinanceiro,
   mensagemInadimplenciaMensalidade,
   mensagemInadimplenciaMensalidadeAluno,
@@ -80,6 +81,106 @@ describe("mensalidadeBloqueiaTreino", () => {
         new Date("2026-06-11T12:00:00Z"),
       ),
     ).toBe(true)
+  })
+})
+
+describe("atualizarVencimentosMensalidadesAluno", () => {
+  it("recalcula vencimento e status de mensalidades abertas e vencidas", async () => {
+    const atualizacoes: unknown[] = []
+    const cliente = {
+      mensalidade: {
+        findMany: async () => [
+          { id: "mensalidade-1", competencia: "2026-06", status: "VENCIDA" },
+          { id: "mensalidade-2", competencia: "2026-05", status: "EM_ABERTO" },
+        ],
+        update: async (params: unknown) => {
+          atualizacoes.push(params)
+          return params
+        },
+        findFirst: async () => ({ id: "mensalidade-2" }),
+      },
+      aluno: {
+        updateMany: async () => ({ count: 1 }),
+      },
+    } as never
+
+    const resultado = await atualizarVencimentosMensalidadesAluno(cliente, {
+      alunoId: "aluno-1",
+      diaVencimentoAnterior: 8,
+      diaVencimentoNovo: 12,
+      hoje: new Date("2026-06-11T12:00:00Z"),
+    })
+
+    expect(resultado).toBe(2)
+    expect(atualizacoes).toEqual([
+      {
+        where: { id: "mensalidade-1" },
+        data: {
+          vencimento: new Date("2026-06-12T12:00:00Z"),
+          status: "EM_ABERTO",
+        },
+      },
+      {
+        where: { id: "mensalidade-2" },
+        data: {
+          vencimento: new Date("2026-05-12T12:00:00Z"),
+          status: "VENCIDA",
+        },
+      },
+    ])
+  })
+
+  it("atualiza o vencimento sem reabrir status finais", async () => {
+    const atualizacoes: unknown[] = []
+    const cliente = {
+      mensalidade: {
+        findMany: async () => [{ id: "mensalidade-1", competencia: "2026-06", status: "PAGA" }],
+        update: async (params: unknown) => {
+          atualizacoes.push(params)
+          return params
+        },
+        findFirst: async () => null,
+      },
+      aluno: {
+        updateMany: async () => ({ count: 1 }),
+      },
+    } as never
+
+    const resultado = await atualizarVencimentosMensalidadesAluno(cliente, {
+      alunoId: "aluno-1",
+      diaVencimentoAnterior: 8,
+      diaVencimentoNovo: 12,
+      hoje: new Date("2026-06-11T12:00:00Z"),
+    })
+
+    expect(resultado).toBe(1)
+    expect(atualizacoes).toEqual([
+      {
+        where: { id: "mensalidade-1" },
+        data: {
+          vencimento: new Date("2026-06-12T12:00:00Z"),
+          status: "PAGA",
+        },
+      },
+    ])
+  })
+
+  it("não busca mensalidades quando o dia não mudou", async () => {
+    const cliente = {
+      mensalidade: {
+        findMany: async () => {
+          throw new Error("não deveria buscar mensalidades")
+        },
+      },
+    } as never
+
+    const resultado = await atualizarVencimentosMensalidadesAluno(cliente, {
+      alunoId: "aluno-1",
+      diaVencimentoAnterior: 12,
+      diaVencimentoNovo: 12,
+    })
+
+    expect(resultado).toBe(0)
   })
 })
 

@@ -147,6 +147,51 @@ export async function sincronizarStatusFinanceiroAluno(
   }
 }
 
+export async function atualizarVencimentosMensalidadesAluno(
+  cliente: Cliente,
+  params: {
+    alunoId: string
+    diaVencimentoAnterior: number
+    diaVencimentoNovo: number
+    hoje?: Date
+    autorId?: string
+  },
+) {
+  if (params.diaVencimentoAnterior === params.diaVencimentoNovo) return 0
+
+  const mensalidades = await cliente.mensalidade.findMany({
+    where: { alunoId: params.alunoId },
+    select: {
+      id: true,
+      competencia: true,
+      status: true,
+    },
+  })
+  const inicioHoje = inicioDoDia(params.hoje ?? new Date())
+
+  for (const mensalidade of mensalidades) {
+    const vencimento = vencimentoDaCompetencia(mensalidade.competencia, params.diaVencimentoNovo)
+    await cliente.mensalidade.update({
+      where: { id: mensalidade.id },
+      data: {
+        vencimento,
+        status: statusMensalidadeAposNovoVencimento(mensalidade.status, vencimento, inicioHoje),
+      },
+    })
+  }
+
+  if (mensalidades.length > 0) {
+    await sincronizarStatusFinanceiroAluno(
+      cliente,
+      params.alunoId,
+      params.hoje ?? new Date(),
+      params.autorId,
+    )
+  }
+
+  return mensalidades.length
+}
+
 export function calcularRepasseFinanceiro(params: {
   valorRecebido: number
   itens: ItemRepasseModalidade[]
@@ -539,6 +584,12 @@ export async function vincularPlanoMensalista(params: {
       ],
       skipDuplicates: true,
     })
+    const mensalidadesVencimentoAtualizadas = await atualizarVencimentosMensalidadesAluno(tx, {
+      alunoId: params.alunoId,
+      diaVencimentoAnterior: anterior.diaVencimento,
+      diaVencimentoNovo: atualizado.diaVencimento,
+      autorId: params.autorId,
+    })
 
     await registrarLog(
       {
@@ -559,6 +610,7 @@ export async function vincularPlanoMensalista(params: {
           diaVencimento: atualizado.diaVencimento,
           modalidadeIds,
           modalidadesExternas,
+          mensalidadesVencimentoAtualizadas,
         }),
       },
       tx,
@@ -1042,9 +1094,18 @@ export async function vencerMensalidadesAtrasadas(
   return { ok: true as const, mensalidadesVencidas, alunosNotificados }
 }
 
-function vencimentoDaCompetencia(competencia: string, diaVencimento: number): Date {
+export function vencimentoDaCompetencia(competencia: string, diaVencimento: number): Date {
   const [ano, mes] = competencia.split("-").map(Number)
   return new Date(Date.UTC(ano, mes - 1, diaVencimento, 12, 0, 0))
+}
+
+function statusMensalidadeAposNovoVencimento(
+  status: StatusMensalidade,
+  vencimento: Date,
+  inicioHoje: Date,
+): StatusMensalidade {
+  if (status !== "EM_ABERTO" && status !== "VENCIDA") return status
+  return vencimento.getTime() < inicioHoje.getTime() ? "VENCIDA" : "EM_ABERTO"
 }
 
 function inicioDoDia(data: Date): Date {
@@ -1153,6 +1214,7 @@ function serializarVinculo(vinculo: {
     modalidadeId: string
     plataformaExterna: Plataforma | null
   }>
+  mensalidadesVencimentoAtualizadas?: number
 }): Prisma.InputJsonObject {
   return {
     tipo: vinculo.tipo,
@@ -1160,6 +1222,9 @@ function serializarVinculo(vinculo: {
     diaVencimento: vinculo.diaVencimento,
     modalidadeIds: vinculo.modalidadeIds,
     modalidadesExternas: vinculo.modalidadesExternas,
+    ...(vinculo.mensalidadesVencimentoAtualizadas !== undefined
+      ? { mensalidadesVencimentoAtualizadas: vinculo.mensalidadesVencimentoAtualizadas }
+      : {}),
   }
 }
 
