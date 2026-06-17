@@ -333,6 +333,7 @@ export async function atualizarAluno(
         alunoId: atual.id,
         diaVencimentoAnterior: atual.diaVencimento,
         diaVencimentoNovo: params.diaVencimento,
+        autorId: params.autorId,
       })
     }
 

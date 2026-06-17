@@ -10,6 +10,7 @@ import {
   mensalidadeBloqueiaTreino,
   mensalistaAdimplente,
   modalidadesMensalidadeInterna,
+  sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
   vencerMensalidadesAtrasadas,
 } from "./financeiro.service"
@@ -96,6 +97,10 @@ describe("atualizarVencimentosMensalidadesAluno", () => {
           atualizacoes.push(params)
           return params
         },
+        findFirst: async () => ({ id: "mensalidade-2" }),
+      },
+      aluno: {
+        updateMany: async () => ({ count: 1 }),
       },
     } as never
 
@@ -134,6 +139,10 @@ describe("atualizarVencimentosMensalidadesAluno", () => {
           atualizacoes.push(params)
           return params
         },
+        findFirst: async () => null,
+      },
+      aluno: {
+        updateMany: async () => ({ count: 1 }),
       },
     } as never
 
@@ -179,6 +188,7 @@ describe("vencerMensalidadesAtrasadas", () => {
   it("marca como vencidas mensalidades em aberto com vencimento passado e notifica alunos", async () => {
     const buscas: unknown[] = []
     const atualizacoes: unknown[] = []
+    const atualizacoesAluno: unknown[] = []
     const notificacoes: unknown[] = []
     const cliente = {
       mensalidade: {
@@ -187,6 +197,7 @@ describe("vencerMensalidadesAtrasadas", () => {
           return [
             {
               id: "mensalidade-1",
+              alunoId: "aluno-1",
               competencia: "2026-06",
               vencimento: new Date("2026-06-10T12:00:00Z"),
               valor: 250,
@@ -194,6 +205,7 @@ describe("vencerMensalidadesAtrasadas", () => {
             },
             {
               id: "mensalidade-2",
+              alunoId: "aluno-2",
               competencia: "2026-06",
               vencimento: new Date("2026-06-09T12:00:00Z"),
               valor: 300,
@@ -204,6 +216,13 @@ describe("vencerMensalidadesAtrasadas", () => {
         updateMany: async (params: unknown) => {
           atualizacoes.push(params)
           return { count: atualizacoes.length === 1 ? 1 : 0 }
+        },
+        findFirst: async () => ({ id: "mensalidade-1" }),
+      },
+      aluno: {
+        updateMany: async (params: unknown) => {
+          atualizacoesAluno.push(params)
+          return { count: 1 }
         },
       },
       notificacao: {
@@ -231,6 +250,7 @@ describe("vencerMensalidadesAtrasadas", () => {
         },
         select: {
           id: true,
+          alunoId: true,
           competencia: true,
           vencimento: true,
           valor: true,
@@ -247,6 +267,12 @@ describe("vencerMensalidadesAtrasadas", () => {
       {
         where: { id: "mensalidade-2", status: "EM_ABERTO" },
         data: { status: "VENCIDA" },
+      },
+    ])
+    expect(atualizacoesAluno).toEqual([
+      {
+        where: { id: "aluno-1", status: "ATIVO" },
+        data: { status: "INADIMPLENTE" },
       },
     ])
     expect(notificacoes).toEqual([
@@ -269,12 +295,17 @@ describe("vencerMensalidadesAtrasadas", () => {
         findMany: async () => [
           {
             id: "mensalidade-1",
+            alunoId: "aluno-1",
             competencia: "2026-06",
             vencimento: new Date("2026-06-10T12:00:00Z"),
             valor: 250,
             aluno: { usuarioId: "usuario-aluno-1" },
           },
         ],
+        updateMany: async () => ({ count: 1 }),
+        findFirst: async () => ({ id: "mensalidade-1" }),
+      },
+      aluno: {
         updateMany: async () => ({ count: 1 }),
       },
       notificacao: {
@@ -295,6 +326,30 @@ describe("vencerMensalidadesAtrasadas", () => {
 
     expect(resultado).toEqual({ ok: true, mensalidadesVencidas: 1, alunosNotificados: 0 })
     expect(notificacoesCriadas).toEqual([])
+  })
+
+  it("volta aluno inadimplente para ativo quando não resta mensalidade vencida", async () => {
+    const atualizacoesAluno: unknown[] = []
+    const cliente = {
+      mensalidade: {
+        findFirst: async () => null,
+      },
+      aluno: {
+        updateMany: async (params: unknown) => {
+          atualizacoesAluno.push(params)
+          return { count: 1 }
+        },
+      },
+    } as never
+
+    await sincronizarStatusFinanceiroAluno(cliente, "aluno-1", new Date("2026-06-11T12:00:00Z"))
+
+    expect(atualizacoesAluno).toEqual([
+      {
+        where: { id: "aluno-1", status: "INADIMPLENTE" },
+        data: { status: "ATIVO" },
+      },
+    ])
   })
 })
 
