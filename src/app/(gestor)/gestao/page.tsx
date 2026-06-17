@@ -23,8 +23,9 @@ import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
 import {
+  chaveCompetencia,
+  dataCivilParaDate,
   formatarData,
-  formatarDataExtenso,
   inicioDoDiaAcademia,
   paraFusoAcademia,
 } from "@/lib/utils/datas"
@@ -57,12 +58,22 @@ function obterInicioSemana(data: Date) {
   return adicionarDias(inicioHoje, -diaSemana)
 }
 
-function indiceDiaSemana(data: Date, inicioSemana: Date) {
-  return Math.floor((inicioDoDiaAcademia(data).getTime() - inicioSemana.getTime()) / MS_DIA)
+function obterIntervaloMes(data: Date) {
+  const [ano, mes] = chaveCompetencia(data).split("-").map(Number)
+  const proximoAno = mes === 12 ? ano + 1 : ano
+  const proximoMes = mes === 12 ? 1 : mes + 1
+
+  return {
+    inicioMes: dataCivilParaDate(`${ano}-${String(mes).padStart(2, "0")}-01`),
+    inicioProximoMes: dataCivilParaDate(`${proximoAno}-${String(proximoMes).padStart(2, "0")}-01`),
+  }
 }
 
-function nomeCurtoDia(dia: Date) {
-  return formatarDataExtenso(dia).split("-")[0]?.slice(0, 3) ?? ""
+function indiceSemanaMes(data: Date, inicioMes: Date) {
+  const diasDesdeInicio = Math.floor(
+    (inicioDoDiaAcademia(data).getTime() - inicioMes.getTime()) / MS_DIA,
+  )
+  return Math.floor(Math.max(diasDesdeInicio, 0) / 7)
 }
 
 export default async function GestaoInicio() {
@@ -70,7 +81,8 @@ export default async function GestaoInicio() {
   const inicioHoje = inicioDoDiaAcademia(hoje)
   const inicioSemana = obterInicioSemana(hoje)
   const fimSemanaExclusivo = adicionarDias(inicioSemana, 7)
-  const fimSemana = adicionarDias(fimSemanaExclusivo, -1)
+  const { inicioMes, inicioProximoMes } = obterIntervaloMes(hoje)
+  const fimMes = adicionarDias(inicioProximoMes, -1)
 
   const [
     alunosMonitorados,
@@ -79,7 +91,7 @@ export default async function GestaoInicio() {
     turmas,
     mensalidadesPendentes,
     mensalidadesRecebidasSemana,
-    pagamentosAvulsosSemana,
+    mensalidadesRecebidasMes,
   ] = await Promise.all([
     db.aluno.findMany({
       where: { status: { in: statusMonitorados } },
@@ -115,9 +127,12 @@ export default async function GestaoInicio() {
       },
       select: { valor: true, pagoEm: true },
     }),
-    db.pagamento.findMany({
-      where: { criadoEm: { gte: inicioSemana, lt: fimSemanaExclusivo } },
-      select: { valor: true, criadoEm: true },
+    db.mensalidade.findMany({
+      where: {
+        status: "PAGA",
+        pagoEm: { gte: inicioMes, lt: inicioProximoMes },
+      },
+      select: { valor: true, pagoEm: true },
     }),
   ])
 
@@ -188,34 +203,36 @@ export default async function GestaoInicio() {
     (total, mensalidade) => total + mensalidade.valorNumero,
     0,
   )
-  const valorRecebidoSemana =
-    somarValores(mensalidadesRecebidasSemana) + somarValores(pagamentosAvulsosSemana)
+  const valorRecebidoSemana = somarValores(mensalidadesRecebidasSemana)
+  const valorRecebidoMes = somarValores(mensalidadesRecebidasMes)
+  const mensalidadesVencemMes = mensalidadesComStatus.filter(
+    (mensalidade) =>
+      mensalidade.statusEfetivo === "EM_ABERTO" &&
+      mensalidade.vencimento.getTime() >= inicioHoje.getTime() &&
+      mensalidade.vencimento.getTime() < inicioProximoMes.getTime(),
+  )
 
-  const diasSemana = Array.from({ length: 7 }, (_, indice) => {
-    const dia = adicionarDias(inicioSemana, indice)
-    return {
-      dia,
-      rotulo: nomeCurtoDia(dia),
-      previsto: 0,
-      recebido: 0,
-    }
-  })
+  const totalSemanasMes = Math.ceil((inicioProximoMes.getTime() - inicioMes.getTime()) / MS_DIA / 7)
+  const semanasMes = Array.from({ length: totalSemanasMes }, (_, indice) => ({
+    rotulo: `Sem ${indice + 1}`,
+    previsto: 0,
+    recebido: 0,
+  }))
 
-  for (const mensalidade of mensalidadesVencemSemana) {
-    const indice = indiceDiaSemana(mensalidade.vencimento, inicioSemana)
-    if (diasSemana[indice]) diasSemana[indice].previsto += mensalidade.valorNumero
+  for (const mensalidade of mensalidadesVencemMes) {
+    const indice = indiceSemanaMes(mensalidade.vencimento, inicioMes)
+    if (semanasMes[indice]) semanasMes[indice].previsto += mensalidade.valorNumero
   }
-  for (const mensalidade of mensalidadesRecebidasSemana) {
+  for (const mensalidade of mensalidadesRecebidasMes) {
     if (!mensalidade.pagoEm) continue
-    const indice = indiceDiaSemana(mensalidade.pagoEm, inicioSemana)
-    if (diasSemana[indice]) diasSemana[indice].recebido += Number(mensalidade.valor)
-  }
-  for (const pagamento of pagamentosAvulsosSemana) {
-    const indice = indiceDiaSemana(pagamento.criadoEm, inicioSemana)
-    if (diasSemana[indice]) diasSemana[indice].recebido += Number(pagamento.valor)
+    const indice = indiceSemanaMes(mensalidade.pagoEm, inicioMes)
+    if (semanasMes[indice]) semanasMes[indice].recebido += Number(mensalidade.valor)
   }
 
-  const maiorValorDia = Math.max(1, ...diasSemana.flatMap((dia) => [dia.previsto, dia.recebido]))
+  const maiorValorSemanaMes = Math.max(
+    1,
+    ...semanasMes.flatMap((semana) => [semana.previsto, semana.recebido]),
+  )
 
   const cardsOperacao = [
     { rotulo: "Alunos monitorados", valor: totalAlunosMonitorados, icone: Users },
@@ -228,7 +245,7 @@ export default async function GestaoInicio() {
     <div className="space-y-6">
       <CabecalhoPagina
         titulo="Painel da gestão"
-        descricao={`Semana de ${formatarData(inicioSemana)} a ${formatarData(fimSemana)}.`}
+        descricao={`Mês de ${formatarData(inicioMes)} a ${formatarData(fimMes)}.`}
       >
         <Button asChild>
           <Link href="/gestao/financeiro">
@@ -298,7 +315,8 @@ export default async function GestaoInicio() {
               <KpiCard
                 titulo="Recebido na semana"
                 valor={formatarBRL(valorRecebidoSemana)}
-                descricao="Mensalidades pagas e vendas avulsas"
+                descricao="Mensalidades pagas"
+                detalheSecundario={`Este mês: ${formatarBRL(valorRecebidoMes)}`}
                 icone={TrendingUp}
                 tom="positivo"
               />
@@ -347,28 +365,28 @@ export default async function GestaoInicio() {
       <div className="grid gap-4 xl:grid-cols-[1fr_0.85fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Resumo semanal</CardTitle>
+            <CardTitle>Resumo mensal</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="grid gap-3 sm:grid-cols-3">
               <MiniIndicador
-                rotulo="Alunos vencem esta semana"
+                rotulo="Alunos vencendo esta semana"
                 valor={vencemSemanaIds.size.toString()}
                 detalhe={formatarBRL(valorPrevistoSemana)}
                 icone={WalletCards}
                 tom="atencao"
               />
               <MiniIndicador
-                rotulo="Recebidas"
-                valor={mensalidadesRecebidasSemana.length.toString()}
-                detalhe="mensalidades pagas"
+                rotulo="Mensalidades pagas"
+                valor={mensalidadesRecebidasMes.length.toString()}
+                detalhe={`Esta semana ${mensalidadesRecebidasSemana.length}`}
                 icone={DollarSign}
                 tom="positivo"
               />
               <MiniIndicador
-                rotulo="Vendas avulsas"
-                valor={pagamentosAvulsosSemana.length.toString()}
-                detalhe={formatarBRL(somarValores(pagamentosAvulsosSemana))}
+                rotulo="Recebido no mês"
+                valor={formatarBRL(valorRecebidoMes)}
+                detalhe={`Esta semana ${formatarBRL(valorRecebidoSemana)}`}
                 icone={TrendingUp}
                 tom="neutro"
               />
@@ -376,11 +394,10 @@ export default async function GestaoInicio() {
 
             <div>
               <div className="mb-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                <span>Fluxo diário</span>
+                <span>Fluxo do mês</span>
                 <div className="flex items-center gap-3">
                   <span className="inline-flex items-center gap-1">
-                    <span className="size-2 rounded-full bg-warning" />
-                    Previsto
+                    <span className="size-2 rounded-full bg-warning" />A receber
                   </span>
                   <span className="inline-flex items-center gap-1">
                     <span className="size-2 rounded-full bg-success" />
@@ -388,15 +405,26 @@ export default async function GestaoInicio() {
                   </span>
                 </div>
               </div>
-              <div className="grid h-44 grid-cols-7 items-end gap-2 rounded-md border border-border bg-muted/30 p-3">
-                {diasSemana.map((dia) => (
-                  <div key={dia.dia.toISOString()} className="flex h-full min-w-0 flex-col">
+              <div
+                className="grid h-44 items-end gap-2 rounded-md border border-border bg-muted/30 p-3"
+                style={{ gridTemplateColumns: `repeat(${semanasMes.length}, minmax(0, 1fr))` }}
+              >
+                {semanasMes.map((semana) => (
+                  <div key={semana.rotulo} className="flex h-full min-w-0 flex-col">
                     <div className="flex flex-1 items-end justify-center gap-1">
-                      <BarraDia valor={dia.previsto} maiorValor={maiorValorDia} tom="atencao" />
-                      <BarraDia valor={dia.recebido} maiorValor={maiorValorDia} tom="positivo" />
+                      <BarraDia
+                        valor={semana.previsto}
+                        maiorValor={maiorValorSemanaMes}
+                        tom="atencao"
+                      />
+                      <BarraDia
+                        valor={semana.recebido}
+                        maiorValor={maiorValorSemanaMes}
+                        tom="positivo"
+                      />
                     </div>
                     <span className="mt-2 truncate text-center text-xs text-muted-foreground">
-                      {dia.rotulo}
+                      {semana.rotulo}
                     </span>
                   </div>
                 ))}
@@ -495,12 +523,14 @@ function KpiCard({
   titulo,
   valor,
   descricao,
+  detalheSecundario,
   icone: Icone,
   tom,
 }: {
   titulo: string
   valor: string
   descricao: string
+  detalheSecundario?: string
   icone: LucideIcon
   tom: "positivo" | "atencao"
 }) {
@@ -522,6 +552,11 @@ function KpiCard({
         </div>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">{descricao}</p>
+      {detalheSecundario && (
+        <p className="mt-3 border-t border-border pt-3 text-sm font-medium tabular-nums">
+          {detalheSecundario}
+        </p>
+      )}
     </div>
   )
 }
