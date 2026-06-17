@@ -1,13 +1,11 @@
 import { notFound } from "next/navigation"
+import { montarLinhasPainelAula, PainelAulaCheckin } from "@/components/checkin/painel-aula-checkin"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
 import { exigirPapel } from "@/lib/auth/dal"
 import { carregarMonitoramentoAula } from "@/lib/services/aula-monitoramento.service"
 import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
 import { AtualizacaoAula } from "./atualizacao-aula"
 import { FormNoShows } from "./form-no-shows"
-import { LinhaPresenca } from "./linha-presenca"
-import { TentativasInadimplencia } from "./tentativas-inadimplencia"
 
 export const dynamic = "force-dynamic"
 
@@ -21,6 +19,7 @@ export default async function AulaDetalhe({ params }: { params: Promise<{ id: st
 
   const { aula, lista, presentes, noShows, tentativasInadimplentes } = monitoramento
   const podeProcessarNoShow = !aula.cancelada && aula.fim.getTime() <= agora.getTime()
+  const linhasPainel = montarLinhasPainelAula({ lista, tentativasInadimplentes })
 
   return (
     <div className="space-y-6">
@@ -43,41 +42,12 @@ export default async function AulaDetalhe({ params }: { params: Promise<{ id: st
 
       {podeProcessarNoShow && <FormNoShows aulaId={aula.id} />}
 
-      <TentativasInadimplencia tentativas={tentativasInadimplentes} />
-
-      <Card>
-        <CardContent className="p-0">
-          <table className="tabela-responsiva w-full text-sm">
-            <thead className="border-b border-border text-left text-muted-foreground">
-              <tr>
-                <th className="p-4 font-medium">Aluno</th>
-                <th className="p-4 font-medium">Situação</th>
-                <th className="p-4 font-medium">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lista.map((l) => (
-                <LinhaPresenca
-                  key={l.alunoId}
-                  aulaId={aula.id}
-                  alunoId={l.alunoId}
-                  nome={l.nome}
-                  observacoesTecnicas={l.observacoesTecnicas}
-                  status={l.status}
-                  checkinId={l.checkinId}
-                />
-              ))}
-              {lista.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="p-8 text-center text-muted-foreground">
-                    Nenhum aluno matriculado nesta modalidade.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+      <PainelAulaCheckin
+        aulaId={aula.id}
+        linhas={linhasPainel}
+        tentativasInadimplentes={tentativasInadimplentes}
+        podeEditar
+      />
     </div>
   )
 }

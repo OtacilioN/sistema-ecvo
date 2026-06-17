@@ -39,6 +39,7 @@ export async function acaoMarcarComparecimento(
   const aulaId = String(formData.get("aulaId"))
   const r = await marcarComparecimento({ alunoId, aulaId })
   revalidatePath("/aluno")
+  revalidatePath("/gestao/checkin")
   return r.ok ? { ok: true } : { erro: r.motivo }
 }
 
@@ -53,6 +54,7 @@ export async function acaoCancelarComparecimento(
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/notificacoes")
   revalidatePath(`/professor/aula/${aulaId}`)
+  revalidatePath("/gestao/checkin")
   return r.ok ? { ok: true } : { erro: r.motivo }
 }
 
@@ -77,6 +79,7 @@ export async function acaoCheckinAlunoQr(
   revalidatePath(`/aluno/checkin/${aulaId}`)
   revalidatePath(`/professor/aula/${aulaId}`)
   revalidatePath(`/gestao/turmas/aula/${aulaId}`)
+  revalidatePath("/gestao/checkin")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/gestao/notificacoes")
   revalidatePath("/professor/notificacoes")
@@ -121,6 +124,7 @@ export async function acaoLancarCheckin(
   })
   revalidatePath(`/professor/aula/${aulaId}`)
   revalidatePath(`/gestao/turmas/aula/${aulaId}`)
+  revalidatePath("/gestao/checkin")
   revalidatePath("/gestao/turmas")
   revalidatePath("/gestao/auditoria")
   return r.ok ? { ok: true } : { erro: r.motivo }
@@ -145,6 +149,7 @@ export async function acaoInvalidarCheckin(
   })
   revalidatePath(`/professor/aula/${aulaId}`)
   revalidatePath(`/gestao/turmas/aula/${aulaId}`)
+  revalidatePath("/gestao/checkin")
   revalidatePath("/gestao/turmas")
   revalidatePath("/gestao/auditoria")
   return r.ok ? { ok: true } : { erro: r.motivo }
@@ -174,6 +179,7 @@ export async function acaoAtualizarObservacaoTecnica(
   })
   revalidatePath(`/professor/aula/${parsed.data.aulaId}`)
   revalidatePath(`/gestao/turmas/aula/${parsed.data.aulaId}`)
+  revalidatePath("/gestao/checkin")
   revalidatePath("/aluno/perfil")
   revalidatePath("/gestao/auditoria")
   if (!resultado.ok) return { erro: resultado.motivo }
@@ -190,6 +196,7 @@ export async function acaoMarcarNoShows(
   const r = await marcarNoShows({ aulaId, autorId: usuario.id })
   revalidatePath(`/professor/aula/${aulaId}`)
   revalidatePath(`/gestao/turmas/aula/${aulaId}`)
+  revalidatePath("/gestao/checkin")
   revalidatePath("/gestao/turmas")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/gestao/notificacoes")

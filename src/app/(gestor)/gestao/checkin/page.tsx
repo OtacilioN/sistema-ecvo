@@ -11,6 +11,7 @@ import {
   UsersRound,
 } from "lucide-react"
 import Link from "next/link"
+import { AcoesCardAlunoCheckin } from "@/components/checkin/acoes-card-aluno"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
@@ -277,7 +278,8 @@ function contarPorStatus(linhas: LinhaPainel[]) {
 }
 
 export default async function CheckinGestaoPage({ searchParams }: { searchParams: SearchParams }) {
-  await exigirGestao()
+  const usuario = await exigirGestao()
+  const podeEditar = usuario.papel === "GESTOR"
   const params = await searchParams
   const agora = new Date()
   const hojeAcademia = paraFusoAcademia(agora)
@@ -452,8 +454,22 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
                       <div className="space-y-3">
                         <div className="flex items-start justify-between gap-3">
                           <h3 className="text-lg font-black leading-tight">{linha.nome}</h3>
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-white/70">
-                            <Icone className="size-5" />
+                          <div className="flex shrink-0 items-center gap-2">
+                            <div className="flex size-10 items-center justify-center rounded-md bg-white/70">
+                              <Icone className="size-5" />
+                            </div>
+                            {podeEditar && (
+                              <AcoesCardAlunoCheckin
+                                aulaId={aulaSelecionada.id}
+                                alunoId={linha.alunoId}
+                                nome={linha.nome}
+                                observacoesTecnicas={linha.observacoesTecnicas}
+                                checkinLancado={
+                                  linha.statusPainel === "CHECKIN" ||
+                                  linha.statusPainel === "CHECKIN_COMPARECIMENTO"
+                                }
+                              />
+                            )}
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
