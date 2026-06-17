@@ -366,77 +366,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
       <Card>
         <CardHeader>
-          <CardTitle>Receitas usadas no repasse</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="tabela-responsiva w-full text-sm">
-              <thead className="border-b border-border text-left text-muted-foreground">
-                <tr>
-                  <th className="p-4 font-medium">Pagador</th>
-                  <th className="p-4 font-medium">Origem</th>
-                  <th className="p-4 font-medium">Status</th>
-                  <th className="p-4 font-medium">Data</th>
-                  <th className="p-4 font-medium">Forma</th>
-                  <th className="p-4 font-medium">Professores</th>
-                  <th className="p-4 text-right font-medium">Recebido</th>
-                  <th className="p-4 text-right font-medium">Professor</th>
-                  <th className="p-4 text-right font-medium">Sócio A</th>
-                  <th className="p-4 text-right font-medium">Sócio B</th>
-                </tr>
-              </thead>
-              <tbody>
-                {extratoOrdenado.map((linha) => (
-                  <tr key={linha.chave} className="border-b border-border last:border-0">
-                    <td className="p-4 font-medium" data-label="Pagador">
-                      {linha.pagador}
-                    </td>
-                    <td className="p-4" data-label="Origem">
-                      {linha.origem}
-                    </td>
-                    <td className="p-4" data-label="Status">
-                      <Badge variant={linha.status === "Isenta" ? "secondary" : "outline"}>
-                        {linha.status}
-                      </Badge>
-                    </td>
-                    <td className="p-4" data-label="Data">
-                      {linha.data ? formatarData(linha.data) : "—"}
-                    </td>
-                    <td className="p-4" data-label="Forma">
-                      {linha.formaPagamento ?? "—"}
-                    </td>
-                    <td className="p-4" data-label="Professores">
-                      {linha.professores}
-                    </td>
-                    <td className="p-4 text-right tabular-nums" data-label="Recebido">
-                      {formatarBRL(linha.valorRecebido)}
-                    </td>
-                    <td className="p-4 text-right tabular-nums" data-label="Professor">
-                      {formatarBRL(linha.repasseProfessores)}
-                    </td>
-                    <td className="p-4 text-right tabular-nums" data-label="Sócio A">
-                      {formatarBRL(linha.socioA)}
-                    </td>
-                    <td className="p-4 text-right tabular-nums" data-label="Sócio B">
-                      {formatarBRL(linha.socioB)}
-                    </td>
-                  </tr>
-                ))}
-                {extratoOrdenado.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="p-10 text-center text-muted-foreground">
-                      Nenhuma receita encontrada na competência.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
           <CardTitle>Repasse individual por professor</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -560,6 +489,77 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Receitas usadas no repasse</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="tabela-responsiva w-full text-sm">
+              <thead className="border-b border-border text-left text-muted-foreground">
+                <tr>
+                  <th className="p-4 font-medium">Pagador</th>
+                  <th className="p-4 font-medium">Origem</th>
+                  <th className="p-4 font-medium">Status</th>
+                  <th className="p-4 font-medium">Data</th>
+                  <th className="p-4 font-medium">Forma</th>
+                  <th className="p-4 font-medium">Professores</th>
+                  <th className="p-4 text-right font-medium">Recebido</th>
+                  <th className="p-4 text-right font-medium">Professor</th>
+                  <th className="p-4 text-right font-medium">Sócio A</th>
+                  <th className="p-4 text-right font-medium">Sócio B</th>
+                </tr>
+              </thead>
+              <tbody>
+                {extratoOrdenado.map((linha) => (
+                  <tr key={linha.chave} className="border-b border-border last:border-0">
+                    <td className="p-4 font-medium" data-label="Pagador">
+                      {linha.pagador}
+                    </td>
+                    <td className="p-4" data-label="Origem">
+                      {linha.origem}
+                    </td>
+                    <td className="p-4" data-label="Status">
+                      <Badge variant={linha.status === "Isenta" ? "secondary" : "outline"}>
+                        {linha.status}
+                      </Badge>
+                    </td>
+                    <td className="p-4" data-label="Data">
+                      {linha.data ? formatarData(linha.data) : "—"}
+                    </td>
+                    <td className="p-4" data-label="Forma">
+                      {linha.formaPagamento ?? "—"}
+                    </td>
+                    <td className="p-4" data-label="Professores">
+                      {linha.professores}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Recebido">
+                      {formatarBRL(linha.valorRecebido)}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Professor">
+                      {formatarBRL(linha.repasseProfessores)}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Sócio A">
+                      {formatarBRL(linha.socioA)}
+                    </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Sócio B">
+                      {formatarBRL(linha.socioB)}
+                    </td>
+                  </tr>
+                ))}
+                {extratoOrdenado.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="p-10 text-center text-muted-foreground">
+                      Nenhuma receita encontrada na competência.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
