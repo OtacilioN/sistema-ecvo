@@ -118,13 +118,11 @@ export async function gerarLembretesTreino(
     })
     if (existente) continue
 
-    await cliente.notificacao.create({
-      data: {
-        usuarioId: comparecimento.aluno.usuarioId,
-        tipo: "LEMBRETE_TREINO",
-        titulo,
-        mensagem,
-      },
+    await criarNotificacao(cliente, {
+      usuarioId: comparecimento.aluno.usuarioId,
+      tipo: "LEMBRETE_TREINO",
+      titulo,
+      mensagem,
     })
     total++
   }
@@ -220,12 +218,10 @@ async function criarNotificacaoUnica(
   })
   if (existente) return false
 
-  await cliente.notificacao.create({
-    data: {
-      usuarioId,
-      tipo,
-      ...conteudo,
-    },
+  const notificacao = await criarNotificacao(cliente, {
+    usuarioId,
+    tipo,
+    ...conteudo,
   })
-  return true
+  return Boolean(notificacao)
 }

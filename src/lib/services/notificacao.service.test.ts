@@ -1,5 +1,31 @@
-import { describe, expect, it } from "vitest"
-import { campoConfiguracaoNotificacao, mensagemLembreteAniversario } from "./notificacao.service"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { enviarPushParaNotificacao } from "@/lib/services/push.service"
+import {
+  campoConfiguracaoNotificacao,
+  gerarLembretesAniversario,
+  gerarLembretesTreino,
+  mensagemLembreteAniversario,
+} from "./notificacao.service"
+
+vi.mock("@/lib/services/push.service", () => ({
+  enviarPushParaNotificacao: vi.fn(async () => ({
+    configurado: true,
+    tentativas: 1,
+    enviados: 1,
+    removidos: 0,
+  })),
+}))
+
+type NotificacaoData = {
+  usuarioId: string
+  tipo: string
+  titulo: string
+  mensagem: string
+}
+
+beforeEach(() => {
+  vi.mocked(enviarPushParaNotificacao).mockClear()
+})
 
 describe("campoConfiguracaoNotificacao", () => {
   it("mapeia cada tipo de notificação para sua flag configurável", () => {
@@ -24,5 +50,116 @@ describe("mensagemLembreteAniversario", () => {
       titulo: "Aniversário amanhã",
       mensagem: "Ana Silva faz aniversário amanhã (10/06).",
     })
+  })
+})
+
+describe("gerarLembretesTreino", () => {
+  it("cria o lembrete pelo fluxo que tenta enviar push", async () => {
+    const cliente = {
+      configuracaoAcademia: {
+        findUnique: vi.fn(async () => ({ notificarLembreteTreino: true })),
+      },
+      comparecimento: {
+        findMany: vi.fn(async () => [
+          {
+            alunoId: "aluno-1",
+            aluno: { usuarioId: "usuario-aluno" },
+            aula: {
+              inicio: new Date("2026-06-17T18:00:00-03:00"),
+              turma: { nome: "Kickboxing", modalidade: { nome: "Kickboxing" } },
+              checkins: [],
+            },
+          },
+        ]),
+      },
+      notificacao: {
+        findFirst: vi.fn(async () => null),
+        create: vi.fn(async ({ data }: { data: NotificacaoData }) => ({
+          id: "notificacao-treino",
+          lida: false,
+          criadoEm: new Date("2026-06-17T16:00:00-03:00"),
+          ...data,
+        })),
+      },
+    }
+
+    const resultado = await gerarLembretesTreino(
+      cliente as unknown as Parameters<typeof gerarLembretesTreino>[0],
+      {
+        agora: new Date("2026-06-17T16:00:00-03:00"),
+      },
+    )
+
+    expect(resultado).toEqual({ ok: true, total: 1 })
+    expect(cliente.notificacao.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        usuarioId: "usuario-aluno",
+        tipo: "LEMBRETE_TREINO",
+        titulo: "Lembrete de treino",
+      }),
+    })
+    expect(enviarPushParaNotificacao).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "notificacao-treino",
+        usuarioId: "usuario-aluno",
+        tipo: "LEMBRETE_TREINO",
+      }),
+    )
+  })
+})
+
+describe("gerarLembretesAniversario", () => {
+  it("cria lembretes únicos pelo fluxo que tenta enviar push", async () => {
+    const cliente = {
+      configuracaoAcademia: {
+        findUnique: vi.fn(async () => ({ notificarAniversario: true })),
+      },
+      usuario: {
+        findMany: vi.fn(async () => [{ id: "gestor-1" }]),
+      },
+      aluno: {
+        findMany: vi.fn(async () => [
+          {
+            dataNascimento: new Date("2000-06-18T12:00:00Z"),
+            usuario: { nome: "Ana Silva" },
+            modalidades: [{ professores: [{ usuarioId: "professor-1" }] }],
+          },
+        ]),
+      },
+      notificacao: {
+        findFirst: vi.fn(async () => null),
+        create: vi.fn(async ({ data }: { data: NotificacaoData }) => ({
+          id: `notificacao-${data.usuarioId}`,
+          lida: false,
+          criadoEm: new Date("2026-06-17T16:00:00-03:00"),
+          ...data,
+        })),
+      },
+    }
+
+    const resultado = await gerarLembretesAniversario(
+      cliente as unknown as Parameters<typeof gerarLembretesAniversario>[0],
+      {
+        agora: new Date("2026-06-17T12:00:00-03:00"),
+      },
+    )
+
+    expect(resultado).toEqual({ ok: true, total: 2 })
+    expect(cliente.notificacao.create).toHaveBeenCalledTimes(2)
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(2)
+    expect(enviarPushParaNotificacao).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "notificacao-gestor-1",
+        usuarioId: "gestor-1",
+        tipo: "ANIVERSARIO",
+      }),
+    )
+    expect(enviarPushParaNotificacao).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "notificacao-professor-1",
+        usuarioId: "professor-1",
+        tipo: "ANIVERSARIO",
+      }),
+    )
   })
 })
