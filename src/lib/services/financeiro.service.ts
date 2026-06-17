@@ -92,6 +92,61 @@ export function mensalistaAdimplente(
   })
 }
 
+export async function sincronizarStatusFinanceiroAluno(
+  cliente: Cliente,
+  alunoId: string,
+  hoje = new Date(),
+  autorId?: string,
+) {
+  const vencimentoPassado = inicioDoDia(hoje)
+  const mensalidadeVencida = await cliente.mensalidade.findFirst({
+    where: {
+      alunoId,
+      OR: [{ status: "VENCIDA" }, { status: "EM_ABERTO", vencimento: { lt: vencimentoPassado } }],
+    },
+    select: { id: true },
+  })
+
+  if (mensalidadeVencida) {
+    const resultado = await cliente.aluno.updateMany({
+      where: { id: alunoId, status: "ATIVO" },
+      data: { status: "INADIMPLENTE" },
+    })
+    if (autorId && resultado.count > 0) {
+      await registrarLog(
+        {
+          autorId,
+          acao: "STATUS_ALUNO",
+          entidade: "Aluno",
+          entidadeId: alunoId,
+          valorAntigo: { status: "ATIVO" },
+          valorNovo: { status: "INADIMPLENTE", motivo: "Mensalidade vencida" },
+        },
+        cliente,
+      )
+    }
+    return
+  }
+
+  const resultado = await cliente.aluno.updateMany({
+    where: { id: alunoId, status: "INADIMPLENTE" },
+    data: { status: "ATIVO" },
+  })
+  if (autorId && resultado.count > 0) {
+    await registrarLog(
+      {
+        autorId,
+        acao: "STATUS_ALUNO",
+        entidade: "Aluno",
+        entidadeId: alunoId,
+        valorAntigo: { status: "INADIMPLENTE" },
+        valorNovo: { status: "ATIVO", motivo: "Sem mensalidades vencidas" },
+      },
+      cliente,
+    )
+  }
+}
+
 export function calcularRepasseFinanceiro(params: {
   valorRecebido: number
   itens: ItemRepasseModalidade[]
@@ -704,6 +759,8 @@ export async function baixarMensalidade(params: {
       ...mensagemStatusMensalidade({ competencia: nova.competencia, status: nova.status }),
     })
 
+    await sincronizarStatusFinanceiroAluno(tx, nova.alunoId, new Date(), params.autorId)
+
     return nova
   })
 
@@ -793,6 +850,8 @@ export async function atualizarStatusMensalidade(params: {
       tipo: "FINANCEIRO",
       ...mensagemStatusMensalidade({ competencia: nova.competencia, status: nova.status }),
     })
+
+    await sincronizarStatusFinanceiroAluno(tx, nova.alunoId, new Date(), params.autorId)
 
     return nova
   })
@@ -948,6 +1007,7 @@ export async function vencerMensalidadesAtrasadas(
     },
     select: {
       id: true,
+      alunoId: true,
       competencia: true,
       vencimento: true,
       valor: true,
@@ -965,6 +1025,8 @@ export async function vencerMensalidadesAtrasadas(
       data: { status: "VENCIDA" },
     })
     if (resultado.count === 0) continue
+
+    await sincronizarStatusFinanceiroAluno(cliente, mensalidade.alunoId, hoje)
 
     mensalidadesVencidas += resultado.count
     const conteudo = mensagemInadimplenciaMensalidadeAluno({

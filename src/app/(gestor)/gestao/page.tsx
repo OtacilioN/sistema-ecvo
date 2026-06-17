@@ -83,7 +83,11 @@ export default async function GestaoInicio() {
   ] = await Promise.all([
     db.aluno.findMany({
       where: { status: { in: statusMonitorados } },
-      select: { id: true },
+      select: {
+        id: true,
+        tipo: true,
+        modalidadesPlano: { select: { plataformaExterna: true } },
+      },
     }),
     db.professor.count({ where: { ativo: true } }),
     db.modalidade.count({ where: { ativa: true } }),
@@ -144,10 +148,38 @@ export default async function GestaoInicio() {
     mensalidadesVencemSemana.map((mensalidade) => mensalidade.alunoId),
   )
   const totalAlunosMonitorados = alunosMonitorados.length
-  const alunosInadimplentes = inadimplentesIds.size
-  const alunosAdimplentes = Math.max(totalAlunosMonitorados - alunosInadimplentes, 0)
+  const alunosInternosIds = new Set(
+    alunosMonitorados
+      .filter((aluno) => aluno.tipo !== "WELLHUB" && aluno.tipo !== "TOTALPASS")
+      .map((aluno) => aluno.id),
+  )
+  const alunosWellhubIds = new Set(
+    alunosMonitorados
+      .filter(
+        (aluno) =>
+          aluno.tipo === "WELLHUB" ||
+          aluno.modalidadesPlano.some((modalidade) => modalidade.plataformaExterna === "WELLHUB"),
+      )
+      .map((aluno) => aluno.id),
+  )
+  const alunosTotalpassIds = new Set(
+    alunosMonitorados
+      .filter(
+        (aluno) =>
+          aluno.tipo === "TOTALPASS" ||
+          aluno.modalidadesPlano.some((modalidade) => modalidade.plataformaExterna === "TOTALPASS"),
+      )
+      .map((aluno) => aluno.id),
+  )
+  const totalAlunosInternosMonitorados = alunosInternosIds.size
+  const alunosInadimplentes = Array.from(inadimplentesIds).filter((alunoId) =>
+    alunosInternosIds.has(alunoId),
+  ).length
+  const alunosAdimplentes = Math.max(totalAlunosInternosMonitorados - alunosInadimplentes, 0)
   const percentualAdimplencia =
-    totalAlunosMonitorados > 0 ? Math.round((alunosAdimplentes / totalAlunosMonitorados) * 100) : 0
+    totalAlunosInternosMonitorados > 0
+      ? Math.round((alunosAdimplentes / totalAlunosInternosMonitorados) * 100)
+      : 0
   const valorVencido = mensalidadesVencidas.reduce(
     (total, mensalidade) => total + mensalidade.valorNumero,
     0,
@@ -218,7 +250,7 @@ export default async function GestaoInicio() {
                     {percentualAdimplencia}%
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    dos alunos monitorados adimplentes
+                    dos alunos internos monitorados adimplentes
                   </p>
                 </div>
                 <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-success/10 text-success">
@@ -229,7 +261,7 @@ export default async function GestaoInicio() {
                 <ResumoFinanceiro
                   rotulo="Adimplentes"
                   valor={alunosAdimplentes.toString()}
-                  detalhe={`${totalAlunosMonitorados} no acompanhamento`}
+                  detalhe={`${totalAlunosInternosMonitorados} internos no acompanhamento`}
                   tom="positivo"
                 />
                 <ResumoFinanceiro
@@ -237,6 +269,18 @@ export default async function GestaoInicio() {
                   valor={alunosInadimplentes.toString()}
                   detalhe={formatarBRL(valorVencido)}
                   tom="negativo"
+                />
+                <ResumoFinanceiro
+                  rotulo="Wellhub"
+                  valor={alunosWellhubIds.size.toString()}
+                  detalhe="cobrança externa"
+                  tom="neutro"
+                />
+                <ResumoFinanceiro
+                  rotulo="TotalPass"
+                  valor={alunosTotalpassIds.size.toString()}
+                  detalhe="cobrança externa"
+                  tom="neutro"
                 />
               </div>
             </div>
@@ -421,7 +465,7 @@ function ResumoFinanceiro({
   rotulo: string
   valor: string
   detalhe: string
-  tom: "positivo" | "negativo"
+  tom: "positivo" | "negativo" | "neutro"
 }) {
   return (
     <div
@@ -429,6 +473,7 @@ function ResumoFinanceiro({
         "rounded-md border p-3",
         tom === "positivo" && "border-success/20 bg-success/5",
         tom === "negativo" && "border-destructive/20 bg-destructive/5",
+        tom === "neutro" && "border-border bg-muted/30",
       )}
     >
       <p
