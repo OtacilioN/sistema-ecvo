@@ -48,6 +48,16 @@ function somarValores(itens: Array<{ valor: unknown }>) {
   return itens.reduce((total, item) => total + Number(item.valor), 0)
 }
 
+function formatarBRLGrafico(valor: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    notation: "compact",
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 0,
+  }).format(valor)
+}
+
 function adicionarDias(data: Date, dias: number) {
   return new Date(data.getTime() + dias * MS_DIA)
 }
@@ -410,7 +420,7 @@ export default async function GestaoInicio() {
                 </div>
               </div>
               <div
-                className="grid h-44 items-end gap-2 rounded-md border border-border bg-muted/30 p-3"
+                className="grid h-56 items-end gap-2 rounded-md border border-border bg-muted/30 p-3"
                 style={{ gridTemplateColumns: `repeat(${semanasMes.length}, minmax(0, 1fr))` }}
               >
                 {semanasMes.map((semana) => (
@@ -427,9 +437,21 @@ export default async function GestaoInicio() {
                         tom="positivo"
                       />
                     </div>
-                    <span className="mt-2 truncate text-center text-xs text-muted-foreground">
-                      {semana.rotulo}
-                    </span>
+                    <div className="mt-2 space-y-1 text-center">
+                      <p className="truncate text-xs font-medium text-muted-foreground">
+                        {semana.rotulo}
+                      </p>
+                      <ValorSemanaGrafico
+                        rotulo="A receber"
+                        valor={semana.previsto}
+                        tom="atencao"
+                      />
+                      <ValorSemanaGrafico
+                        rotulo="Recebido"
+                        valor={semana.recebido}
+                        tom="positivo"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -620,6 +642,32 @@ function BarraDia({
       )}
       style={{ height: `${altura}%` }}
     />
+  )
+}
+
+function ValorSemanaGrafico({
+  rotulo,
+  valor,
+  tom,
+}: {
+  rotulo: string
+  valor: number
+  tom: "positivo" | "atencao"
+}) {
+  return (
+    <p
+      title={`${rotulo}: ${formatarBRL(valor)}`}
+      className="flex min-w-0 items-center justify-center gap-1 text-[10px] leading-tight text-muted-foreground"
+    >
+      <span
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          tom === "positivo" && "bg-success",
+          tom === "atencao" && "bg-warning",
+        )}
+      />
+      <span className="truncate tabular-nums">{formatarBRLGrafico(valor)}</span>
+    </p>
   )
 }
 
