@@ -2,7 +2,7 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { formatInTimeZone, fromZonedTime, toZonedTime } from "date-fns-tz"
 
-// Timezone padrão da academia (Brasil). Janelas de intenção, recorrência semanal
+// Timezone padrão da academia (Brasil). Janelas de agendamento, recorrência semanal
 // e geração de aulas são sensíveis a fuso (RF-014).
 export const TIMEZONE = "America/Sao_Paulo"
 

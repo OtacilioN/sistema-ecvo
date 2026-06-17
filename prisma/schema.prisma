@@ -121,7 +121,7 @@ enum BloqueioInadimplencia {
   SEM_BLOQUEIO
 }
 
-// Política de check-in sem intenção prévia (RF-022).
+// Política de check-in sem agendamento prévio (RF-022).
 enum PoliticaCheckinSemComparecimento {
   PERMITIR
   BLOQUEAR
@@ -354,7 +354,7 @@ model Aula {
 
 // ───────────────────────── Loop de treino ─────────────────────────
 
-// Intenção de treino (modelo legado Comparecimento): não gera presença nem horas — RF-013..018
+// Agendamento de aula (modelo legado Comparecimento): não gera presença nem horas — RF-013..018
 model Comparecimento {
   id           String               @id @default(cuid())
   aluno        Aluno                @relation(fields: [alunoId], references: [id], onDelete: Cascade)

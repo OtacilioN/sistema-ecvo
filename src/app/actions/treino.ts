@@ -186,7 +186,7 @@ export async function acaoAtualizarObservacaoTecnica(
   return { ok: true }
 }
 
-/** Marca no-show para intenções sem check-in válido após o fim da aula (RF-018). */
+/** Marca no-show para agendamentos sem check-in válido após o fim da aula (RF-018). */
 export async function acaoMarcarNoShows(
   _: EstadoTreino,
   formData: FormData,

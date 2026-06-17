@@ -203,7 +203,7 @@ export default async function TurmasPage() {
                     <th className="p-4 font-medium">Aula</th>
                     <th className="p-4 font-medium">Modalidade</th>
                     <th className="p-4 font-medium">Professor efetivo</th>
-                    <th className="p-4 font-medium">Intenções</th>
+                    <th className="p-4 font-medium">Agendamentos</th>
                     <th className="p-4 font-medium">Status</th>
                     <th className="p-4 text-right font-medium">
                       <span className="sr-only">Ações</span>
@@ -234,9 +234,9 @@ export default async function TurmasPage() {
                           aula.turma.professor?.usuario.nome ??
                           "Sem professor"}
                       </td>
-                      <td className="p-4" data-label="Intenções">
+                      <td className="p-4" data-label="Agendamentos">
                         {aula._count.comparecimentos}{" "}
-                        {aula._count.comparecimentos === 1 ? "intenção" : "intenções"}
+                        {aula._count.comparecimentos === 1 ? "agendamento" : "agendamentos"}
                         <span className="block text-xs text-muted-foreground">
                           {aula._count.checkins} check-in(s)
                         </span>

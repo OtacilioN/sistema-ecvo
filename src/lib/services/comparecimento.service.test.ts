@@ -79,7 +79,7 @@ describe("statusAoMarcarComparecimento", () => {
 })
 
 describe("bloqueiaComparecimentoPorFinanceiro", () => {
-  it("bloqueia mensalista inadimplente apenas na política de bloqueio de intenção", () => {
+  it("bloqueia mensalista inadimplente apenas na política de bloqueio de agendamento", () => {
     expect(
       bloqueiaComparecimentoPorFinanceiro({
         statusAluno: "ATIVO",

@@ -17,7 +17,7 @@ export default async function Page() {
     <div className="space-y-6">
       <CabecalhoPagina
         titulo="Configurações"
-        descricao="Regras de intenção, check-in, financeiro e notificações."
+        descricao="Regras de agendamento, check-in, financeiro e notificações."
       />
 
       <FormConfiguracao

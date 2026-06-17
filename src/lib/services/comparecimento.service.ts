@@ -12,8 +12,8 @@ import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
 import { inicioDoDiaAcademia } from "@/lib/utils/datas"
 
-// Serviço legado de Comparecimento — representa a INTENÇÃO de treinar (RN-001/RF-013..018).
-// Marcar intenção NÃO gera presença nem horas; é apenas reserva/sinalização.
+// Serviço legado de Comparecimento — representa o AGENDAMENTO da aula (RN-001/RF-013..018).
+// Agendar aula NÃO gera presença nem horas; é apenas reserva/sinalização.
 // A presença só nasce de um check-in válido (ver checkin.service.ts).
 
 const HORA_MS = 60 * 60 * 1000
@@ -21,7 +21,7 @@ const HORA_MS = 60 * 60 * 1000
 // ───────────────────────── Lógica pura (testável sem banco) ─────────────────────────
 
 /**
- * Janela de intenção (RF-014): só é possível marcar a partir de `janelaHoras`
+ * Janela de agendamento (RF-014): só é possível marcar a partir de `janelaHoras`
  * antes do início e enquanto a aula não começou.
  */
 export function podeMarcarComparecimento(p: {
@@ -110,7 +110,7 @@ async function mensalidadeEmDia(alunoId: string): Promise<boolean> {
   return pendente === null
 }
 
-/** Marca a intenção de um aluno numa aula, respeitando janela, vaga e duplicidade (RF-013..016). */
+/** Marca o agendamento de um aluno numa aula, respeitando janela, vaga e duplicidade (RF-013..016). */
 export async function marcarComparecimento(params: {
   alunoId: string
   aulaId: string
@@ -177,10 +177,10 @@ export async function marcarComparecimento(params: {
       janelaHoras: regras.janelaComparecimentoHoras,
     })
   ) {
-    return { ok: false, motivo: "Fora da janela de intenção." }
+    return { ok: false, motivo: "Fora da janela de agendamento." }
   }
 
-  // Reativa uma intenção previamente cancelada, se existir (mantém histórico via @@unique).
+  // Reativa um agendamento previamente cancelado, se existir (mantém histórico via @@unique).
   const existente = await db.comparecimento.findUnique({
     where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: params.aulaId } },
   })
@@ -213,10 +213,10 @@ export async function marcarComparecimento(params: {
     await criarNotificacao(tx, {
       usuarioId: aluno.usuarioId,
       tipo: "COMPARECIMENTO",
-      titulo: novoStatus === "CONFIRMADO" ? "Intenção confirmada" : "Lista de espera",
+      titulo: novoStatus === "CONFIRMADO" ? "Agendamento confirmado" : "Lista de espera",
       mensagem:
         novoStatus === "CONFIRMADO"
-          ? `${aula.turma.nome ?? aula.turma.modalidade.nome}: intenção registrada.`
+          ? `${aula.turma.nome ?? aula.turma.modalidade.nome}: agendamento registrado.`
           : `${aula.turma.nome ?? aula.turma.modalidade.nome}: você entrou na lista de espera.`,
     })
 
@@ -226,7 +226,7 @@ export async function marcarComparecimento(params: {
   return { ok: true, comparecimentoId: comparecimento.id, status: comparecimento.status }
 }
 
-/** Cancela uma intenção dentro do prazo configurado (RF-015/017). */
+/** Cancela um agendamento dentro do prazo configurado (RF-015/017). */
 export async function cancelarComparecimento(params: {
   alunoId: string
   aulaId: string
@@ -261,7 +261,7 @@ export async function cancelarComparecimento(params: {
     },
   })
   if (comparecimento?.status !== "CONFIRMADO" && comparecimento?.status !== "LISTA_ESPERA") {
-    return { ok: false, motivo: "Sem intenção ativa." }
+    return { ok: false, motivo: "Sem agendamento ativo." }
   }
 
   // O gestor pode cancelar a qualquer momento (RF-017); o aluno respeita o prazo (RF-015).
@@ -319,7 +319,7 @@ export async function cancelarComparecimento(params: {
   return { ok: true, comparecimentoId: comparecimento.id, status: statusCancelado }
 }
 
-/** Marca como NO_SHOW as intenções confirmadas sem check-in válido de uma aula encerrada (RF-018). */
+/** Marca como NO_SHOW os agendamentos confirmados sem check-in válido de uma aula encerrada (RF-018). */
 export async function marcarNoShows(params: {
   aulaId: string
   autorId: string
@@ -373,7 +373,7 @@ export async function marcarNoShows(params: {
             aulaId: aula.id,
             modalidade: aula.turma.modalidade.nome,
           },
-          justificativa: "Intenção sem check-in válido após encerramento da aula",
+          justificativa: "Agendamento sem check-in válido após encerramento da aula",
         },
         tx,
       )
@@ -382,7 +382,7 @@ export async function marcarNoShows(params: {
         usuarioId: comparecimento.aluno.usuarioId,
         tipo: "COMPARECIMENTO",
         titulo: "No-show registrado",
-        mensagem: `${aula.turma.nome ?? aula.turma.modalidade.nome}: intenção sem check-in válido.`,
+        mensagem: `${aula.turma.nome ?? aula.turma.modalidade.nome}: agendamento sem check-in válido.`,
       })
     }
   })
@@ -430,7 +430,7 @@ async function promoverPrimeiroDaListaEspera(
         aluno: proximo.aluno.usuario.nome,
         aulaId: proximo.aulaId,
       },
-      justificativa: "Vaga liberada por cancelamento de intenção confirmada",
+      justificativa: "Vaga liberada por cancelamento de agendamento confirmado",
     },
     tx,
   )
@@ -439,6 +439,6 @@ async function promoverPrimeiroDaListaEspera(
     usuarioId: proximo.aluno.usuarioId,
     tipo: "COMPARECIMENTO",
     titulo: "Vaga liberada",
-    mensagem: `${proximo.aula.turma.nome ?? proximo.aula.turma.modalidade.nome}: sua intenção foi confirmada.`,
+    mensagem: `${proximo.aula.turma.nome ?? proximo.aula.turma.modalidade.nome}: seu agendamento foi confirmado.`,
   })
 }

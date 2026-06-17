@@ -116,7 +116,7 @@ export function FormCancelarAula({
         obrigatorio
       />
       <p className="text-sm text-muted-foreground">
-        Os alunos com intenção marcada serão notificados do cancelamento.
+        Os alunos com agendamento marcado serão notificados do cancelamento.
       </p>
       <Mensagem estado={estado} />
       <div className="flex justify-end">

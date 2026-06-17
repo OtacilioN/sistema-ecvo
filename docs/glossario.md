@@ -1,11 +1,11 @@
 # Glossário — ECVO
 
 Termos do domínio (pt-BR). Use exatamente esta terminologia em UI, relatórios e novas regras.
-O modelo técnico legado `Comparecimento` representa a intenção de treino.
+O modelo técnico legado `Comparecimento` representa o agendamento da aula pelo aluno.
 
 | Termo | Significado |
 | --- | --- |
-| **Intenção de treino** | Intenção do aluno de participar de um treino específico. **Não** gera presença nem horas (RN-001). Janela padrão: a partir de 24h antes da aula. |
+| **Agendamento de aula** | Reserva/sinalização do aluno para participar de um treino específico. **Não** gera presença nem horas (RN-001). Janela padrão: a partir de 24h antes da aula. |
 | **Check-in** | Confirmação de chegada/participação do aluno no treino. Pode ser por botão, QR Code ou lançado por gestor/professor. |
 | **Presença** | Resultado derivado de um **check-in válido** (RN-002). Não é uma tabela própria: presença ≡ existe `Checkin` com `status = VALIDO`. |
 | **Invalidar / excluir check-in** | Ação de professor/gestor quando o aluno fez check-in mas não treinou. Remove a presença e **estorna** as horas, com log de auditoria (RF-027/028/035). |
@@ -19,9 +19,9 @@ O modelo técnico legado `Comparecimento` representa a intenção de treino.
 | **Mensalista** | Aluno com mensalidade contratada diretamente com a academia (controle financeiro completo). |
 | **Wellhub / TotalPass** | Aluno vinculado a plataforma externa. Pode também ter plano mensal interno para modalidades pagas diretamente à academia; o uso externo segue conciliação por planilha (sem API no MVP). |
 | **Avulso** | Aluno que paga por aula, diária, pacote, seminário ou evento pontual. |
-| **Adimplência / Inadimplência** | Situação de pagamento de plano mensal interno (em dia / em atraso). Pode bloquear intenção de treino/check-in conforme configuração (RF-051). |
+| **Adimplência / Inadimplência** | Situação de pagamento de plano mensal interno (em dia / em atraso). Pode bloquear agendamento/check-in conforme configuração (RF-051). |
 | **Repasse financeiro** | Divisão da arrecadação entre professor, sócio A e sócio B. Mensalidade interna usa cascata por valor base; Wellhub/TotalPass divide o valor repassado diretamente em 60% professor, 20% sócio A e 20% sócio B. |
 | **Conciliação** | Comparação dos registros importados (Wellhub/TotalPass) com o histórico interno de check-ins (RF-060). |
 | **Divergência** | Registro importado que não casa com o histórico interno (aluno não identificado, data/horário divergente, check-in invalidado etc.). |
-| **No-show** | Aluno marcou intenção de treino mas não fez check-in (RF-018). |
+| **No-show** | Aluno agendou a aula mas não fez check-in (RF-018). |
 | **Auditoria** | Registro imutável de ações críticas: autor, data/hora, entidade, valor antigo/novo, justificativa (RF-079/080). |

@@ -177,16 +177,16 @@ function resumoRegras(modalidade: {
 }) {
   const regras = [
     modalidade.janelaComparecimentoHoras !== null
-      ? `Janela de intenção: ${modalidade.janelaComparecimentoHoras}h`
+      ? `Janela de agendamento: ${modalidade.janelaComparecimentoHoras}h`
       : null,
     modalidade.prazoCancelamentoHoras !== null
       ? `Cancelamento: ${modalidade.prazoCancelamentoHoras}h`
       : null,
     modalidade.exigirComparecimentoParaCheckin !== null
-      ? `Exige intenção: ${modalidade.exigirComparecimentoParaCheckin ? "sim" : "não"}`
+      ? `Exige agendamento: ${modalidade.exigirComparecimentoParaCheckin ? "sim" : "não"}`
       : null,
     modalidade.politicaCheckinSemComparecimento
-      ? `Sem intenção: ${rotuloPolitica(modalidade.politicaCheckinSemComparecimento)}`
+      ? `Sem agendamento: ${rotuloPolitica(modalidade.politicaCheckinSemComparecimento)}`
       : null,
     modalidade.listaEsperaAtiva !== null
       ? `Lista de espera: ${modalidade.listaEsperaAtiva ? "ativa" : "inativa"}`
