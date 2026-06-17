@@ -15,6 +15,7 @@ export function listarGestores() {
       nome: true,
       email: true,
       fotoUrl: true,
+      dataNascimento: true,
       papel: true,
       ativo: true,
       criadoEm: true,
@@ -27,6 +28,7 @@ export async function criarGestor(params: {
   nome: string
   email: string
   senha: string
+  dataNascimento?: Date | null
   papel?: Extract<Papel, "GESTOR" | "SECRETARIA">
   autorId: string
 }) {
@@ -39,6 +41,7 @@ export async function criarGestor(params: {
         nome: params.nome,
         email: params.email,
         senhaHash,
+        dataNascimento: params.dataNascimento ?? null,
         papel,
       },
       select: { id: true, nome: true, email: true, papel: true, ativo: true },
@@ -55,6 +58,7 @@ export async function criarGestor(params: {
           email: gestor.email,
           papel: gestor.papel,
           ativo: gestor.ativo,
+          nascimentoInformado: Boolean(params.dataNascimento),
         },
       },
       tx,

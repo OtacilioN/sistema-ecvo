@@ -32,7 +32,6 @@ export const NAV_GESTOR: ItemNav[] = [
   { href: "/gestao/financeiro", rotulo: "Financeiro", icone: <CreditCard className={ic} /> },
   { href: "/gestao/conciliacao", rotulo: "Conciliação", icone: <ClipboardCheck className={ic} /> },
   { href: "/gestao/relatorios", rotulo: "Relatórios", icone: <FileBarChart className={ic} /> },
-  { href: "/gestao/auditoria", rotulo: "Auditoria", icone: <ShieldCheck className={ic} /> },
   { href: "/gestao/notificacoes", rotulo: "Notificações", icone: <Bell className={ic} /> },
   { href: "/gestao/configuracoes", rotulo: "Configurações", icone: <Settings className={ic} /> },
   { href: "/gestao/perfil", rotulo: "Minha conta", icone: <KeyRound className={ic} /> },

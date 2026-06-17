@@ -34,6 +34,10 @@ export function FormGestor({ aoConcluir }: { aoConcluir?: () => void }) {
         <Input id="senha" name="senha" type="text" minLength={6} required />
       </div>
       <div className="space-y-1.5">
+        <Label htmlFor="dataNascimento">Data de nascimento</Label>
+        <Input id="dataNascimento" name="dataNascimento" type="date" />
+      </div>
+      <div className="space-y-1.5">
         <Label htmlFor="papel">Perfil</Label>
         <Select id="papel" name="papel" defaultValue="SECRETARIA">
           <option value="SECRETARIA">Secretaria</option>

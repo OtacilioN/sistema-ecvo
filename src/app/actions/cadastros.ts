@@ -240,6 +240,7 @@ export async function acaoCriarProfessor(_: EstadoForm, formData: FormData): Pro
     senha: formData.get("senha"),
     cpf: formData.get("cpf"),
     telefone: formData.get("telefone"),
+    dataNascimento: formData.get("dataNascimento") || undefined,
     fotoUrl: formData.get("fotoUrl"),
     observacoes: formData.get("observacoes"),
     modalidadeIds: formData.getAll("modalidadeIds"),
@@ -266,6 +267,7 @@ export async function acaoAtualizarDadosProfessor(
     nome: formData.get("nome"),
     cpf: formData.get("cpf"),
     telefone: formData.get("telefone"),
+    dataNascimento: formData.get("dataNascimento") || undefined,
     fotoUrl: formData.get("fotoUrl"),
     observacoes: formData.get("observacoes"),
     modalidadeIds: formData.getAll("modalidadeIds"),
@@ -277,6 +279,7 @@ export async function acaoAtualizarDadosProfessor(
     nome: parsed.data.nome,
     cpf: parsed.data.cpf,
     telefone: parsed.data.telefone,
+    dataNascimento: parsed.data.dataNascimento,
     fotoUrl: parsed.data.fotoUrl,
     observacoes: parsed.data.observacoes,
     modalidadeIds: parsed.data.modalidadeIds,
@@ -308,6 +311,7 @@ export async function acaoCriarGestor(_: EstadoForm, formData: FormData): Promis
     nome: formData.get("nome"),
     email: formData.get("email"),
     senha: formData.get("senha"),
+    dataNascimento: formData.get("dataNascimento") || undefined,
     papel: formData.get("papel"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }

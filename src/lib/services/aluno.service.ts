@@ -125,6 +125,7 @@ export async function criarAluno(
         email: params.email,
         senhaHash,
         fotoUrl: params.fotoUrl ?? null,
+        dataNascimento: params.dataNascimento ?? null,
         papel: "ALUNO",
         aluno: {
           create: {
@@ -266,13 +267,19 @@ export async function atualizarAluno(
     const aluno = await tx.aluno.update({
       where: { id: atual.id },
       data: {
-        ...(params.nome !== undefined || params.email !== undefined || params.fotoUrl !== undefined
+        ...(params.nome !== undefined ||
+        params.email !== undefined ||
+        params.fotoUrl !== undefined ||
+        params.dataNascimento !== undefined
           ? {
               usuario: {
                 update: {
                   ...(params.nome !== undefined ? { nome: params.nome } : {}),
                   ...(params.email !== undefined ? { email: params.email } : {}),
                   ...(params.fotoUrl !== undefined ? { fotoUrl: params.fotoUrl } : {}),
+                  ...(params.dataNascimento !== undefined
+                    ? { dataNascimento: params.dataNascimento }
+                    : {}),
                 },
               },
             }

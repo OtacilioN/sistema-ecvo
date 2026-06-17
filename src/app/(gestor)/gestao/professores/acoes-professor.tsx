@@ -23,6 +23,7 @@ export type ProfessorLinha = {
   ativo: boolean
   cpf: string | null
   telefone: string | null
+  dataNascimento: Date | null
   fotoUrl: string | null
   observacoes: string | null
   modalidades: string[]

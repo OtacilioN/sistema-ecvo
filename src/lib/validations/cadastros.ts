@@ -143,6 +143,7 @@ export const professorSchema = z.object({
   senha: z.string().min(6, "Senha de no mínimo 6 caracteres"),
   cpf: cpfOpcional,
   telefone: textoOpcional,
+  dataNascimento: dataCivilOpcional,
   fotoUrl: fotoUrlOpcional,
   observacoes: textoOpcional,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
@@ -154,6 +155,7 @@ export const dadosProfessorSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome"),
   cpf: cpfOpcional,
   telefone: textoOpcional,
+  dataNascimento: dataCivilOpcional,
   fotoUrl: fotoUrlOpcional,
   observacoes: textoOpcional,
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
@@ -174,6 +176,7 @@ export const gestorSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome"),
   email: z.email("E-mail inválido").trim().toLowerCase(),
   senha: z.string().min(6, "Senha de no mínimo 6 caracteres"),
+  dataNascimento: dataCivilOpcional,
   papel: z.enum(["GESTOR", "SECRETARIA"]).default("GESTOR"),
 })
 export type GestorInput = z.infer<typeof gestorSchema>

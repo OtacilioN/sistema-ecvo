@@ -28,6 +28,7 @@ import {
   formatarData,
   inicioDoDiaAcademia,
   paraFusoAcademia,
+  TIMEZONE,
 } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
@@ -36,6 +37,11 @@ export const dynamic = "force-dynamic"
 const MS_DIA = 24 * 60 * 60 * 1000
 const ROTA_FINANCEIRO = "/gestao/financeiro"
 const statusMonitorados: StatusAluno[] = ["ATIVO", "INADIMPLENTE"]
+const rotulosPapelAniversario = {
+  ALUNO: "Aluno",
+  PROFESSOR: "Professor",
+  GESTOR: "Gestor",
+} as const
 
 const rotulosStatusMensalidade: Record<StatusMensalidade, string> = {
   EM_ABERTO: "Em aberto",
@@ -80,11 +86,52 @@ function obterIntervaloMes(data: Date) {
   }
 }
 
+function formatarDiaMes(data: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: TIMEZONE,
+  }).format(data)
+}
+
 function indiceSemanaMes(data: Date, inicioMes: Date) {
   const diasDesdeInicio = Math.floor(
     (inicioDoDiaAcademia(data).getTime() - inicioMes.getTime()) / MS_DIA,
   )
   return Math.floor(Math.max(diasDesdeInicio, 0) / 7)
+}
+
+function dataAniversarioNoAno(dataNascimento: Date, ano: number) {
+  const nascimentoNoFuso = paraFusoAcademia(dataNascimento)
+  const mes = nascimentoNoFuso.getMonth()
+  const dia = nascimentoNoFuso.getDate()
+  const aniversario = dataCivilParaDate(
+    `${ano}-${String(mes + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`,
+  )
+
+  return paraFusoAcademia(aniversario).getMonth() === mes
+    ? aniversario
+    : dataCivilParaDate(`${ano}-02-28`)
+}
+
+function proximoAniversario(dataNascimento: Date, inicioHoje: Date) {
+  const anoAtual = paraFusoAcademia(inicioHoje).getFullYear()
+  const aniversarioEsteAno = inicioDoDiaAcademia(dataAniversarioNoAno(dataNascimento, anoAtual))
+  const data =
+    aniversarioEsteAno.getTime() >= inicioHoje.getTime()
+      ? aniversarioEsteAno
+      : inicioDoDiaAcademia(dataAniversarioNoAno(dataNascimento, anoAtual + 1))
+
+  return {
+    data,
+    diasAte: Math.round((data.getTime() - inicioHoje.getTime()) / MS_DIA),
+  }
+}
+
+function hrefPessoaAniversario(papel: keyof typeof rotulosPapelAniversario) {
+  if (papel === "ALUNO") return "/gestao/alunos"
+  if (papel === "PROFESSOR") return "/gestao/professores"
+  return "/gestao/gestores"
 }
 
 export default async function GestaoInicio() {
@@ -103,6 +150,7 @@ export default async function GestaoInicio() {
     mensalidadesPendentes,
     mensalidadesRecebidasSemana,
     mensalidadesRecebidasMes,
+    usuariosComNascimento,
   ] = await Promise.all([
     db.aluno.findMany({
       where: { status: { in: statusMonitorados } },
@@ -144,6 +192,22 @@ export default async function GestaoInicio() {
         pagoEm: { gte: inicioMes, lt: inicioProximoMes },
       },
       select: { valor: true, pagoEm: true },
+    }),
+    db.usuario.findMany({
+      where: {
+        ativo: true,
+        dataNascimento: { not: null },
+        papel: { in: ["ALUNO", "PROFESSOR", "GESTOR"] },
+      },
+      orderBy: { nome: "asc" },
+      select: {
+        id: true,
+        nome: true,
+        papel: true,
+        dataNascimento: true,
+        aluno: { select: { status: true } },
+        professor: { select: { ativo: true } },
+      },
     }),
   ])
 
@@ -265,6 +329,23 @@ export default async function GestaoInicio() {
     },
     { rotulo: "Turmas ativas", valor: turmas, icone: CalendarDays, href: "/gestao/turmas" },
   ]
+  const proximosAniversariantes = usuariosComNascimento
+    .filter((usuario) => {
+      if (!usuario.dataNascimento) return false
+      if (usuario.papel === "ALUNO")
+        return Boolean(usuario.aluno?.status && statusMonitorados.includes(usuario.aluno.status))
+      if (usuario.papel === "PROFESSOR") return Boolean(usuario.professor?.ativo)
+      return usuario.papel === "GESTOR"
+    })
+    .map((usuario) => ({
+      id: usuario.id,
+      nome: usuario.nome,
+      papel: usuario.papel as keyof typeof rotulosPapelAniversario,
+      dataNascimento: usuario.dataNascimento as Date,
+      ...proximoAniversario(usuario.dataNascimento as Date, inicioHoje),
+    }))
+    .sort((a, b) => a.diasAte - b.diasAte || a.nome.localeCompare(b.nome))
+    .slice(0, 5)
 
   return (
     <div className="space-y-6">
@@ -522,6 +603,29 @@ export default async function GestaoInicio() {
           ))}
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Próximos aniversariantes</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {proximosAniversariantes.map((aniversariante) => (
+            <LinhaAniversariante
+              key={aniversariante.id}
+              nome={aniversariante.nome}
+              papel={aniversariante.papel}
+              dataNascimento={aniversariante.dataNascimento}
+              dataAniversario={aniversariante.data}
+              diasAte={aniversariante.diasAte}
+            />
+          ))}
+          {proximosAniversariantes.length === 0 && (
+            <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+              Nenhum aniversariante cadastrado com data de nascimento.
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -742,6 +846,39 @@ function LinhaMensalidade({
         className={cn(!vencida && "border-warning/30 bg-warning/10 text-warning")}
       >
         {rotulosStatusMensalidade[status]}
+      </Badge>
+    </Link>
+  )
+}
+
+function LinhaAniversariante({
+  nome,
+  papel,
+  dataNascimento,
+  dataAniversario,
+  diasAte,
+}: {
+  nome: string
+  papel: keyof typeof rotulosPapelAniversario
+  dataNascimento: Date
+  dataAniversario: Date
+  diasAte: number
+}) {
+  const quando = diasAte === 0 ? "Hoje" : diasAte === 1 ? "Amanhã" : `Em ${diasAte.toString()} dias`
+
+  return (
+    <Link
+      href={hrefPessoaAniversario(papel)}
+      className="group flex items-center justify-between gap-3 rounded-md border border-border p-3 transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+    >
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium">{nome}</p>
+        <p className="text-xs text-muted-foreground">
+          {rotulosPapelAniversario[papel]} · {formatarDiaMes(dataNascimento)}
+        </p>
+      </div>
+      <Badge variant={diasAte <= 7 ? "success" : "outline"} className="shrink-0">
+        {quando} · {formatarDiaMes(dataAniversario)}
       </Badge>
     </Link>
   )

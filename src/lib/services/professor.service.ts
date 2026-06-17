@@ -11,7 +11,16 @@ export function listarProfessores() {
   return db.professor.findMany({
     orderBy: { usuario: { nome: "asc" } },
     include: {
-      usuario: { select: { id: true, nome: true, email: true, fotoUrl: true, ativo: true } },
+      usuario: {
+        select: {
+          id: true,
+          nome: true,
+          email: true,
+          fotoUrl: true,
+          dataNascimento: true,
+          ativo: true,
+        },
+      },
       modalidades: { select: { id: true, nome: true } },
       _count: { select: { turmas: true } },
     },
@@ -24,6 +33,7 @@ export async function criarProfessor(params: {
   senha: string
   cpf?: string | null
   telefone?: string | null
+  dataNascimento?: Date | null
   fotoUrl?: string | null
   observacoes?: string | null
   modalidadeIds: string[]
@@ -37,6 +47,7 @@ export async function criarProfessor(params: {
         email: params.email,
         senhaHash,
         fotoUrl: params.fotoUrl ?? null,
+        dataNascimento: params.dataNascimento ?? null,
         papel: "PROFESSOR",
         professor: {
           create: {
@@ -64,6 +75,7 @@ export async function criarProfessor(params: {
           cpfInformado: Boolean(params.cpf),
           modalidadeIds: params.modalidadeIds,
           fotoInformada: Boolean(params.fotoUrl),
+          nascimentoInformado: Boolean(params.dataNascimento),
           ativo: usuario.ativo,
         },
       },
@@ -80,6 +92,7 @@ export async function atualizarProfessor(
     nome?: string
     cpf?: string | null
     telefone?: string | null
+    dataNascimento?: Date | null
     fotoUrl?: string | null
     observacoes?: string | null
     ativo?: boolean
@@ -96,7 +109,9 @@ export async function atualizarProfessor(
       fotoUrl: true,
       observacoes: true,
       ativo: true,
-      usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
+      usuario: {
+        select: { nome: true, email: true, fotoUrl: true, dataNascimento: true, ativo: true },
+      },
       modalidades: { select: { id: true, nome: true } },
     },
   })
@@ -106,12 +121,17 @@ export async function atualizarProfessor(
     const professor = await tx.professor.update({
       where: { id: atual.id },
       data: {
-        ...(params.nome !== undefined || params.fotoUrl !== undefined
+        ...(params.nome !== undefined ||
+        params.fotoUrl !== undefined ||
+        params.dataNascimento !== undefined
           ? {
               usuario: {
                 update: {
                   ...(params.nome !== undefined ? { nome: params.nome } : {}),
                   ...(params.fotoUrl !== undefined ? { fotoUrl: params.fotoUrl } : {}),
+                  ...(params.dataNascimento !== undefined
+                    ? { dataNascimento: params.dataNascimento }
+                    : {}),
                 },
               },
             }
@@ -126,7 +146,9 @@ export async function atualizarProfessor(
           : {}),
       },
       include: {
-        usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
+        usuario: {
+          select: { nome: true, email: true, fotoUrl: true, dataNascimento: true, ativo: true },
+        },
         modalidades: { select: { id: true, nome: true } },
       },
     })
@@ -136,6 +158,7 @@ export async function atualizarProfessor(
       email: atual.usuario.email,
       ativo: atual.ativo,
       usuarioAtivo: atual.usuario.ativo,
+      dataNascimento: atual.usuario.dataNascimento,
       cpf: atual.cpf,
       telefone: atual.telefone,
       fotoUrl: atual.fotoUrl,
@@ -147,6 +170,7 @@ export async function atualizarProfessor(
       email: professor.usuario.email,
       ativo: professor.ativo,
       usuarioAtivo: professor.usuario.ativo,
+      dataNascimento: professor.usuario.dataNascimento,
       cpf: professor.cpf,
       telefone: professor.telefone,
       fotoUrl: professor.fotoUrl,
@@ -306,6 +330,7 @@ function serializarProfessor(dados: {
   email: string
   ativo: boolean
   usuarioAtivo: boolean
+  dataNascimento: Date | null
   cpf: string | null
   telefone: string | null
   fotoUrl: string | null
@@ -317,6 +342,7 @@ function serializarProfessor(dados: {
     email: dados.email,
     ativo: dados.ativo,
     usuarioAtivo: dados.usuarioAtivo,
+    dataNascimento: dados.dataNascimento?.toISOString() ?? null,
     cpf: dados.cpf,
     telefone: dados.telefone,
     fotoUrl: dados.fotoUrl,

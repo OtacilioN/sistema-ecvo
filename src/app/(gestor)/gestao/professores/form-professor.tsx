@@ -40,6 +40,10 @@ export function FormProfessor({
         <Input id="telefone" name="telefone" placeholder="(11) 90000-0000" />
       </div>
       <div className="space-y-1.5">
+        <Label htmlFor="dataNascimento">Data de nascimento</Label>
+        <Input id="dataNascimento" name="dataNascimento" type="date" />
+      </div>
+      <div className="space-y-1.5">
         <Label htmlFor="cpf">CPF</Label>
         <Input id="cpf" name="cpf" inputMode="numeric" placeholder="000.000.000-00" />
       </div>

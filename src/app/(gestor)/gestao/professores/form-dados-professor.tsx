@@ -7,6 +7,7 @@ import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { formatarDataInput } from "@/lib/utils/datas"
 
 type Modalidade = { id: string; nome: string }
 
@@ -15,6 +16,7 @@ type ProfessorParaEdicao = {
   nome: string
   cpf: string | null
   telefone: string | null
+  dataNascimento: Date | null
   fotoUrl: string | null
   observacoes: string | null
   modalidades: string[]
@@ -54,6 +56,15 @@ export function FormDadosProfessor({
       <div className="space-y-1.5">
         <Label htmlFor="telefone-professor">Telefone</Label>
         <Input id="telefone-professor" name="telefone" defaultValue={professor?.telefone ?? ""} />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="dataNascimento-professor">Data de nascimento</Label>
+        <Input
+          id="dataNascimento-professor"
+          name="dataNascimento"
+          type="date"
+          defaultValue={professor.dataNascimento ? formatarDataInput(professor.dataNascimento) : ""}
+        />
       </div>
       <CampoUploadFoto
         id="fotoUrl-professor"

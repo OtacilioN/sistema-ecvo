@@ -181,6 +181,7 @@ model Usuario {
   senhaHash      String
   nome           String
   fotoUrl        String?
+  dataNascimento DateTime?
   papel          Papel
   ativo          Boolean         @default(true)
   aluno          Aluno?
