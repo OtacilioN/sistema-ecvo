@@ -23,8 +23,7 @@ const icMobile = "size-5"
 
 export const NAV_GESTOR: ItemNav[] = [
   { href: "/gestao", rotulo: "Início", icone: <LayoutDashboard className={ic} /> },
-  { href: "/gestao/gestores", rotulo: "Acessos", icone: <ShieldCheck className={ic} /> },
-  { href: "/gestao/usuarios", rotulo: "Usuários", icone: <KeyRound className={ic} /> },
+  { href: "/gestao/gestores", rotulo: "Gestores", icone: <ShieldCheck className={ic} /> },
   { href: "/gestao/alunos", rotulo: "Alunos", icone: <Users className={ic} /> },
   { href: "/gestao/professores", rotulo: "Professores", icone: <UserRound className={ic} /> },
   { href: "/gestao/modalidades", rotulo: "Modalidades", icone: <GraduationCap className={ic} /> },

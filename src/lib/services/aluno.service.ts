@@ -24,7 +24,7 @@ export function listarAlunos(opts?: { busca?: string; status?: StatusAluno }) {
     where,
     orderBy: { usuario: { nome: "asc" } },
     include: {
-      usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
+      usuario: { select: { id: true, nome: true, email: true, fotoUrl: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
       modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
       responsavel: true,

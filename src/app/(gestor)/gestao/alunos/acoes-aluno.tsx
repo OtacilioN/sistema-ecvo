@@ -1,12 +1,23 @@
 "use client"
 
-import { ClockPlus, FileText, Pencil, Plus, Trash2, WalletCards } from "lucide-react"
+import {
+  ClockPlus,
+  FileText,
+  ImagePlus,
+  KeyRound,
+  Pencil,
+  Plus,
+  Trash2,
+  WalletCards,
+} from "lucide-react"
 import { useState } from "react"
 import { acaoExcluirAluno } from "@/app/actions/cadastros"
+import { FormRedefinirSenhaUsuario } from "@/components/auth/form-redefinir-senha-usuario"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
 import { DialogoConfirmacao } from "@/components/ui/dialogo-confirmacao"
 import { ItemMenu, MenuAcoes, SeparadorMenu } from "@/components/ui/menu-acoes"
+import { FormFotoUsuarioGestor } from "@/components/usuarios/form-foto-usuario"
 import { FormBaixaMensalidadeAluno } from "../financeiro/forms-financeiro"
 import { FormAjusteHoras } from "./form-ajuste-horas"
 import { FormAluno } from "./form-aluno"
@@ -36,7 +47,9 @@ type ResponsavelAluno = {
 
 export type AlunoLinha = {
   id: string
+  usuarioId: string
   nome: string
+  email: string
   tipo: TipoAluno
   status: StatusAluno
   cpf: string | null
@@ -89,7 +102,7 @@ export function BotaoNovoAluno({
   )
 }
 
-type Painel = "editar" | "horas" | "pagamento" | "documento" | "excluir" | null
+type Painel = "editar" | "foto" | "senha" | "horas" | "pagamento" | "documento" | "excluir" | null
 
 /** Menu de ações por linha da tabela de alunos. */
 export function AcoesAluno({
@@ -124,6 +137,25 @@ export function AcoesAluno({
             </ItemMenu>
             {podeAdministrar && (
               <>
+                <ItemMenu
+                  icone={ImagePlus}
+                  onClick={() => {
+                    fecharMenu()
+                    setPainel("foto")
+                  }}
+                >
+                  Alterar foto
+                </ItemMenu>
+                <ItemMenu
+                  icone={KeyRound}
+                  onClick={() => {
+                    fecharMenu()
+                    setPainel("senha")
+                  }}
+                >
+                  Redefinir senha
+                </ItemMenu>
+                <SeparadorMenu />
                 <ItemMenu
                   icone={ClockPlus}
                   onClick={() => {
@@ -181,6 +213,32 @@ export function AcoesAluno({
           aluno={aluno}
           modalidades={modalidades}
           planos={planos}
+          aoConcluir={fechar}
+        />
+      </Dialog>
+
+      <Dialog
+        aberto={painel === "foto"}
+        aoFechar={fechar}
+        variante="centro"
+        titulo="Alterar foto"
+        descricao={aluno.nome}
+      >
+        <FormFotoUsuarioGestor
+          usuario={{ id: aluno.usuarioId, nome: aluno.nome, fotoUrl: aluno.fotoUrl }}
+          aoConcluir={fechar}
+        />
+      </Dialog>
+
+      <Dialog
+        aberto={painel === "senha"}
+        aoFechar={fechar}
+        variante="centro"
+        titulo="Redefinir senha"
+        descricao={aluno.nome}
+      >
+        <FormRedefinirSenhaUsuario
+          usuario={{ id: aluno.usuarioId, nome: aluno.nome, email: aluno.email }}
           aoConcluir={fechar}
         />
       </Dialog>

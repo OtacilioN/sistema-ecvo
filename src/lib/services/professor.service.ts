@@ -11,7 +11,7 @@ export function listarProfessores() {
   return db.professor.findMany({
     orderBy: { usuario: { nome: "asc" } },
     include: {
-      usuario: { select: { nome: true, email: true, fotoUrl: true, ativo: true } },
+      usuario: { select: { id: true, nome: true, email: true, fotoUrl: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
       _count: { select: { turmas: true } },
     },

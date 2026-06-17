@@ -96,6 +96,7 @@ export async function acaoRedefinirSenhaUsuario(
   if (!resultado.ok) return { erro: resultado.motivo }
 
   revalidatePath("/gestao/usuarios")
+  revalidatePath("/gestao/gestores")
   revalidatePath("/gestao/auditoria")
   return { ok: true }
 }
@@ -146,6 +147,7 @@ export async function acaoAtualizarFotoUsuario(
 function revalidarFotoUsuario(papel?: "GESTOR" | "SECRETARIA" | "PROFESSOR" | "ALUNO") {
   revalidatePath("/gestao/auditoria")
   revalidatePath("/gestao/usuarios")
+  revalidatePath("/gestao/gestores")
 
   if (!papel || papel === "GESTOR" || papel === "SECRETARIA") revalidatePath("/gestao/perfil")
   if (!papel || papel === "PROFESSOR") {

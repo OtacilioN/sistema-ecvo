@@ -14,6 +14,7 @@ export function listarGestores() {
       id: true,
       nome: true,
       email: true,
+      fotoUrl: true,
       papel: true,
       ativo: true,
       criadoEm: true,

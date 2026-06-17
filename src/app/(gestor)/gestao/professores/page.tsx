@@ -27,6 +27,7 @@ export default async function ProfessoresPage() {
         podeEditar={podeEditar}
         professores={professores.map((p) => ({
           id: p.id,
+          usuarioId: p.usuario.id,
           nome: p.usuario.nome,
           email: p.usuario.email,
           ativo: p.ativo && p.usuario.ativo,

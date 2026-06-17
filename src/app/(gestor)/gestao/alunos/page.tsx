@@ -40,6 +40,7 @@ export default async function AlunosPage() {
         podeAdministrar={podeAdministrarAluno}
         alunos={alunos.map((a) => ({
           id: a.id,
+          usuarioId: a.usuario.id,
           nome: a.usuario.nome,
           email: a.usuario.email,
           tipo: a.tipo,
