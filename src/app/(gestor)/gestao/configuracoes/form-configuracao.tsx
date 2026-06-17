@@ -47,7 +47,7 @@ export function FormConfiguracao({
       <CardContent>
         <form action={acao} className="grid gap-5 md:grid-cols-2">
           <div className="space-y-1.5">
-            <Label htmlFor="janelaComparecimentoHoras">Janela de comparecimento (horas)</Label>
+            <Label htmlFor="janelaComparecimentoHoras">Janela de intenção (horas)</Label>
             <Input
               id="janelaComparecimentoHoras"
               name="janelaComparecimentoHoras"
@@ -75,7 +75,7 @@ export function FormConfiguracao({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="politicaCheckinSemComparecimento">Check-in sem comparecimento</Label>
+            <Label htmlFor="politicaCheckinSemComparecimento">Check-in sem intenção</Label>
             <Select
               id="politicaCheckinSemComparecimento"
               name="politicaCheckinSemComparecimento"
@@ -97,7 +97,7 @@ export function FormConfiguracao({
               disabled={somenteLeitura}
             >
               <option value="APENAS_ALERTAR">Apenas alertar</option>
-              <option value="BLOQUEAR_COMPARECIMENTO">Bloquear comparecimento</option>
+              <option value="BLOQUEAR_COMPARECIMENTO">Bloquear intenção</option>
               <option value="BLOQUEAR_CHECKIN">Bloquear check-in</option>
               <option value="SEM_BLOQUEIO">Sem bloqueio</option>
             </Select>
@@ -115,7 +115,7 @@ export function FormConfiguracao({
                 disabled={somenteLeitura}
                 className="accent-primary"
               />
-              Exigir comparecimento prévio para check-in do aluno
+              Exigir intenção prévia para check-in do aluno
             </label>
             <label className="flex items-center gap-2 text-sm">
               <input
@@ -163,7 +163,7 @@ export function FormConfiguracao({
             <OpcaoNotificacao
               nome="notificarComparecimento"
               ativo={configuracao.notificarComparecimento}
-              rotulo="Comparecimento e no-show"
+              rotulo="Intenção e no-show"
               disabled={somenteLeitura}
             />
             <OpcaoNotificacao

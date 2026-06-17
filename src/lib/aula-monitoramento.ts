@@ -43,7 +43,7 @@ export const ROTULO_STATUS_LINHA: Record<
   { texto: string; variant: BadgeProps["variant"] }
 > = {
   PRESENTE: { texto: "Presente", variant: "success" },
-  COMPARECEU: { texto: "Comparecimento", variant: "secondary" },
+  COMPARECEU: { texto: "Intenção marcada", variant: "secondary" },
   LISTA_ESPERA: { texto: "Lista de espera", variant: "warning" },
   PENDENTE_REVISAO: { texto: "Pendente de revisão", variant: "warning" },
   INVALIDADO: { texto: "Check-in invalidado", variant: "destructive" },

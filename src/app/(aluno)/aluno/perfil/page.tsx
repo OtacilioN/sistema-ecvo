@@ -503,7 +503,7 @@ export default async function Page() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Comparecimentos recentes</CardTitle>
+          <CardTitle>Intenções recentes</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <table className="tabela-responsiva w-full text-sm">
@@ -547,7 +547,7 @@ export default async function Page() {
               {aluno.comparecimentos.length === 0 && (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-muted-foreground">
-                    Nenhum comparecimento registrado.
+                    Nenhuma intenção registrada.
                   </td>
                 </tr>
               )}

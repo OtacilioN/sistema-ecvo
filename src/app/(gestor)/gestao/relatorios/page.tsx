@@ -226,7 +226,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       <div className="grid gap-4 xl:grid-cols-3">
         <SecaoCard icone={Activity} titulo="Operação de treino">
           <Linha rotulo="Aulas realizadas" valor={aulasRealizadas} />
-          <Linha rotulo="Comparecimentos" valor={comparecimentos} />
+          <Linha rotulo="Intenções" valor={comparecimentos} />
           <Linha rotulo="Presenças por check-in" valor={checkinsValidos} />
           <Linha rotulo="Registros de graduação" valor={graduacoes} />
         </SecaoCard>
@@ -299,7 +299,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           />
         </SecaoCard>
 
-        <SecaoCard icone={Activity} titulo="Comparecimentos por status">
+        <SecaoCard icone={Activity} titulo="Intenções por status">
           <Distribuicao
             itens={comparecimentosPorStatus.map((item) => ({
               chave: item.status,
@@ -422,7 +422,7 @@ const ROTULOS: Record<string, string> = {
   QR_CODE: "QR Code",
   LANCADO_GESTOR: "Lançado pelo gestor",
   LANCADO_PROFESSOR: "Lançado pelo professor",
-  // Status de comparecimento
+  // Status de intenção
   CONFIRMADO: "Confirmados",
   LISTA_ESPERA: "Lista de espera",
   CANCELADO_ALUNO: "Cancelado (aluno)",

@@ -79,7 +79,7 @@ export function AcoesAula({
             <form action={acaoMarcar}>
               <input type="hidden" name="aulaId" value={aulaId} />
               <BotaoEnviar size="sm" variant={janelaAberta ? "default" : "outline"}>
-                Marcar comparecimento
+                Marcar intenção
               </BotaoEnviar>
             </form>
             <Badge variant="secondary" className="gap-1.5 py-1.5">

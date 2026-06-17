@@ -70,10 +70,10 @@ export function avaliarCheckin(ctx: ContextoCheckin): AvaliacaoCheckin {
     return { ok: false, motivo: "Aula sem vagas disponíveis." }
   }
 
-  // Comparecimento prévio (RF-022): a aprovação por terceiro libera os casos restritos.
+  // Intenção prévia (RF-022): a aprovação por terceiro libera os casos restritos.
   if (!ctx.temComparecimento && !ctx.lancadoPorTerceiro) {
     const exige = ctx.exigirComparecimento || ctx.politicaSemComparecimento === "BLOQUEAR"
-    if (exige) return { ok: false, motivo: "É necessário marcar comparecimento antes." }
+    if (exige) return { ok: false, motivo: "É necessário marcar intenção antes." }
     if (ctx.politicaSemComparecimento === "APENAS_COM_APROVACAO") {
       return { ok: true, pendenteRevisao: true }
     }
@@ -255,7 +255,7 @@ export async function realizarCheckinQr(params: {
 
 /**
  * Realiza o check-in (RF-019..023). Em transação: cria o Checkin VÁLIDO, converte o
- * comparecimento (se houver), credita as horas (= duração da aula) e grava o LogAuditoria.
+ * intenção (se houver), credita as horas (= duração da aula) e grava o LogAuditoria.
  */
 export async function realizarCheckin(params: {
   alunoId: string

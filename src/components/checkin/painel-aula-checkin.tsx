@@ -60,8 +60,8 @@ const visualPainel: Record<
     Icone: ShieldAlert,
   },
   CHECKIN_COMPARECIMENTO: {
-    titulo: "Check-in + comparecimento",
-    resumo: "Presença ideal",
+    titulo: "Check-in + intenção",
+    resumo: "Presença com intenção",
     className:
       "border-emerald-500 bg-emerald-50 text-emerald-950 shadow-[0_12px_30px_rgba(16,185,129,0.22)] ring-2 ring-emerald-300/70",
     badgeClassName: "border-emerald-700 bg-emerald-700 text-white",
@@ -76,7 +76,7 @@ const visualPainel: Record<
     Icone: Check,
   },
   COMPARECIMENTO: {
-    titulo: "Comparecimento",
+    titulo: "Intenção",
     resumo: "Intenção marcada",
     className: "border-sky-500 bg-sky-50 text-sky-950 shadow-[0_10px_24px_rgba(14,165,233,0.13)]",
     badgeClassName: "border-sky-700 bg-sky-700 text-white",
@@ -121,8 +121,8 @@ function montarLinhaPainel(
       alunoId: linha.alunoId,
       nome: linha.nome,
       statusPainel: "CHECKIN_COMPARECIMENTO",
-      badges: ["Check-in", "Comparecimento"],
-      detalhe: "Presença confirmada e comparecimento marcado.",
+      badges: ["Check-in", "Intenção"],
+      detalhe: "Presença confirmada e intenção marcada.",
       observacoesTecnicas: linha.observacoesTecnicas,
       totalTentativasInadimplencia: 0,
     }
@@ -134,7 +134,7 @@ function montarLinhaPainel(
       nome: linha.nome,
       statusPainel: "CHECKIN",
       badges: ["Check-in"],
-      detalhe: "Presença confirmada sem comparecimento prévio.",
+      detalhe: "Presença confirmada sem intenção prévia.",
       observacoesTecnicas: linha.observacoesTecnicas,
       totalTentativasInadimplencia: 0,
     }
@@ -159,7 +159,7 @@ function montarLinhaPainel(
     badges: [rotuloStatus.texto],
     detalhe:
       linha.status === "AUSENTE"
-        ? "Sem comparecimento e sem check-in."
+        ? "Sem intenção e sem check-in."
         : "Sem presença válida para esta aula.",
     observacoesTecnicas: linha.observacoesTecnicas,
     totalTentativasInadimplencia: 0,
@@ -267,8 +267,7 @@ export function PainelAulaCheckin({
               <UsersRound className="size-4" /> Alunos da aula
             </h2>
             <p className="text-sm text-muted-foreground">
-              Ordenado por inadimplência, check-in com comparecimento, check-in, comparecimento e
-              ausentes.
+              Ordenado por inadimplência, check-in com intenção, check-in, intenção e ausentes.
             </p>
           </div>
           <Badge variant="secondary">{linhas.length} aluno(s)</Badge>

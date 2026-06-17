@@ -79,7 +79,7 @@ describe("avaliarCheckin", () => {
     ).toMatchObject({ ok: false })
   })
 
-  it("bloqueia check-in sem comparecimento quando a aula está lotada (RF-020)", () => {
+  it("bloqueia check-in sem intenção quando a aula está lotada (RF-020)", () => {
     expect(
       avaliarCheckin({
         ...base,
@@ -94,14 +94,14 @@ describe("avaliarCheckin", () => {
     expect(avaliarCheckin({ ...base, capacidadeAula: 10, ocupacaoAula: 10 })).toEqual({ ok: true })
   })
 
-  describe("comparecimento prévio (RF-022)", () => {
+  describe("intenção prévia (RF-022)", () => {
     const sem = { ...base, temComparecimento: false }
-    it("PERMITIR libera sem comparecimento", () => {
+    it("PERMITIR libera sem intenção", () => {
       expect(avaliarCheckin({ ...sem, politicaSemComparecimento: "PERMITIR" })).toEqual({
         ok: true,
       })
     })
-    it("BLOQUEAR exige comparecimento", () => {
+    it("BLOQUEAR exige intenção", () => {
       expect(avaliarCheckin({ ...sem, politicaSemComparecimento: "BLOQUEAR" })).toMatchObject({
         ok: false,
       })

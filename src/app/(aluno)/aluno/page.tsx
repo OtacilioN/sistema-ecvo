@@ -79,7 +79,7 @@ export default async function AlunoAgenda() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge variant="outline">{aula.turma.modalidade.nome}</Badge>
                     {temComparecimento && !presente && (
-                      <Badge variant="secondary">Comparecimento marcado</Badge>
+                      <Badge variant="secondary">Intenção marcada</Badge>
                     )}
                     {emListaEspera && !presente && <Badge variant="warning">Lista de espera</Badge>}
                     {pendenteRevisao && !presente && (

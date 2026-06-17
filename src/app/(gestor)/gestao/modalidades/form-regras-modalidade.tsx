@@ -40,7 +40,7 @@ export function FormRegrasModalidade({
       <input type="hidden" name="modalidadeId" value={modalidade.id} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="janelaComparecimentoHoras-modalidade">Janela (horas)</Label>
+          <Label htmlFor="janelaComparecimentoHoras-modalidade">Janela de intenção (horas)</Label>
           <Input
             id="janelaComparecimentoHoras-modalidade"
             name="janelaComparecimentoHoras"
@@ -67,7 +67,7 @@ export function FormRegrasModalidade({
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
-          <Label htmlFor="exigirComparecimento-modalidade">Exigir comparecimento</Label>
+          <Label htmlFor="exigirComparecimento-modalidade">Exigir intenção</Label>
           <Select
             id="exigirComparecimento-modalidade"
             name="exigirComparecimentoParaCheckin"
@@ -79,7 +79,7 @@ export function FormRegrasModalidade({
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="politicaCheckin-modalidade">Check-in sem comparecimento</Label>
+          <Label htmlFor="politicaCheckin-modalidade">Check-in sem intenção</Label>
           <Select
             id="politicaCheckin-modalidade"
             name="politicaCheckinSemComparecimento"

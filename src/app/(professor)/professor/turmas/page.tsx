@@ -54,8 +54,7 @@ export default async function ProfessorAulas() {
                     <p className="font-medium capitalize">{formatarDataExtenso(aula.inicio)}</p>
                     <p className="text-sm text-muted-foreground">
                       {formatarHora(aula.inicio)}–{formatarHora(aula.fim)} ·{" "}
-                      {aula._count.comparecimentos} comparecimentos · {aula._count.checkins}{" "}
-                      check-ins
+                      {aula._count.comparecimentos} intenções · {aula._count.checkins} check-ins
                     </p>
                   </div>
                   <ChevronRight className="size-5 shrink-0 text-muted-foreground" />

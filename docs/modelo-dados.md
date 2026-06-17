@@ -21,7 +21,7 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
 
 ## Entidades
 
-Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento · Checkin ·
+Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento (intenção de treino) · Checkin ·
 TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · Graduacao · GraduacaoAluno ·
 Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · Importacao ·
 RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao · InscricaoPush.
@@ -80,16 +80,17 @@ erDiagram
 - **AlunoPlanoModalidade** define quais modalidades do aluno estão cobertas pelo plano mensal interno.
   O plano não restringe modalidades; a seleção acontece no vínculo aluno-plano.
   (`ehEvento = true`, sem dia da semana). **Aula** é a ocorrência datada concreta.
-- **Comparecimento** pode ficar em `LISTA_ESPERA` quando a capacidade da aula foi atingida e a configuração
-  de lista de espera está ativa. Ao cancelar um comparecimento `CONFIRMADO`, o primeiro registro em lista de
-  espera da aula é promovido para `CONFIRMADO`, com auditoria e notificação.
+- **Intenção de treino** é persistida no modelo técnico `Comparecimento`. Pode ficar em `LISTA_ESPERA`
+  quando a capacidade da aula foi atingida e a configuração de lista de espera está ativa. Ao cancelar uma
+  intenção `CONFIRMADO`, o primeiro registro em lista de espera da aula é promovido para `CONFIRMADO`, com
+  auditoria e notificação.
 - **ConfiguracaoAcademia** é um singleton (`id = "default"`) com as regras configuráveis: janela de
-  comparecimento, exigência de comparecimento para check-in, política de check-in sem comparecimento,
+  intenção, exigência de intenção para check-in, política de check-in sem intenção,
   bloqueio por inadimplência, lista de espera, ranking de horas e valor base financeiro por modalidade.
 - **RegistroImportado.valorRepasse** guarda o valor financeiro importado de Wellhub/TotalPass quando a
   planilha traz repasse por check-in; o JSON bruto continua preservado em `dadosBrutos`.
-- **Modalidade** pode definir overrides operacionais para janela de comparecimento, prazo de
-  cancelamento, exigência/política de check-in sem comparecimento e lista de espera. Campos nulos herdam a
+- **Modalidade** pode definir overrides operacionais para janela de intenção, prazo de
+  cancelamento, exigência/política de check-in sem intenção e lista de espera. Campos nulos herdam a
   regra global de `ConfiguracaoAcademia`.
 - **GraduacaoAluno** guarda a graduação concedida e, quando houver, `graduacaoAnteriorId`; isso preserva o
   histórico `anterior -> nova` exigido por RF-042 sem depender do log de auditoria para reconstruir a troca.
