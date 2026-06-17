@@ -1,7 +1,6 @@
 import type { StatusAluno, StatusMensalidade } from "@prisma/client"
 import {
   AlertTriangle,
-  ArrowRight,
   CalendarClock,
   CalendarDays,
   CheckCircle2,
@@ -34,6 +33,7 @@ import { formatarBRL } from "@/lib/utils/formato"
 export const dynamic = "force-dynamic"
 
 const MS_DIA = 24 * 60 * 60 * 1000
+const ROTA_FINANCEIRO = "/gestao/financeiro"
 const statusMonitorados: StatusAluno[] = ["ATIVO", "INADIMPLENTE"]
 
 const rotulosStatusMensalidade: Record<StatusMensalidade, string> = {
@@ -249,10 +249,20 @@ export default async function GestaoInicio() {
   )
 
   const cardsOperacao = [
-    { rotulo: "Alunos monitorados", valor: totalAlunosMonitorados, icone: Users },
-    { rotulo: "Professores", valor: professores, icone: UserRound },
-    { rotulo: "Modalidades", valor: modalidades, icone: GraduationCap },
-    { rotulo: "Turmas ativas", valor: turmas, icone: CalendarDays },
+    {
+      rotulo: "Alunos monitorados",
+      valor: totalAlunosMonitorados,
+      icone: Users,
+      href: "/gestao/alunos",
+    },
+    { rotulo: "Professores", valor: professores, icone: UserRound, href: "/gestao/professores" },
+    {
+      rotulo: "Modalidades",
+      valor: modalidades,
+      icone: GraduationCap,
+      href: "/gestao/modalidades",
+    },
+    { rotulo: "Turmas ativas", valor: turmas, icone: CalendarDays, href: "/gestao/turmas" },
   ]
 
   return (
@@ -260,14 +270,7 @@ export default async function GestaoInicio() {
       <CabecalhoPagina
         titulo="Painel da gestão"
         descricao={`Mês de ${formatarData(inicioMes)} a ${formatarData(fimMes)}.`}
-      >
-        <Button asChild>
-          <Link href="/gestao/financeiro">
-            Abrir financeiro
-            <ArrowRight className="size-4" />
-          </Link>
-        </Button>
-      </CabecalhoPagina>
+      />
       <LembreteAtivarNotificacoes />
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -294,24 +297,28 @@ export default async function GestaoInicio() {
                   valor={alunosAdimplentes.toString()}
                   detalhe={`${totalAlunosInternosMonitorados} internos no acompanhamento`}
                   tom="positivo"
+                  href={ROTA_FINANCEIRO}
                 />
                 <ResumoFinanceiro
                   rotulo="Inadimplentes"
                   valor={alunosInadimplentes.toString()}
                   detalhe={formatarBRL(valorVencido)}
                   tom="negativo"
+                  href={ROTA_FINANCEIRO}
                 />
                 <ResumoFinanceiro
                   rotulo="Wellhub"
                   valor={alunosWellhubIds.size.toString()}
                   detalhe="cobrança externa"
                   tom="neutro"
+                  href={ROTA_FINANCEIRO}
                 />
                 <ResumoFinanceiro
                   rotulo="TotalPass"
                   valor={alunosTotalpassIds.size.toString()}
                   detalhe="cobrança externa"
                   tom="neutro"
+                  href={ROTA_FINANCEIRO}
                 />
               </div>
             </div>
@@ -325,6 +332,7 @@ export default async function GestaoInicio() {
                 } com vencimento até sábado`}
                 icone={CalendarClock}
                 tom="atencao"
+                href={ROTA_FINANCEIRO}
               />
               <KpiCard
                 titulo="Recebido na semana"
@@ -333,6 +341,7 @@ export default async function GestaoInicio() {
                 detalheSecundario={`Este mês: ${formatarBRL(valorRecebidoMes)}`}
                 icone={TrendingUp}
                 tom="positivo"
+                href={ROTA_FINANCEIRO}
               />
             </div>
           </CardContent>
@@ -364,6 +373,7 @@ export default async function GestaoInicio() {
                   valor={mensalidade.valorNumero}
                   data={mensalidade.vencimento}
                   status={mensalidade.statusEfetivo}
+                  href={ROTA_FINANCEIRO}
                 />
               ))}
               {mensalidadesVencidas.length === 0 && (
@@ -389,6 +399,7 @@ export default async function GestaoInicio() {
                 detalhe={formatarBRL(valorPrevistoSemana)}
                 icone={WalletCards}
                 tom="atencao"
+                href={ROTA_FINANCEIRO}
               />
               <MiniIndicador
                 rotulo="Mensalidades pagas"
@@ -396,6 +407,7 @@ export default async function GestaoInicio() {
                 detalhe={`Esta semana ${mensalidadesRecebidasSemana.length}`}
                 icone={DollarSign}
                 tom="positivo"
+                href={ROTA_FINANCEIRO}
               />
               <MiniIndicador
                 rotulo="A receber ainda este mês"
@@ -403,6 +415,7 @@ export default async function GestaoInicio() {
                 detalhe={`Esta semana ${formatarBRL(valorPrevistoSemana)}`}
                 icone={CalendarClock}
                 tom="atencao"
+                href={ROTA_FINANCEIRO}
               />
             </div>
 
@@ -463,7 +476,7 @@ export default async function GestaoInicio() {
           <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Próximos vencimentos</CardTitle>
             <Button asChild variant="outline" size="sm">
-              <Link href="/gestao/financeiro">Ver todos</Link>
+              <Link href={ROTA_FINANCEIRO}>Ver todos</Link>
             </Button>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -474,6 +487,7 @@ export default async function GestaoInicio() {
                 valor={mensalidade.valorNumero}
                 data={mensalidade.vencimento}
                 status={mensalidade.statusEfetivo}
+                href={ROTA_FINANCEIRO}
               />
             ))}
             {proximosVencimentos.length === 0 && (
@@ -490,10 +504,11 @@ export default async function GestaoInicio() {
           <CardTitle>Visão operacional</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-2 gap-4 pt-0 lg:grid-cols-4">
-          {cardsOperacao.map(({ rotulo, valor, icone: Icone }) => (
-            <div
+          {cardsOperacao.map(({ rotulo, valor, icone: Icone, href }) => (
+            <Link
               key={rotulo}
-              className="flex items-center gap-4 rounded-md border border-border bg-muted/30 p-4"
+              href={href}
+              className="group flex items-center gap-4 rounded-md border border-border bg-muted/30 p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
             >
               <div className="flex size-11 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
                 <Icone className="size-5" />
@@ -502,7 +517,7 @@ export default async function GestaoInicio() {
                 <div className="text-2xl font-bold">{valor}</div>
                 <div className="text-xs text-muted-foreground">{rotulo}</div>
               </div>
-            </div>
+            </Link>
           ))}
         </CardContent>
       </Card>
@@ -515,16 +530,19 @@ function ResumoFinanceiro({
   valor,
   detalhe,
   tom,
+  href,
 }: {
   rotulo: string
   valor: string
   detalhe: string
   tom: "positivo" | "negativo" | "neutro"
+  href: string
 }) {
   return (
-    <div
+    <Link
+      href={href}
       className={cn(
-        "rounded-md border p-3",
+        "block rounded-md border p-3 transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
         tom === "positivo" && "border-success/20 bg-success/5",
         tom === "negativo" && "border-destructive/20 bg-destructive/5",
         tom === "neutro" && "border-border bg-muted/30",
@@ -541,7 +559,7 @@ function ResumoFinanceiro({
       </p>
       <p className="text-sm font-medium">{rotulo}</p>
       <p className="mt-1 text-xs text-muted-foreground">{detalhe}</p>
-    </div>
+    </Link>
   )
 }
 
@@ -552,6 +570,7 @@ function KpiCard({
   detalheSecundario,
   icone: Icone,
   tom,
+  href,
 }: {
   titulo: string
   valor: string
@@ -559,9 +578,13 @@ function KpiCard({
   detalheSecundario?: string
   icone: LucideIcon
   tom: "positivo" | "atencao"
+  href: string
 }) {
   return (
-    <div className="rounded-md border border-border bg-muted/30 p-4">
+    <Link
+      href={href}
+      className="block rounded-md border border-border bg-muted/30 p-4 transition-colors hover:border-primary/40 hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm text-muted-foreground">{titulo}</p>
@@ -583,7 +606,7 @@ function KpiCard({
           {detalheSecundario}
         </p>
       )}
-    </div>
+    </Link>
   )
 }
 
@@ -593,15 +616,20 @@ function MiniIndicador({
   detalhe,
   icone: Icone,
   tom,
+  href,
 }: {
   rotulo: string
   valor: string
   detalhe: string
   icone: LucideIcon
   tom: "positivo" | "atencao" | "neutro"
+  href: string
 }) {
   return (
-    <div className="rounded-md border border-border p-3">
+    <Link
+      href={href}
+      className="block rounded-md border border-border p-3 transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+    >
       <div className="flex items-center justify-between gap-3">
         <div
           className={cn(
@@ -617,7 +645,7 @@ function MiniIndicador({
       </div>
       <p className="mt-3 text-sm font-medium">{rotulo}</p>
       <p className="text-xs text-muted-foreground">{detalhe}</p>
-    </div>
+    </Link>
   )
 }
 
@@ -676,15 +704,20 @@ function LinhaMensalidade({
   valor,
   data,
   status,
+  href,
 }: {
   nome: string
   valor: number
   data: Date
   status: StatusMensalidade
+  href: string
 }) {
   const vencida = status === "VENCIDA"
   return (
-    <div className="flex items-center justify-between gap-3 rounded-md border border-border p-3">
+    <Link
+      href={href}
+      className="group flex items-center justify-between gap-3 rounded-md border border-border p-3 transition-colors hover:border-primary/40 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+    >
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{nome}</p>
         <p className="text-xs text-muted-foreground">
@@ -697,6 +730,6 @@ function LinhaMensalidade({
       >
         {rotulosStatusMensalidade[status]}
       </Badge>
-    </div>
+    </Link>
   )
 }
