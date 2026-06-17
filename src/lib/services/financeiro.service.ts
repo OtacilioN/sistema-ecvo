@@ -654,7 +654,7 @@ export async function baixarMensalidade(params: {
 }) {
   const mensalidade = await db.mensalidade.findUnique({
     where: { id: params.mensalidadeId },
-    include: { aluno: { select: { usuarioId: true } } },
+    include: { aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } } },
   })
   if (!mensalidade) return { ok: false as const, motivo: "Mensalidade não encontrada." }
   if (mensalidade.status === "PAGA" || mensalidade.status === "ISENTA") {
@@ -678,8 +678,21 @@ export async function baixarMensalidade(params: {
         acao: "PAGAMENTO",
         entidade: "Mensalidade",
         entidadeId: mensalidade.id,
-        valorAntigo: { status: mensalidade.status },
-        valorNovo: { status: nova.status, formaPagamento: nova.formaPagamento },
+        valorAntigo: {
+          alunoId: mensalidade.alunoId,
+          alunoNome: mensalidade.aluno.usuario.nome,
+          competencia: mensalidade.competencia,
+          valor: Number(mensalidade.valor),
+          status: mensalidade.status,
+        },
+        valorNovo: {
+          alunoId: nova.alunoId,
+          alunoNome: mensalidade.aluno.usuario.nome,
+          competencia: nova.competencia,
+          valor: Number(nova.valor),
+          status: nova.status,
+          formaPagamento: nova.formaPagamento,
+        },
         justificativa: params.observacao ?? null,
       },
       tx,
@@ -728,7 +741,7 @@ export async function atualizarStatusMensalidade(params: {
 }) {
   const mensalidade = await db.mensalidade.findUnique({
     where: { id: params.mensalidadeId },
-    include: { aluno: { select: { usuarioId: true } } },
+    include: { aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } } },
   })
   if (!mensalidade) return { ok: false as const, motivo: "Mensalidade não encontrada." }
 
@@ -751,12 +764,20 @@ export async function atualizarStatusMensalidade(params: {
         entidade: "Mensalidade",
         entidadeId: mensalidade.id,
         valorAntigo: {
+          alunoId: mensalidade.alunoId,
+          alunoNome: mensalidade.aluno.usuario.nome,
+          competencia: mensalidade.competencia,
+          valor: Number(mensalidade.valor),
           status: mensalidade.status,
           pagoEm: mensalidade.pagoEm?.toISOString() ?? null,
           formaPagamento: mensalidade.formaPagamento,
           observacao: mensalidade.observacao,
         },
         valorNovo: {
+          alunoId: nova.alunoId,
+          alunoNome: mensalidade.aluno.usuario.nome,
+          competencia: nova.competencia,
+          valor: Number(nova.valor),
           status: nova.status,
           pagoEm: nova.pagoEm?.toISOString() ?? null,
           formaPagamento: nova.formaPagamento,

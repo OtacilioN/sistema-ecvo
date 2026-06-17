@@ -14,6 +14,7 @@ export type LogLinha = {
   autorPapel: string
   entidade: string
   entidadeId: string
+  detalheEntidade?: string
   justificativa: string | null
   valorAntigo: unknown
   valorNovo: unknown
@@ -26,7 +27,15 @@ export function TabelaAuditoria({ logs }: { logs: LogLinha[] }) {
     const termo = busca.trim().toLowerCase()
     if (!termo) return logs
     return logs.filter((log) =>
-      [log.acao, log.autorNome, log.autorPapel, log.entidade, log.entidadeId, log.justificativa]
+      [
+        log.acao,
+        log.autorNome,
+        log.autorPapel,
+        log.entidade,
+        log.entidadeId,
+        log.detalheEntidade,
+        log.justificativa,
+      ]
         .filter(Boolean)
         .some((campo) => (campo as string).toLowerCase().includes(termo)),
     )
@@ -66,6 +75,11 @@ export function TabelaAuditoria({ logs }: { logs: LogLinha[] }) {
                   </td>
                   <td className="p-4" data-label="Entidade">
                     <span>{log.entidade}</span>
+                    {log.detalheEntidade ? (
+                      <span className="block text-xs font-medium text-foreground">
+                        {log.detalheEntidade}
+                      </span>
+                    ) : null}
                     <span className="block max-w-full truncate text-xs text-muted-foreground sm:max-w-40">
                       {log.entidadeId}
                     </span>

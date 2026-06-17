@@ -17,6 +17,13 @@ type ResultadoPush = {
   tentativas: number
   enviados: number
   removidos: number
+  falhas: Array<{
+    inscricaoId: string
+    endpointHost: string | null
+    userAgent: string | null
+    statusCode: number | null
+    mensagem: string
+  }>
 }
 
 let vapidConfigurado = false
@@ -63,6 +70,32 @@ function codigoErroPush(erro: unknown): number | null {
   if (!erro || typeof erro !== "object" || !("statusCode" in erro)) return null
   const statusCode = (erro as { statusCode?: unknown }).statusCode
   return typeof statusCode === "number" ? statusCode : null
+}
+
+function mensagemErroPush(erro: unknown): string {
+  if (erro instanceof Error) return erro.message
+  return String(erro)
+}
+
+function hostEndpoint(endpoint: string): string | null {
+  try {
+    return new URL(endpoint).hostname
+  } catch {
+    return null
+  }
+}
+
+function opcoesEnvioPush(notificacaoId: string, endpoint: string) {
+  const opcoes: webPush.RequestOptions = {
+    TTL: 60 * 60 * 24,
+    urgency: "normal",
+  }
+
+  if (hostEndpoint(endpoint) !== "web.push.apple.com") {
+    opcoes.topic = notificacaoId.slice(0, 32)
+  }
+
+  return opcoes
 }
 
 export async function salvarInscricaoPush(params: {
@@ -112,7 +145,7 @@ export async function enviarPushParaNotificacao(
   notificacao: NotificacaoPush,
 ): Promise<ResultadoPush> {
   if (!configurarVapid()) {
-    return { configurado: false, tentativas: 0, enviados: 0, removidos: 0 }
+    return { configurado: false, tentativas: 0, enviados: 0, removidos: 0, falhas: [] }
   }
 
   const inscricoes = await db.inscricaoPush.findMany({
@@ -122,6 +155,7 @@ export async function enviarPushParaNotificacao(
 
   let enviados = 0
   let removidos = 0
+  const falhas: ResultadoPush["falhas"] = []
   const url = urlNotificacoesPorPapel(inscricoes[0]?.usuario.papel ?? "ALUNO")
   const payload = JSON.stringify({
     notificacaoId: notificacao.id,
@@ -142,11 +176,7 @@ export async function enviarPushParaNotificacao(
           },
         },
         payload,
-        {
-          TTL: 60 * 60 * 24,
-          urgency: "normal",
-          topic: notificacao.id.slice(0, 32),
-        },
+        opcoesEnvioPush(notificacao.id, inscricao.endpoint),
       )
       enviados++
       await db.inscricaoPush.update({
@@ -158,9 +188,17 @@ export async function enviarPushParaNotificacao(
       if (statusCode === 404 || statusCode === 410) {
         await db.inscricaoPush.delete({ where: { id: inscricao.id } })
         removidos++
+      } else {
+        falhas.push({
+          inscricaoId: inscricao.id,
+          endpointHost: hostEndpoint(inscricao.endpoint),
+          userAgent: inscricao.userAgent,
+          statusCode,
+          mensagem: mensagemErroPush(erro),
+        })
       }
     }
   }
 
-  return { configurado: true, tentativas: inscricoes.length, enviados, removidos }
+  return { configurado: true, tentativas: inscricoes.length, enviados, removidos, falhas }
 }

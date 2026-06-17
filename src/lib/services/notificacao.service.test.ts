@@ -13,6 +13,7 @@ vi.mock("@/lib/services/push.service", () => ({
     tentativas: 1,
     enviados: 1,
     removidos: 0,
+    falhas: [],
   })),
 }))
 
