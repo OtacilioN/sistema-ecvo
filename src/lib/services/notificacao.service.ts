@@ -26,6 +26,13 @@ const CAMPO_CONFIG: Record<TipoNotificacao, CampoConfiguracaoNotificacao> = {
   ANIVERSARIO: "notificarAniversario",
 }
 
+export const DIAS_RETENCAO_NOTIFICACOES_LIDAS = 45
+export const DIAS_RETENCAO_NOTIFICACOES_TODAS = 90
+
+function subtrairDias(data: Date, dias: number) {
+  return new Date(data.getTime() - dias * 24 * 60 * 60 * 1000)
+}
+
 export function campoConfiguracaoNotificacao(tipo: TipoNotificacao): CampoConfiguracaoNotificacao {
   return CAMPO_CONFIG[tipo]
 }
@@ -199,6 +206,28 @@ export async function gerarLembretesAniversario(cliente: Cliente = db, params?: 
   }
 
   return { ok: true as const, total }
+}
+
+export async function expurgarNotificacoesAntigas(
+  cliente: Cliente = db,
+  params?: { agora?: Date },
+) {
+  const agora = params?.agora ?? new Date()
+  const limiteLidas = subtrairDias(agora, DIAS_RETENCAO_NOTIFICACOES_LIDAS)
+  const limiteTodas = subtrairDias(agora, DIAS_RETENCAO_NOTIFICACOES_TODAS)
+
+  const resultado = await cliente.notificacao.deleteMany({
+    where: {
+      OR: [{ criadoEm: { lt: limiteTodas } }, { lida: true, criadoEm: { lt: limiteLidas } }],
+    },
+  })
+
+  return {
+    ok: true as const,
+    notificacoesExpurgadas: resultado.count,
+    lidasAntesDe: limiteLidas,
+    todasAntesDe: limiteTodas,
+  }
 }
 
 async function criarNotificacaoUnica(

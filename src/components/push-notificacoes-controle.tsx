@@ -11,6 +11,12 @@ type StatusPush = {
   publicKey: string | null
 }
 
+type PushNotificacoesControleProps = {
+  className?: string
+  mostrarTextoSempre?: boolean
+  aoMudarEstado?: (estado: EstadoPush) => void
+}
+
 function suportaPush() {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window
 }
@@ -40,7 +46,11 @@ async function obterStatusPush(): Promise<StatusPush | null> {
   return response.json()
 }
 
-export function PushNotificacoesControle() {
+export function PushNotificacoesControle({
+  className,
+  mostrarTextoSempre = false,
+  aoMudarEstado,
+}: PushNotificacoesControleProps = {}) {
   const [estado, setEstado] = useState<EstadoPush>("checando")
   const [publicKey, setPublicKey] = useState<string | null>(null)
   const [pendente, setPendente] = useState(false)
@@ -71,6 +81,10 @@ export function PushNotificacoesControle() {
   useEffect(() => {
     sincronizar().catch(() => setEstado("indisponivel"))
   }, [sincronizar])
+
+  useEffect(() => {
+    aoMudarEstado?.(estado)
+  }, [aoMudarEstado, estado])
 
   async function ativar() {
     if (!publicKey || pendente) return
@@ -134,9 +148,16 @@ export function PushNotificacoesControle() {
 
   if (estado === "bloqueado") {
     return (
-      <Button type="button" variant="outline" size="sm" disabled title="Notificações bloqueadas">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled
+        title="Notificações bloqueadas"
+        className={className}
+      >
         <BellOff />
-        <span className="hidden sm:inline">Push bloqueado</span>
+        <span className={mostrarTextoSempre ? undefined : "hidden sm:inline"}>Push bloqueado</span>
       </Button>
     )
   }
@@ -153,9 +174,10 @@ export function PushNotificacoesControle() {
       aria-pressed={ativo}
       aria-label={ativo ? "Desativar push" : "Ativar push"}
       title={ativo ? "Desativar push" : "Ativar push"}
+      className={className}
     >
       {ativo ? <BellRing /> : <BellOff />}
-      <span className="hidden sm:inline">
+      <span className={mostrarTextoSempre ? undefined : "hidden sm:inline"}>
         {pendente ? "Aguarde..." : ativo ? "Push ativo" : "Ativar push"}
       </span>
     </Button>

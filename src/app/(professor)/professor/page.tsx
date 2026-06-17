@@ -1,3 +1,4 @@
+import { LembreteAtivarNotificacoes } from "@/components/lembrete-ativar-notificacoes"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirProfessor } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
@@ -26,6 +27,7 @@ export default async function ProfessorInicio() {
         <h1 className="text-2xl font-bold tracking-tight">Olá, {usuario.nome}</h1>
         <p className="text-muted-foreground">Suas aulas e graduações.</p>
       </div>
+      <LembreteAtivarNotificacoes />
       <Card>
         <CardHeader>
           <CardTitle>Aulas de hoje</CardTitle>

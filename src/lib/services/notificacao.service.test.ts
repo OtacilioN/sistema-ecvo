@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { enviarPushParaNotificacao } from "@/lib/services/push.service"
 import {
   campoConfiguracaoNotificacao,
+  DIAS_RETENCAO_NOTIFICACOES_LIDAS,
+  DIAS_RETENCAO_NOTIFICACOES_TODAS,
+  expurgarNotificacoesAntigas,
   gerarLembretesAniversario,
   gerarLembretesTreino,
   mensagemLembreteAniversario,
@@ -50,6 +53,41 @@ describe("mensagemLembreteAniversario", () => {
     ).toEqual({
       titulo: "Aniversário amanhã",
       mensagem: "Ana Silva faz aniversário amanhã (10/06).",
+    })
+  })
+})
+
+describe("expurgarNotificacoesAntigas", () => {
+  it("remove lidas após 45 dias e qualquer notificação após 90 dias", async () => {
+    const cliente = {
+      notificacao: {
+        deleteMany: vi.fn(async () => ({ count: 4 })),
+      },
+    }
+    const agora = new Date("2026-06-17T12:00:00Z")
+
+    const resultado = await expurgarNotificacoesAntigas(
+      cliente as unknown as Parameters<typeof expurgarNotificacoesAntigas>[0],
+      { agora },
+    )
+
+    const lidasAntesDe = new Date(
+      agora.getTime() - DIAS_RETENCAO_NOTIFICACOES_LIDAS * 24 * 60 * 60 * 1000,
+    )
+    const todasAntesDe = new Date(
+      agora.getTime() - DIAS_RETENCAO_NOTIFICACOES_TODAS * 24 * 60 * 60 * 1000,
+    )
+
+    expect(resultado).toEqual({
+      ok: true,
+      notificacoesExpurgadas: 4,
+      lidasAntesDe,
+      todasAntesDe,
+    })
+    expect(cliente.notificacao.deleteMany).toHaveBeenCalledWith({
+      where: {
+        OR: [{ criadoEm: { lt: todasAntesDe } }, { lida: true, criadoEm: { lt: lidasAntesDe } }],
+      },
     })
   })
 })

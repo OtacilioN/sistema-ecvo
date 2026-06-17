@@ -2,7 +2,10 @@ import {
   gerarLembretesFinanceirosGestores,
   gerarMensalidadesRecorrentes,
 } from "@/lib/services/financeiro.service"
-import { gerarLembretesAniversario } from "@/lib/services/notificacao.service"
+import {
+  expurgarNotificacoesAntigas,
+  gerarLembretesAniversario,
+} from "@/lib/services/notificacao.service"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -20,9 +23,10 @@ export async function GET(request: Request) {
   }
 
   const mensalidades = await gerarMensalidadesRecorrentes()
-  const [financeiro, aniversarios] = await Promise.all([
+  const [financeiro, aniversarios, expurgoNotificacoes] = await Promise.all([
     gerarLembretesFinanceirosGestores(),
     gerarLembretesAniversario(),
+    expurgarNotificacoesAntigas(),
   ])
 
   return Response.json({
@@ -30,5 +34,6 @@ export async function GET(request: Request) {
     mensalidades,
     financeiro,
     aniversarios,
+    expurgoNotificacoes,
   })
 }

@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client"
+import Link from "next/link"
 import {
   acaoGerarLembretesTreino,
   acaoMarcarNotificacaoLida,
@@ -6,19 +8,61 @@ import {
 import { PushNotificacoesControle } from "@/components/push-notificacoes-controle"
 import { Badge } from "@/components/ui/badge"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { getUsuarioAtual } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { formatarDataHora } from "@/lib/utils/datas"
 
-export async function PaginaNotificacoes() {
+export type FiltroNotificacoes = "todas" | "nao-lidas" | "lidas"
+
+const FILTROS: Array<{ valor: FiltroNotificacoes; rotulo: string }> = [
+  { valor: "todas", rotulo: "Todas" },
+  { valor: "nao-lidas", rotulo: "Não lidas" },
+  { valor: "lidas", rotulo: "Lidas" },
+]
+
+export function normalizarFiltroNotificacoes(valor: string | string[] | undefined) {
+  const filtro = Array.isArray(valor) ? valor[0] : valor
+  if (filtro === "nao-lidas" || filtro === "lidas") return filtro
+  return "todas"
+}
+
+function caminhoNotificacoes(papel: string) {
+  if (papel === "ALUNO") return "/aluno/notificacoes"
+  if (papel === "PROFESSOR") return "/professor/notificacoes"
+  return "/gestao/notificacoes"
+}
+
+function hrefFiltro(base: string, filtro: FiltroNotificacoes) {
+  return filtro === "todas" ? base : `${base}?filtro=${filtro}`
+}
+
+function quantidadeFiltro(
+  filtro: FiltroNotificacoes,
+  contagens: { total: number; naoLidas: number; lidas: number },
+) {
+  if (filtro === "nao-lidas") return contagens.naoLidas
+  if (filtro === "lidas") return contagens.lidas
+  return contagens.total
+}
+
+export async function PaginaNotificacoes({ filtro = "todas" }: { filtro?: FiltroNotificacoes }) {
   const usuario = await getUsuarioAtual()
-  const notificacoes = await db.notificacao.findMany({
-    where: { usuarioId: usuario.id },
-    orderBy: { criadoEm: "desc" },
-    take: 50,
-  })
-  const naoLidas = notificacoes.filter((n) => !n.lida).length
+  const filtroWhere: Prisma.NotificacaoWhereInput =
+    filtro === "nao-lidas" ? { lida: false } : filtro === "lidas" ? { lida: true } : {}
+  const where: Prisma.NotificacaoWhereInput = { usuarioId: usuario.id, ...filtroWhere }
+  const baseNotificacoes = caminhoNotificacoes(usuario.papel)
+  const [notificacoes, total, naoLidas] = await Promise.all([
+    db.notificacao.findMany({
+      where,
+      orderBy: { criadoEm: "desc" },
+      take: 50,
+    }),
+    db.notificacao.count({ where: { usuarioId: usuario.id } }),
+    db.notificacao.count({ where: { usuarioId: usuario.id, lida: false } }),
+  ])
+  const contagens = { total, naoLidas, lidas: total - naoLidas }
 
   return (
     <div className="space-y-6">
@@ -48,9 +92,27 @@ export async function PaginaNotificacoes() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle>Caixa de entrada</CardTitle>
             <Badge variant={naoLidas > 0 ? "warning" : "secondary"}>{naoLidas} não lida(s)</Badge>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-3">
+            {FILTROS.map((opcao) => (
+              <Button
+                key={opcao.valor}
+                asChild
+                variant={filtro === opcao.valor ? "secondary" : "ghost"}
+                size="sm"
+              >
+                <Link
+                  href={hrefFiltro(baseNotificacoes, opcao.valor)}
+                  aria-current={filtro === opcao.valor ? "page" : undefined}
+                >
+                  {opcao.rotulo}
+                  <Badge variant="outline">{quantidadeFiltro(opcao.valor, contagens)}</Badge>
+                </Link>
+              </Button>
+            ))}
           </div>
         </CardHeader>
         <CardContent className="space-y-3">

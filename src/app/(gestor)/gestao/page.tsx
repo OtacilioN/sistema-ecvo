@@ -1,4 +1,5 @@
 import { CalendarDays, GraduationCap, UserRound, Users } from "lucide-react"
+import { LembreteAtivarNotificacoes } from "@/components/lembrete-ativar-notificacoes"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent } from "@/components/ui/card"
 import { db } from "@/lib/db"
@@ -23,6 +24,7 @@ export default async function GestaoInicio() {
   return (
     <div className="space-y-6">
       <CabecalhoPagina titulo="Painel da gestão" descricao="Visão geral da operação da academia." />
+      <LembreteAtivarNotificacoes />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {cards.map(({ rotulo, valor, icone: Icone }) => (
           <Card key={rotulo}>

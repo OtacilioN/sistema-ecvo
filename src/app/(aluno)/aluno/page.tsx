@@ -1,4 +1,5 @@
 import { CalendarX } from "lucide-react"
+import { LembreteAtivarNotificacoes } from "@/components/lembrete-ativar-notificacoes"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { exigirAluno } from "@/lib/auth/dal"
@@ -47,6 +48,8 @@ export default async function AlunoAgenda() {
         <h1 className="text-xl font-bold tracking-tight">Olá, {usuario.nome.split(" ")[0]}!</h1>
         <p className="text-sm text-muted-foreground">Suas próximas aulas.</p>
       </div>
+
+      <LembreteAtivarNotificacoes />
 
       {aulas.length === 0 && (
         <Card>
