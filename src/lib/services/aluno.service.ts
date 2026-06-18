@@ -5,6 +5,7 @@ import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { atualizarVencimentosMensalidadesAluno } from "@/lib/services/financeiro.service"
 import { excluirFotosInternasAntigas } from "@/lib/storage/blob-fotos"
+import { TERMO_RESPONSABILIDADE_VERSAO } from "@/lib/termo-responsabilidade"
 
 // Serviço de ALUNOS (RF-001..004). Criar um aluno cria o Usuario (papel ALUNO) + Aluno,
 // conecta modalidades e, se menor de idade, o responsável.
@@ -27,6 +28,12 @@ export function listarAlunos(opts?: { busca?: string; status?: StatusAluno }) {
       usuario: { select: { id: true, nome: true, email: true, fotoUrl: true, ativo: true } },
       modalidades: { select: { id: true, nome: true } },
       modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
+      aceitesTermoResponsabilidade: {
+        where: { termoVersao: TERMO_RESPONSABILIDADE_VERSAO },
+        orderBy: { aceitoEm: "desc" },
+        take: 1,
+        select: { aceitoEm: true, termoVersao: true },
+      },
       responsavel: true,
       plano: { select: { nome: true, valor: true } },
       _count: { select: { documentos: true } },

@@ -1,5 +1,6 @@
 "use client"
 
+import { AlertTriangle } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Badge, type BadgeProps } from "@/components/ui/badge"
 import { CampoBusca } from "@/components/ui/campo-busca"
@@ -32,6 +33,7 @@ const VARIANTE_STATUS: Record<StatusAluno, BadgeProps["variant"]> = {
 }
 
 type FiltroStatusAluno = "OPERACIONAIS" | "TODOS" | "TRANCADO" | "CANCELADO"
+type FiltroTermo = "TODOS" | "ACEITOS" | "PENDENTES"
 
 export function TabelaAlunos({
   alunos,
@@ -49,6 +51,7 @@ export function TabelaAlunos({
   const [busca, setBusca] = useState("")
   const [planoFiltro, setPlanoFiltro] = useState("TODOS")
   const [statusFiltro, setStatusFiltro] = useState<FiltroStatusAluno>("OPERACIONAIS")
+  const [termoFiltro, setTermoFiltro] = useState<FiltroTermo>("TODOS")
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
@@ -64,6 +67,12 @@ export function TabelaAlunos({
         planoFiltro === "TODOS" ||
         (planoFiltro === "SEM_PLANO" ? !a.planoId : a.planoId === planoFiltro)
       if (!correspondePlano) return false
+
+      const correspondeTermo =
+        termoFiltro === "TODOS" ||
+        (termoFiltro === "ACEITOS" ? a.termoResponsabilidadeAceito : !a.termoResponsabilidadeAceito)
+      if (!correspondeTermo) return false
+
       if (!termo) return true
 
       return [
@@ -72,6 +81,7 @@ export function TabelaAlunos({
         a.tipo,
         a.status,
         a.planoNome,
+        a.termoResponsabilidadeAceito ? "termo aceito" : "termo pendente",
         a.planoId ? String(a.diaVencimento) : "",
         ...a.modalidadeNomes,
       ]
@@ -79,7 +89,7 @@ export function TabelaAlunos({
         .toLowerCase()
         .includes(termo)
     })
-  }, [alunos, busca, planoFiltro, statusFiltro])
+  }, [alunos, busca, planoFiltro, statusFiltro, termoFiltro])
 
   const grupos = useMemo(
     () => [
@@ -98,7 +108,7 @@ export function TabelaAlunos({
   return (
     <Card>
       <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_190px_220px]">
+        <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_160px_160px_220px]">
           <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Nome, e-mail, modalidade…" />
           <Select
             aria-label="Filtrar por status"
@@ -109,6 +119,15 @@ export function TabelaAlunos({
             <option value="TODOS">Todos</option>
             <option value="TRANCADO">Trancados</option>
             <option value="CANCELADO">Cancelados</option>
+          </Select>
+          <Select
+            aria-label="Filtrar por termo"
+            value={termoFiltro}
+            onChange={(evento) => setTermoFiltro(evento.target.value as FiltroTermo)}
+          >
+            <option value="TODOS">Todos os termos</option>
+            <option value="PENDENTES">Termo pendente</option>
+            <option value="ACEITOS">Termo aceito</option>
           </Select>
           <Select
             aria-label="Filtrar por plano"
@@ -207,7 +226,19 @@ function TabelaGrupoAlunos({
                 <div className="flex items-center gap-3">
                   <FotoPerfil nome={a.nome} fotoUrl={a.fotoUrl} />
                   <div className="min-w-0">
-                    <span className="font-medium">{a.nome}</span>
+                    <span className="flex flex-wrap items-center gap-2 font-medium">
+                      {a.nome}
+                      {!a.termoResponsabilidadeAceito && (
+                        <Badge
+                          variant="warning"
+                          className="gap-1 rounded-md px-1.5 py-0.5 text-[11px]"
+                          title="Termo de responsabilidade pendente"
+                        >
+                          <AlertTriangle className="size-3" />
+                          Termo pendente
+                        </Badge>
+                      )}
+                    </span>
                     <span className="block truncate text-xs text-muted-foreground">{a.email}</span>
                   </div>
                 </div>

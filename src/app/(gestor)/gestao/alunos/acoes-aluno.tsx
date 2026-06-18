@@ -73,6 +73,9 @@ export type AlunoLinha = {
     modalidadeId: string
     plataformaExterna: "WELLHUB" | "TOTALPASS" | null
   }>
+  termoResponsabilidadeAceito: boolean
+  termoResponsabilidadeAceitoEm: Date | null
+  termoResponsabilidadeVersao: string | null
   responsavel: ResponsavelAluno
 }
 
