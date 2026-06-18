@@ -6,6 +6,7 @@ import type {
   StatusComparecimento,
   TipoAluno,
 } from "@prisma/client"
+import { alunoSemMatriculaAtiva } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
@@ -67,6 +68,7 @@ export function bloqueiaComparecimentoPorFinanceiro(p: {
   mensalidadeEmDia: boolean
   bloqueioInadimplencia: BloqueioInadimplencia
 }): boolean {
+  if (alunoSemMatriculaAtiva(p.statusAluno)) return true
   if (p.bloqueioInadimplencia !== "BLOQUEAR_COMPARECIMENTO") return false
   return (
     p.statusAluno === "INADIMPLENTE" || (p.mensalidadeInternaNaModalidade && !p.mensalidadeEmDia)
@@ -168,7 +170,14 @@ export async function marcarComparecimento(params: {
       : true,
     bloqueioInadimplencia: config.bloqueioInadimplencia,
   })
-  if (!podeFinanceiro) return { ok: false, motivo: "Mensalidade vencida." }
+  if (!podeFinanceiro) {
+    return {
+      ok: false,
+      motivo: alunoSemMatriculaAtiva(aluno.status)
+        ? "Aluno sem matrícula ativa."
+        : "Mensalidade vencida.",
+    }
+  }
 
   if (
     !podeMarcarComparecimento({

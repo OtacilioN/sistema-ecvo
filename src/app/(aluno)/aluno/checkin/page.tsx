@@ -3,6 +3,7 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
@@ -27,9 +28,12 @@ export default async function CheckinGlobalPage({
 
   const aluno = await db.aluno.findUnique({
     where: { id: alunoId },
-    select: { modalidades: { select: { id: true } } },
+    select: { status: true, modalidades: { select: { id: true } } },
   })
-  const modalidadeIds = aluno?.modalidades.map((modalidade) => modalidade.id) ?? []
+  const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))
+  const modalidadeIds = alunoOperacional
+    ? (aluno?.modalidades.map((modalidade) => modalidade.id) ?? [])
+    : []
   const agora = new Date()
   const proximoInicioLiberado = new Date(agora.getTime() + JANELA_CHECKIN_MS)
 
@@ -89,7 +93,19 @@ export default async function CheckinGlobalPage({
         </Card>
       )}
 
-      {tokenAtual && aulas.length === 0 && (
+      {!alunoOperacional && (
+        <Card>
+          <CardContent className="flex gap-3 py-6 text-sm text-muted-foreground">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0" />
+            <div>
+              <p className="font-medium text-foreground">Matrícula trancada.</p>
+              <p className="mt-1">Procure a gestão para retomar os treinos.</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {alunoOperacional && tokenAtual && aulas.length === 0 && (
         <Card>
           <CardContent className="flex gap-3 py-6 text-sm text-muted-foreground">
             <Clock className="mt-0.5 size-5 shrink-0" />

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import { alunoComMatriculaCancelada } from "@/lib/alunos/status"
 import { exigirPapel, getUsuarioAtual, HOME_POR_PAPEL } from "@/lib/auth/dal"
 import { verificarSenha } from "@/lib/auth/senha"
 import { criarSessao, destruirSessao } from "@/lib/auth/session"
@@ -35,7 +36,10 @@ export async function entrar(_anterior: EstadoLogin, formData: FormData): Promis
   if (!parsed.success) return { erro: "Informe e-mail e senha válidos." }
 
   const { email, senha } = parsed.data
-  const usuario = await db.usuario.findUnique({ where: { email } })
+  const usuario = await db.usuario.findUnique({
+    where: { email },
+    include: { aluno: { select: { status: true } } },
+  })
 
   // Mensagem genérica para não revelar se o e-mail existe (segurança).
   const credenciaisInvalidas = { erro: "E-mail ou senha incorretos." }
@@ -43,6 +47,14 @@ export async function entrar(_anterior: EstadoLogin, formData: FormData): Promis
 
   const ok = await verificarSenha(senha, usuario.senhaHash)
   if (!ok) return credenciaisInvalidas
+
+  if (
+    usuario.papel === "ALUNO" &&
+    usuario.aluno &&
+    alunoComMatriculaCancelada(usuario.aluno.status)
+  ) {
+    return { erro: "Matrícula cancelada. Procure a gestão." }
+  }
 
   await criarSessao({ sub: usuario.id, papel: usuario.papel, nome: usuario.nome })
   redirect(HOME_POR_PAPEL[usuario.papel])

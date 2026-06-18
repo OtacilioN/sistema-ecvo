@@ -19,11 +19,9 @@ const TIPOS = [
 
 const STATUS = [
   { v: "ATIVO", r: "Ativo" },
-  { v: "INATIVO", r: "Inativo" },
-  { v: "SUSPENSO", r: "Suspenso" },
-  { v: "CANCELADO", r: "Cancelado" },
   { v: "INADIMPLENTE", r: "Inadimplente" },
   { v: "TRANCADO", r: "Trancado" },
+  { v: "CANCELADO", r: "Cancelado" },
 ]
 
 const COBRANCAS_MODALIDADE = [

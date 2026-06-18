@@ -2,6 +2,7 @@ import { CalendarX } from "lucide-react"
 import { LembreteAtivarNotificacoes } from "@/components/lembrete-ativar-notificacoes"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { podeMarcarComparecimento } from "@/lib/services/comparecimento.service"
@@ -16,14 +17,15 @@ export default async function AlunoAgenda() {
   const [aluno, config] = await Promise.all([
     db.aluno.findUnique({
       where: { id: alunoId },
-      select: { modalidades: { select: { id: true } } },
+      select: { status: true, modalidades: { select: { id: true } } },
     }),
     db.configuracaoAcademia.findUnique({
       where: { id: "default" },
       select: { janelaComparecimentoHoras: true },
     }),
   ])
-  const modalidadeIds = aluno?.modalidades.map((m) => m.id) ?? []
+  const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))
+  const modalidadeIds = alunoOperacional ? (aluno?.modalidades.map((m) => m.id) ?? []) : []
   const agora = new Date()
   const janelaHoras = config?.janelaComparecimentoHoras ?? 24
 
@@ -55,7 +57,11 @@ export default async function AlunoAgenda() {
         <Card>
           <CardContent className="flex items-center gap-3 py-8 text-muted-foreground">
             <CalendarX className="size-5 shrink-0" />
-            <span className="text-sm">Nenhuma aula disponível nas suas modalidades.</span>
+            <span className="text-sm">
+              {alunoOperacional
+                ? "Nenhuma aula disponível nas suas modalidades."
+                : "Matrícula trancada. Procure a gestão para retomar os treinos."}
+            </span>
           </CardContent>
         </Card>
       )}

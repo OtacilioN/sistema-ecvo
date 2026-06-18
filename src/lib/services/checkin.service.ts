@@ -6,6 +6,7 @@ import type {
   StatusAluno,
   TipoAluno,
 } from "@prisma/client"
+import { alunoSemMatriculaAtiva } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
@@ -53,8 +54,7 @@ export function avaliarCheckin(ctx: ContextoCheckin): AvaliacaoCheckin {
   if (ctx.jaTemCheckinValido) return { ok: false, motivo: "Check-in já realizado nesta aula." }
   if (ctx.aulaCancelada) return { ok: false, motivo: "Aula cancelada." }
 
-  const statusBloqueia: StatusAluno[] = ["INATIVO", "SUSPENSO", "CANCELADO", "TRANCADO"]
-  if (statusBloqueia.includes(ctx.statusAluno)) {
+  if (alunoSemMatriculaAtiva(ctx.statusAluno)) {
     return { ok: false, motivo: "Aluno sem matrícula ativa." }
   }
 

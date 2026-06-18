@@ -1,6 +1,7 @@
 import "server-only"
 import type { Prisma, TipoNotificacao } from "@prisma/client"
 import { formatInTimeZone } from "date-fns-tz"
+import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { enviarPushParaNotificacao } from "@/lib/services/push.service"
 import { formatarDataHora, TIMEZONE } from "@/lib/utils/datas"
@@ -165,7 +166,7 @@ export async function gerarLembretesAniversario(cliente: Cliente = db, params?: 
     }),
     cliente.aluno.findMany({
       where: {
-        status: "ATIVO",
+        status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
         dataNascimento: { not: null },
         usuario: { ativo: true },
       },

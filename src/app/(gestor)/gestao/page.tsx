@@ -1,4 +1,4 @@
-import type { StatusAluno, StatusMensalidade } from "@prisma/client"
+import type { StatusMensalidade } from "@prisma/client"
 import {
   AlertTriangle,
   CalendarClock,
@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { alunoContaOperacionalmente, STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
@@ -36,7 +37,7 @@ export const dynamic = "force-dynamic"
 
 const MS_DIA = 24 * 60 * 60 * 1000
 const ROTA_FINANCEIRO = "/gestao/financeiro"
-const statusMonitorados: StatusAluno[] = ["ATIVO", "INADIMPLENTE"]
+const statusMonitorados = [...STATUS_ALUNO_OPERACIONAIS]
 const rotulosPapelAniversario = {
   ALUNO: "Aluno",
   PROFESSOR: "Professor",
@@ -333,7 +334,7 @@ export default async function GestaoInicio() {
     .filter((usuario) => {
       if (!usuario.dataNascimento) return false
       if (usuario.papel === "ALUNO")
-        return Boolean(usuario.aluno?.status && statusMonitorados.includes(usuario.aluno.status))
+        return Boolean(usuario.aluno?.status && alunoContaOperacionalmente(usuario.aluno.status))
       if (usuario.papel === "PROFESSOR") return Boolean(usuario.professor?.ativo)
       return usuario.papel === "GESTOR"
     })

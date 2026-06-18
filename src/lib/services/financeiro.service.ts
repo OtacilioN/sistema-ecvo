@@ -7,6 +7,7 @@ import type {
   TipoAluno,
   TipoPagamento,
 } from "@prisma/client"
+import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
@@ -723,7 +724,7 @@ export async function gerarMensalidadesRecorrentes(params?: { competencia?: stri
   const alunos = await db.aluno.findMany({
     where: {
       planoId: { not: null },
-      status: { in: ["ATIVO", "INADIMPLENTE"] },
+      status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
     },
     select: { id: true },
     orderBy: { criadoEm: "asc" },

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export function LoginForm() {
+export function LoginForm({ mensagemInicial }: { mensagemInicial?: string }) {
   const [estado, formAction, pending] = useActionState(entrar, undefined)
 
   function aoTeclar(evento: KeyboardEvent<HTMLFormElement>) {
@@ -47,9 +47,9 @@ export function LoginForm() {
         />
       </div>
 
-      {estado?.erro && (
+      {(estado?.erro || mensagemInicial) && (
         <p className="text-sm text-destructive" role="alert">
-          {estado.erro}
+          {estado?.erro ?? mensagemInicial}
         </p>
       )}
 

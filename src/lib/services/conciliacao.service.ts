@@ -1,6 +1,7 @@
 import "server-only"
 import type { Checkin, Plataforma, Prisma, StatusConciliacao } from "@prisma/client"
 import { type Row, readSheet } from "read-excel-file/universal"
+import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 
@@ -188,7 +189,7 @@ export async function importarPlanilhaConciliacao(params: {
 async function importarLinhasConciliacao(params: ImportarLinhasConciliacaoParams) {
   const linhas = params.linhas.map(normalizarLinha)
   const alunos = await db.aluno.findMany({
-    where: { tipo: params.plataforma },
+    where: { tipo: params.plataforma, status: { in: [...STATUS_ALUNO_OPERACIONAIS] } },
     select: {
       id: true,
       cpf: true,

@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { exigirProfessor } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import {
@@ -33,7 +34,7 @@ export default async function Page() {
   const [alunos, exames] = await Promise.all([
     db.aluno.findMany({
       where: {
-        status: "ATIVO",
+        status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
         modalidades: { some: { id: { in: modalidadeIds } } },
       },
       orderBy: { usuario: { nome: "asc" } },

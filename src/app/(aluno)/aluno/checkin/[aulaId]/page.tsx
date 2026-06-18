@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
@@ -19,6 +20,12 @@ export default async function CheckinQrPage({
   const { aulaId } = await params
   const query = await searchParams
   const token = Array.isArray(query.token) ? query.token[0] : query.token
+
+  const aluno = await db.aluno.findUnique({
+    where: { id: alunoId },
+    select: { status: true },
+  })
+  const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))
 
   const aula = await db.aula.findUnique({
     where: { id: aulaId },
@@ -62,7 +69,11 @@ export default async function CheckinQrPage({
             {aula.turma.local ? ` · ${aula.turma.local}` : ""}
           </p>
 
-          {aula.cancelada ? (
+          {!alunoOperacional ? (
+            <p className="rounded-md border border-border bg-muted p-4 text-sm text-muted-foreground">
+              Matrícula trancada. Procure a gestão para retomar os treinos.
+            </p>
+          ) : aula.cancelada ? (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
               Esta aula foi cancelada.
             </p>

@@ -5,6 +5,7 @@ import { Badge, type BadgeProps } from "@/components/ui/badge"
 import { CampoBusca } from "@/components/ui/campo-busca"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select } from "@/components/ui/select"
+import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { AcoesAluno, type AlunoLinha } from "./acoes-aluno"
 
 type Modalidade = { id: string; nome: string }
@@ -26,11 +27,11 @@ export type AlunoLista = AlunoLinha & {
 const VARIANTE_STATUS: Record<StatusAluno, BadgeProps["variant"]> = {
   ATIVO: "success",
   INADIMPLENTE: "warning",
-  SUSPENSO: "warning",
-  INATIVO: "secondary",
   TRANCADO: "secondary",
   CANCELADO: "destructive",
 }
+
+type FiltroStatusAluno = "OPERACIONAIS" | "TODOS" | "TRANCADO" | "CANCELADO"
 
 export function TabelaAlunos({
   alunos,
@@ -47,10 +48,18 @@ export function TabelaAlunos({
 }) {
   const [busca, setBusca] = useState("")
   const [planoFiltro, setPlanoFiltro] = useState("TODOS")
+  const [statusFiltro, setStatusFiltro] = useState<FiltroStatusAluno>("OPERACIONAIS")
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
     return alunos.filter((a) => {
+      const correspondeStatus =
+        statusFiltro === "TODOS" ||
+        (statusFiltro === "OPERACIONAIS"
+          ? alunoContaOperacionalmente(a.status)
+          : a.status === statusFiltro)
+      if (!correspondeStatus) return false
+
       const correspondePlano =
         planoFiltro === "TODOS" ||
         (planoFiltro === "SEM_PLANO" ? !a.planoId : a.planoId === planoFiltro)
@@ -70,7 +79,7 @@ export function TabelaAlunos({
         .toLowerCase()
         .includes(termo)
     })
-  }, [alunos, busca, planoFiltro])
+  }, [alunos, busca, planoFiltro, statusFiltro])
 
   const grupos = useMemo(
     () => [
@@ -89,8 +98,18 @@ export function TabelaAlunos({
   return (
     <Card>
       <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_220px]">
+        <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_190px_220px]">
           <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Nome, e-mail, modalidade…" />
+          <Select
+            aria-label="Filtrar por status"
+            value={statusFiltro}
+            onChange={(evento) => setStatusFiltro(evento.target.value as FiltroStatusAluno)}
+          >
+            <option value="OPERACIONAIS">Operacionais</option>
+            <option value="TODOS">Todos</option>
+            <option value="TRANCADO">Trancados</option>
+            <option value="CANCELADO">Cancelados</option>
+          </Select>
           <Select
             aria-label="Filtrar por plano"
             value={planoFiltro}

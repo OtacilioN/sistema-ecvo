@@ -34,8 +34,6 @@ enum TipoAluno {
 
 enum StatusAluno {
   ATIVO
-  INATIVO
-  SUSPENSO
   CANCELADO
   INADIMPLENTE
   TRANCADO

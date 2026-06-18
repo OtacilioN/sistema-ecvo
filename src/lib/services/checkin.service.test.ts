@@ -36,12 +36,7 @@ describe("avaliarCheckin", () => {
     expect(avaliarCheckin({ ...base, aulaCancelada: true })).toMatchObject({ ok: false })
   })
 
-  it.each([
-    "INATIVO",
-    "SUSPENSO",
-    "CANCELADO",
-    "TRANCADO",
-  ] as const)("bloqueia aluno %s", (statusAluno) => {
+  it.each(["CANCELADO", "TRANCADO"] as const)("bloqueia aluno %s", (statusAluno) => {
     expect(avaliarCheckin({ ...base, statusAluno })).toMatchObject({ ok: false })
   })
 

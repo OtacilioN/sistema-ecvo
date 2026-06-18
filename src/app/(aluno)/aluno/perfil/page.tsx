@@ -30,8 +30,6 @@ const ROTULO_TIPO: Record<TipoAluno, string> = {
 const VARIANTE_STATUS: Record<StatusAluno, BadgeProps["variant"]> = {
   ATIVO: "success",
   INADIMPLENTE: "warning",
-  SUSPENSO: "warning",
-  INATIVO: "secondary",
   TRANCADO: "secondary",
   CANCELADO: "destructive",
 }

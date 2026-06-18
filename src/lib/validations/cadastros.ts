@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { STATUS_ALUNO } from "@/lib/alunos/status"
 import { fotoPathnameDeUrl, pathnameFotoValido } from "@/lib/fotos"
 import { dataCivilParaDate } from "@/lib/utils/datas"
 import { cpfValido } from "@/lib/utils/formato"
@@ -241,9 +242,7 @@ export const alunoSchema = z
     email: z.email("E-mail inválido").trim().toLowerCase(),
     senha: z.string().min(6, "Senha de no mínimo 6 caracteres"),
     tipo: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]),
-    status: z
-      .enum(["ATIVO", "INATIVO", "SUSPENSO", "CANCELADO", "INADIMPLENTE", "TRANCADO"])
-      .optional(),
+    status: z.enum(STATUS_ALUNO).optional(),
     cpf: cpfOpcional,
     telefone: textoOpcional,
     fotoUrl: fotoUrlOpcional,
@@ -269,7 +268,7 @@ export const dadosAlunoSchema = z
     alunoId: z.string().min(1, "Selecione o aluno"),
     nome: z.string().trim().min(2, "Informe o nome"),
     tipo: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]),
-    status: z.enum(["ATIVO", "INATIVO", "SUSPENSO", "CANCELADO", "INADIMPLENTE", "TRANCADO"]),
+    status: z.enum(STATUS_ALUNO),
     cpf: cpfOpcional,
     telefone: textoOpcional,
     fotoUrl: fotoUrlOpcional,
@@ -319,7 +318,7 @@ export type DocumentoAlunoInput = z.infer<typeof documentoAlunoSchema>
 export const statusTipoAlunoSchema = z.object({
   alunoId: z.string().min(1, "Selecione o aluno"),
   tipo: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]),
-  status: z.enum(["ATIVO", "INATIVO", "SUSPENSO", "CANCELADO", "INADIMPLENTE", "TRANCADO"]),
+  status: z.enum(STATUS_ALUNO),
 })
 export type StatusTipoAlunoInput = z.infer<typeof statusTipoAlunoSchema>
 

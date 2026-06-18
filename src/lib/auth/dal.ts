@@ -2,6 +2,7 @@ import "server-only"
 import type { Papel } from "@prisma/client"
 import { redirect } from "next/navigation"
 import { cache } from "react"
+import { alunoComMatriculaCancelada } from "@/lib/alunos/status"
 import { lerSessao, type SessaoPayload } from "@/lib/auth/session"
 import { db } from "@/lib/db"
 
@@ -19,6 +20,7 @@ export const HOME_POR_PAPEL: Record<Papel, string> = {
 }
 
 const ROTA_SESSAO_INVALIDA = "/api/auth/sessao-invalida"
+const ROTA_MATRICULA_CANCELADA = `${ROTA_SESSAO_INVALIDA}?motivo=matricula-cancelada`
 
 /** Verifica a sessão; redireciona para /login se ausente/inválida. Memoizado por render. */
 export const verificarSessao = cache(async (): Promise<SessaoPayload> => {
@@ -44,11 +46,18 @@ export const getUsuarioAtual = cache(async () => {
       fotoUrl: true,
       papel: true,
       ativo: true,
-      aluno: { select: { id: true } },
+      aluno: { select: { id: true, status: true } },
       professor: { select: { id: true } },
     },
   })
   if (!usuario?.ativo) redirect(ROTA_SESSAO_INVALIDA)
+  if (
+    usuario.papel === "ALUNO" &&
+    usuario.aluno &&
+    alunoComMatriculaCancelada(usuario.aluno.status)
+  ) {
+    redirect(ROTA_MATRICULA_CANCELADA)
+  }
   return usuario
 })
 

@@ -6,6 +6,7 @@ import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
+import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
@@ -53,9 +54,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const [planos, alunos, mensalidadesEncontradas, pagamentos] = await Promise.all([
     db.plano.findMany({
       orderBy: { criadoEm: "desc" },
-      include: { _count: { select: { alunos: true } } },
+      include: {
+        _count: {
+          select: { alunos: { where: { status: { in: [...STATUS_ALUNO_OPERACIONAIS] } } } },
+        },
+      },
     }),
     db.aluno.findMany({
+      where: { status: { in: [...STATUS_ALUNO_OPERACIONAIS] } },
       orderBy: { usuario: { nome: "asc" } },
       include: {
         usuario: { select: { nome: true } },
@@ -70,6 +76,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       },
     }),
     db.mensalidade.findMany({
+      where: { aluno: { status: { in: [...STATUS_ALUNO_OPERACIONAIS] } } },
       orderBy: [{ vencimento: "asc" }, { criadoEm: "desc" }],
       include: {
         aluno: { select: { usuario: { select: { nome: true } } } },
@@ -77,6 +84,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       },
     }),
     db.pagamento.findMany({
+      where: {
+        OR: [{ alunoId: null }, { aluno: { status: { in: [...STATUS_ALUNO_OPERACIONAIS] } } }],
+      },
       orderBy: { criadoEm: "desc" },
       take: 12,
       include: { aluno: { select: { usuario: { select: { nome: true } } } } },

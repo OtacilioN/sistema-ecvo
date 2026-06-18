@@ -18,6 +18,7 @@ import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { cn } from "@/lib/utils"
@@ -63,6 +64,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const ate = fimDiaLocalExclusivo(ateParam)
   const periodo = intervaloDatas(de, ate)
   const temPeriodo = Boolean(de || ate)
+  const statusAlunosOperacionais = [...STATUS_ALUNO_OPERACIONAIS]
   const periodoLegivel = temPeriodo
     ? `${de ? formatarData(de) : "início"} até ${ate ? formatarData(new Date(ate.getTime() - 1)) : "hoje"}`
     : "Todo o histórico"
@@ -88,26 +90,49 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     checkinsPorOrigem,
     conciliacaoPorStatus,
   ] = await Promise.all([
-    db.aluno.count({ where: { status: "ATIVO" } }),
+    db.aluno.count({ where: { status: { in: statusAlunosOperacionais } } }),
     db.professor.count({ where: { ativo: true } }),
     db.aula.count({ where: { fim: { lt: new Date() }, ...(periodo ? { inicio: periodo } : {}) } }),
-    db.checkin.count({ where: { status: "VALIDO", ...(periodo ? { criadoEm: periodo } : {}) } }),
-    db.comparecimento.count({ where: periodo ? { criadoEm: periodo } : undefined }),
+    db.checkin.count({
+      where: {
+        status: "VALIDO",
+        aluno: { status: { in: statusAlunosOperacionais } },
+        ...(periodo ? { criadoEm: periodo } : {}),
+      },
+    }),
+    db.comparecimento.count({
+      where: {
+        aluno: { status: { in: statusAlunosOperacionais } },
+        ...(periodo ? { criadoEm: periodo } : {}),
+      },
+    }),
     db.movimentoHoras.aggregate({
-      where: periodo ? { criadoEm: periodo } : undefined,
+      where: {
+        aluno: { status: { in: statusAlunosOperacionais } },
+        ...(periodo ? { criadoEm: periodo } : {}),
+      },
       _sum: { minutos: true },
     }),
-    db.graduacaoAluno.count({ where: periodo ? { concedidaEm: periodo } : undefined }),
+    db.graduacaoAluno.count({
+      where: {
+        aluno: { status: { in: statusAlunosOperacionais } },
+        ...(periodo ? { concedidaEm: periodo } : {}),
+      },
+    }),
     db.mensalidade.aggregate({
       where: {
         status: { in: ["EM_ABERTO", "VENCIDA"] },
+        aluno: { status: { in: statusAlunosOperacionais } },
         ...(periodo ? { vencimento: periodo } : {}),
       },
       _sum: { valor: true },
       _count: true,
     }),
     db.pagamento.aggregate({
-      where: periodo ? { criadoEm: periodo } : undefined,
+      where: {
+        OR: [{ alunoId: null }, { aluno: { status: { in: statusAlunosOperacionais } } }],
+        ...(periodo ? { criadoEm: periodo } : {}),
+      },
       _sum: { valor: true },
       _count: true,
     }),
@@ -118,36 +143,57 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     }),
     db.movimentoHoras.groupBy({
       by: ["modalidadeId"],
-      where: periodo ? { criadoEm: periodo } : undefined,
+      where: {
+        aluno: { status: { in: statusAlunosOperacionais } },
+        ...(periodo ? { criadoEm: periodo } : {}),
+      },
       _sum: { minutos: true },
       orderBy: { _sum: { minutos: "desc" } },
       take: 8,
     }),
-    db.aluno.groupBy({ by: ["tipo"], _count: true }),
+    db.aluno.groupBy({
+      by: ["tipo"],
+      where: { status: { in: statusAlunosOperacionais } },
+      _count: true,
+    }),
     db.configuracaoAcademia.findUnique({
       where: { id: "default" },
       select: { rankingHorasAtivo: true },
     }),
     db.movimentoHoras.groupBy({
       by: ["alunoId"],
+      where: { aluno: { status: { in: statusAlunosOperacionais } } },
       _sum: { minutos: true },
       orderBy: { _sum: { minutos: "desc" } },
       take: 10,
     }),
-    db.aluno.groupBy({ by: ["status"], _count: true }),
+    db.aluno.groupBy({
+      by: ["status"],
+      where: { status: { in: statusAlunosOperacionais } },
+      _count: true,
+    }),
     db.comparecimento.groupBy({
       by: ["status"],
-      where: periodo ? { criadoEm: periodo } : undefined,
+      where: {
+        aluno: { status: { in: statusAlunosOperacionais } },
+        ...(periodo ? { criadoEm: periodo } : {}),
+      },
       _count: true,
     }),
     db.checkin.groupBy({
       by: ["status"],
-      where: periodo ? { criadoEm: periodo } : undefined,
+      where: {
+        aluno: { status: { in: statusAlunosOperacionais } },
+        ...(periodo ? { criadoEm: periodo } : {}),
+      },
       _count: true,
     }),
     db.checkin.groupBy({
       by: ["origem"],
-      where: periodo ? { criadoEm: periodo } : undefined,
+      where: {
+        aluno: { status: { in: statusAlunosOperacionais } },
+        ...(periodo ? { criadoEm: periodo } : {}),
+      },
       _count: { _all: true },
     }),
     db.registroImportado.groupBy({
@@ -166,7 +212,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const rankingComHoras = rankingHoras.filter((item) => (item._sum.minutos ?? 0) > 0)
   const alunosRanking = rankingVisivel
     ? await db.aluno.findMany({
-        where: { id: { in: rankingComHoras.map((item) => item.alunoId) } },
+        where: {
+          id: { in: rankingComHoras.map((item) => item.alunoId) },
+          status: { in: statusAlunosOperacionais },
+        },
         select: { id: true, usuario: { select: { nome: true } } },
       })
     : []
@@ -407,8 +456,6 @@ const ROTULOS: Record<string, string> = {
   AVULSO: "Avulsos",
   // Status de aluno
   ATIVO: "Ativos",
-  INATIVO: "Inativos",
-  SUSPENSO: "Suspensos",
   CANCELADO: "Cancelados",
   INADIMPLENTE: "Inadimplentes",
   TRANCADO: "Trancados",
@@ -456,9 +503,7 @@ const TONS: Record<string, Tom> = {
   PENDENTE_REVISAO: "atencao",
   LISTA_ESPERA: "atencao",
   PENDENTE: "atencao",
-  SUSPENSO: "atencao",
   TRANCADO: "atencao",
-  INATIVO: "negativo",
   CANCELADO: "negativo",
   CANCELADO_ALUNO: "negativo",
   CANCELADO_GESTOR: "negativo",

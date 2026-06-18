@@ -18,6 +18,7 @@ import { Dialog } from "@/components/ui/dialog"
 import { DialogoConfirmacao } from "@/components/ui/dialogo-confirmacao"
 import { ItemMenu, MenuAcoes, SeparadorMenu } from "@/components/ui/menu-acoes"
 import { FormFotoUsuarioGestor } from "@/components/usuarios/form-foto-usuario"
+import type { StatusAlunoDominio } from "@/lib/alunos/status"
 import { FormBaixaMensalidadeAluno } from "../financeiro/forms-financeiro"
 import { FormAjusteHoras } from "./form-ajuste-horas"
 import { FormAluno } from "./form-aluno"
@@ -34,7 +35,7 @@ type Plano = {
 }
 
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
-type StatusAluno = "ATIVO" | "INATIVO" | "SUSPENSO" | "CANCELADO" | "INADIMPLENTE" | "TRANCADO"
+type StatusAluno = StatusAlunoDominio
 
 type ResponsavelAluno = {
   nome: string

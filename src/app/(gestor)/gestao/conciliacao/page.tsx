@@ -1,6 +1,7 @@
 import { Badge, type BadgeProps } from "@/components/ui/badge"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { formatarData, formatarDataHora } from "@/lib/utils/datas"
@@ -51,12 +52,20 @@ export default async function Page() {
       },
     }),
     db.aluno.findMany({
-      where: { tipo: { in: ["WELLHUB", "TOTALPASS"] } },
+      where: {
+        tipo: { in: ["WELLHUB", "TOTALPASS"] },
+        status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
+      },
       orderBy: { usuario: { nome: "asc" } },
       select: { id: true, tipo: true, usuario: { select: { nome: true } }, idExterno: true },
     }),
     db.checkin.findMany({
-      where: { aluno: { tipo: { in: ["WELLHUB", "TOTALPASS"] } } },
+      where: {
+        aluno: {
+          tipo: { in: ["WELLHUB", "TOTALPASS"] },
+          status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
+        },
+      },
       orderBy: { criadoEm: "desc" },
       take: 80,
       include: {

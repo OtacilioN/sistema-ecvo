@@ -79,6 +79,21 @@ describe("statusAoMarcarComparecimento", () => {
 })
 
 describe("bloqueiaComparecimentoPorFinanceiro", () => {
+  it.each([
+    "TRANCADO",
+    "CANCELADO",
+  ] as const)("bloqueia aluno %s independentemente da política financeira", (statusAluno) => {
+    expect(
+      bloqueiaComparecimentoPorFinanceiro({
+        statusAluno,
+        tipoAluno: "MENSALISTA",
+        mensalidadeInternaNaModalidade: false,
+        mensalidadeEmDia: true,
+        bloqueioInadimplencia: "APENAS_ALERTAR",
+      }),
+    ).toBe(true)
+  })
+
   it("bloqueia mensalista inadimplente apenas na política de bloqueio de agendamento", () => {
     expect(
       bloqueiaComparecimentoPorFinanceiro({

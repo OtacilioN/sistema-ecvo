@@ -8,11 +8,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { STATUS_ALUNO, type StatusAlunoDominio } from "@/lib/alunos/status"
 import { formatarDataInput } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
-type StatusAluno = "ATIVO" | "INATIVO" | "SUSPENSO" | "CANCELADO" | "INADIMPLENTE" | "TRANCADO"
+type StatusAluno = StatusAlunoDominio
 
 type Modalidade = { id: string; nome: string }
 type Plano = {
@@ -57,14 +58,12 @@ type AlunoParaEdicao = {
 }
 
 const TIPOS: TipoAluno[] = ["MENSALISTA", "WELLHUB", "TOTALPASS", "AVULSO"]
-const STATUS: StatusAluno[] = [
-  "ATIVO",
-  "INATIVO",
-  "SUSPENSO",
-  "CANCELADO",
-  "INADIMPLENTE",
-  "TRANCADO",
-]
+const ROTULO_STATUS: Record<StatusAluno, string> = {
+  ATIVO: "Ativo",
+  INADIMPLENTE: "Inadimplente",
+  TRANCADO: "Trancado",
+  CANCELADO: "Cancelado",
+}
 
 const COBRANCAS_MODALIDADE = [
   { v: "", r: "Plano interno" },
@@ -130,9 +129,9 @@ export function FormDadosAluno({
       <div className="space-y-1.5">
         <Label htmlFor="status-aluno">Status</Label>
         <Select id="status-aluno" name="status" defaultValue={aluno?.status ?? "ATIVO"}>
-          {STATUS.map((item) => (
+          {STATUS_ALUNO.map((item) => (
             <option key={item} value={item}>
-              {item}
+              {ROTULO_STATUS[item]}
             </option>
           ))}
         </Select>

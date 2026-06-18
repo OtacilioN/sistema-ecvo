@@ -1,4 +1,5 @@
 import "server-only"
+import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import {
   type LinhaMonitoramentoAula,
   PRIORIDADE_STATUS_LINHA,
@@ -14,6 +15,7 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       turma: { select: { modalidadeId: true, nome: true, modalidade: { select: { nome: true } } } },
       comparecimentos: { select: { alunoId: true, status: true } },
       checkins: {
+        where: { aluno: { status: { in: [...STATUS_ALUNO_OPERACIONAIS] } } },
         select: {
           id: true,
           alunoId: true,
@@ -22,6 +24,7 @@ export async function carregarMonitoramentoAula(aulaId: string) {
         },
       },
       tentativasCheckinInadimplente: {
+        where: { aluno: { status: { in: [...STATUS_ALUNO_OPERACIONAIS] } } },
         orderBy: { criadoEm: "desc" },
         include: { aluno: { select: { usuario: { select: { nome: true } } } } },
       },
@@ -30,7 +33,10 @@ export async function carregarMonitoramentoAula(aulaId: string) {
   if (!aula) return null
 
   const matriculados = await db.aluno.findMany({
-    where: { status: "ATIVO", modalidades: { some: { id: aula.turma.modalidadeId } } },
+    where: {
+      status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
+      modalidades: { some: { id: aula.turma.modalidadeId } },
+    },
     select: { id: true, observacoesTecnicas: true, usuario: { select: { nome: true } } },
   })
 
