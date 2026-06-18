@@ -159,6 +159,7 @@ enum TipoAcaoAudit {
   PROFESSOR_STATUS_ATUALIZADO
   TURMA_ATUALIZADA
   CHECKIN_BLOQUEADO_INADIMPLENCIA
+  TERMO_RESPONSABILIDADE_ACEITO
 }
 
 enum TipoNotificacao {
@@ -223,6 +224,7 @@ model Aluno {
   inscricoesExame               InscricaoExame[]
   registrosImportados           RegistroImportado[]
   documentos                    DocumentoAluno[]
+  aceitesTermoResponsabilidade  AceiteTermoResponsabilidade[]
   plano                         Plano?                         @relation(fields: [planoId], references: [id])
   planoId                       String?
   diaVencimento                 Int                            @default(10)
@@ -247,6 +249,27 @@ model DocumentoAluno {
   criadoEm    DateTime @default(now())
 
   @@index([alunoId])
+}
+
+model AceiteTermoResponsabilidade {
+  id                  String   @id @default(cuid())
+  aluno               Aluno    @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId             String
+  termoVersao         String
+  nomeAluno           String
+  cpfAluno            String?
+  cidade              String
+  menorDeIdade        Boolean  @default(false)
+  declaracoesAceitas  Json
+  ip                  String?
+  userAgent           String?
+  metadados           Json?
+  aceitoEm            DateTime @default(now())
+  criadoEm            DateTime @default(now())
+
+  @@unique([alunoId, termoVersao])
+  @@index([termoVersao])
+  @@index([aceitoEm])
 }
 
 // Responsável por aluno menor de idade (RF-004)

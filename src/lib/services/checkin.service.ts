@@ -13,6 +13,10 @@ import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
 import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
 import { creditarPorCheckin, estornarCheckin } from "@/lib/services/horas.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
+import {
+  MENSAGEM_TERMO_RESPONSABILIDADE_PENDENTE,
+  termoResponsabilidadeAtualAceito,
+} from "@/lib/services/termo-responsabilidade.service"
 import { formatarDataHora, inicioDoDiaAcademia } from "@/lib/utils/datas"
 
 // Serviço de CHECK-IN — o coração do loop de treino (RF-019..031).
@@ -41,6 +45,7 @@ export type ContextoCheckin = {
   bloqueioInadimplencia: BloqueioInadimplencia
   mensalidadeInternaNaModalidade: boolean
   mensalidadeEmDia: boolean
+  termoResponsabilidadeAceito: boolean
 }
 
 export type AvaliacaoCheckin =
@@ -56,6 +61,10 @@ export function avaliarCheckin(ctx: ContextoCheckin): AvaliacaoCheckin {
 
   if (alunoSemMatriculaAtiva(ctx.statusAluno)) {
     return { ok: false, motivo: "Aluno sem matrícula ativa." }
+  }
+
+  if (!ctx.termoResponsabilidadeAceito) {
+    return { ok: false, motivo: MENSAGEM_TERMO_RESPONSABILIDADE_PENDENTE }
   }
 
   // Inadimplência (RF-020/051): só bloqueia quando a aula pertence a um plano mensal interno.
@@ -118,7 +127,7 @@ export type ResultadoCheckin =
   | {
       ok: false
       motivo: string
-      codigo?: "FORA_DA_JANELA" | "INADIMPLENTE" | "TOKEN_INVALIDO"
+      codigo?: "FORA_DA_JANELA" | "INADIMPLENTE" | "TOKEN_INVALIDO" | "TERMO_NAO_ACEITO"
     }
 
 async function configuracao() {
@@ -343,6 +352,7 @@ export async function realizarCheckin(params: {
 
   const regras = resolverRegrasTreino(config, aula.turma.modalidade)
   const lancadoPorTerceiro = Boolean(params.lancadoPorId)
+  const termoAceito = await termoResponsabilidadeAtualAceito(params.alunoId)
   const mensalidadeInternaNaModalidade = aluno.modalidadesPlano.some(
     (modalidade) => modalidade.modalidadeId === aula.turma.modalidadeId,
   )
@@ -370,8 +380,17 @@ export async function realizarCheckin(params: {
       : config.bloqueioInadimplencia,
     mensalidadeInternaNaModalidade: Boolean(mensalidadeInternaNaModalidade),
     mensalidadeEmDia: emDia,
+    termoResponsabilidadeAceito: termoAceito,
   })
   if (!avaliacao.ok) {
+    if (!termoAceito) {
+      return {
+        ok: false,
+        codigo: "TERMO_NAO_ACEITO",
+        motivo: MENSAGEM_TERMO_RESPONSABILIDADE_PENDENTE,
+      }
+    }
+
     if (params.bloquearInadimplenciaSempre && inadimplente) {
       await registrarTentativaInadimplente({
         alunoId: params.alunoId,

@@ -11,6 +11,10 @@ import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
+import {
+  MENSAGEM_TERMO_RESPONSABILIDADE_PENDENTE,
+  termoResponsabilidadeAtualAceito,
+} from "@/lib/services/termo-responsabilidade.service"
 import { inicioDoDiaAcademia } from "@/lib/utils/datas"
 
 // Serviço legado de Comparecimento — representa o AGENDAMENTO da aula (RN-001/RF-013..018).
@@ -67,8 +71,10 @@ export function bloqueiaComparecimentoPorFinanceiro(p: {
   mensalidadeInternaNaModalidade: boolean
   mensalidadeEmDia: boolean
   bloqueioInadimplencia: BloqueioInadimplencia
+  termoResponsabilidadeAceito: boolean
 }): boolean {
   if (alunoSemMatriculaAtiva(p.statusAluno)) return true
+  if (!p.termoResponsabilidadeAceito) return true
   if (p.bloqueioInadimplencia !== "BLOQUEAR_COMPARECIMENTO") return false
   return (
     p.statusAluno === "INADIMPLENTE" || (p.mensalidadeInternaNaModalidade && !p.mensalidadeEmDia)
@@ -160,6 +166,7 @@ export async function marcarComparecimento(params: {
   const mensalidadeInternaNaModalidade = aluno.modalidadesPlano.some(
     (modalidade) => modalidade.modalidadeId === aula.turma.modalidadeId,
   )
+  const termoAceito = await termoResponsabilidadeAtualAceito(params.alunoId)
 
   const podeFinanceiro = !bloqueiaComparecimentoPorFinanceiro({
     statusAluno: aluno.status,
@@ -169,13 +176,16 @@ export async function marcarComparecimento(params: {
       ? await mensalidadeEmDia(params.alunoId)
       : true,
     bloqueioInadimplencia: config.bloqueioInadimplencia,
+    termoResponsabilidadeAceito: termoAceito,
   })
   if (!podeFinanceiro) {
     return {
       ok: false,
       motivo: alunoSemMatriculaAtiva(aluno.status)
         ? "Aluno sem matrícula ativa."
-        : "Mensalidade vencida.",
+        : !termoAceito
+          ? MENSAGEM_TERMO_RESPONSABILIDADE_PENDENTE
+          : "Mensalidade vencida.",
     }
   }
 

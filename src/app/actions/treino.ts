@@ -26,6 +26,7 @@ export type EstadoTreino =
       inadimplente?: boolean
       tokenInvalido?: boolean
       foraDaJanela?: boolean
+      termoPendente?: boolean
     }
   | undefined
 
@@ -91,6 +92,7 @@ export async function acaoCheckinAlunoQr(
     inadimplente: r.codigo === "INADIMPLENTE",
     tokenInvalido: r.codigo === "TOKEN_INVALIDO",
     foraDaJanela: r.codigo === "FORA_DA_JANELA",
+    termoPendente: r.codigo === "TERMO_NAO_ACEITO",
   }
 }
 

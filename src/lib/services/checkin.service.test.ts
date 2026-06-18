@@ -21,6 +21,7 @@ const base: ContextoCheckin = {
   bloqueioInadimplencia: "APENAS_ALERTAR",
   mensalidadeInternaNaModalidade: true,
   mensalidadeEmDia: true,
+  termoResponsabilidadeAceito: true,
 }
 
 describe("avaliarCheckin", () => {
@@ -48,6 +49,13 @@ describe("avaliarCheckin", () => {
     expect(
       avaliarCheckin({ ...inadimplente, bloqueioInadimplencia: "BLOQUEAR_CHECKIN" }),
     ).toMatchObject({ ok: false })
+  })
+
+  it("bloqueia check-in sem aceite do termo de responsabilidade", () => {
+    expect(avaliarCheckin({ ...base, termoResponsabilidadeAceito: false })).toEqual({
+      ok: false,
+      motivo: "Aceite o termo de responsabilidade para agendar aulas e fazer check-in.",
+    })
   })
 
   it("não bloqueia Wellhub sem mensalidade interna na modalidade", () => {

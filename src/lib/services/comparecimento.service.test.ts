@@ -90,6 +90,20 @@ describe("bloqueiaComparecimentoPorFinanceiro", () => {
         mensalidadeInternaNaModalidade: false,
         mensalidadeEmDia: true,
         bloqueioInadimplencia: "APENAS_ALERTAR",
+        termoResponsabilidadeAceito: true,
+      }),
+    ).toBe(true)
+  })
+
+  it("bloqueia agendamento sem aceite do termo de responsabilidade", () => {
+    expect(
+      bloqueiaComparecimentoPorFinanceiro({
+        statusAluno: "ATIVO",
+        tipoAluno: "MENSALISTA",
+        mensalidadeInternaNaModalidade: false,
+        mensalidadeEmDia: true,
+        bloqueioInadimplencia: "APENAS_ALERTAR",
+        termoResponsabilidadeAceito: false,
       }),
     ).toBe(true)
   })
@@ -102,6 +116,7 @@ describe("bloqueiaComparecimentoPorFinanceiro", () => {
         mensalidadeInternaNaModalidade: true,
         mensalidadeEmDia: false,
         bloqueioInadimplencia: "BLOQUEAR_COMPARECIMENTO",
+        termoResponsabilidadeAceito: true,
       }),
     ).toBe(true)
 
@@ -112,6 +127,7 @@ describe("bloqueiaComparecimentoPorFinanceiro", () => {
         mensalidadeInternaNaModalidade: true,
         mensalidadeEmDia: false,
         bloqueioInadimplencia: "BLOQUEAR_CHECKIN",
+        termoResponsabilidadeAceito: true,
       }),
     ).toBe(false)
   })
@@ -124,6 +140,7 @@ describe("bloqueiaComparecimentoPorFinanceiro", () => {
         mensalidadeInternaNaModalidade: true,
         mensalidadeEmDia: false,
         bloqueioInadimplencia: "BLOQUEAR_COMPARECIMENTO",
+        termoResponsabilidadeAceito: true,
       }),
     ).toBe(true)
 
@@ -134,6 +151,7 @@ describe("bloqueiaComparecimentoPorFinanceiro", () => {
         mensalidadeInternaNaModalidade: false,
         mensalidadeEmDia: false,
         bloqueioInadimplencia: "BLOQUEAR_COMPARECIMENTO",
+        termoResponsabilidadeAceito: true,
       }),
     ).toBe(false)
   })
