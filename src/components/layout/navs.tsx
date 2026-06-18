@@ -12,7 +12,6 @@ import {
   QrCode,
   Settings,
   ShieldCheck,
-  Timer,
   UserRound,
   Users,
 } from "lucide-react"
@@ -50,8 +49,11 @@ export const NAV_PROFESSOR: ItemNav[] = [
 export const NAV_ALUNO: ItemNav[] = [
   { href: "/aluno", rotulo: "Agenda", icone: <CalendarDays className={icMobile} /> },
   { href: "/aluno/checkin", rotulo: "Check-in", icone: <QrCode className={icMobile} /> },
-  { href: "/aluno/horas", rotulo: "Horas", icone: <Timer className={icMobile} /> },
-  { href: "/aluno/graduacoes", rotulo: "Graduações", icone: <Award className={icMobile} /> },
   { href: "/aluno/financeiro", rotulo: "Financeiro", icone: <CreditCard className={icMobile} /> },
-  { href: "/aluno/perfil", rotulo: "Perfil", icone: <History className={icMobile} /> },
+  {
+    href: "/aluno/perfil",
+    rotulo: "Perfil",
+    icone: <History className={icMobile} />,
+    ativoEm: ["/aluno/graduacoes"],
+  },
 ]

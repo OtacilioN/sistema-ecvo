@@ -8,6 +8,7 @@ import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
 import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
+import { MinhasHorasAluno } from "../minhas-horas-aluno"
 import { FormCheckinGlobal } from "./form-checkin-global"
 import { LeitorQRCodeAluno } from "./leitor-qrcode-aluno"
 
@@ -161,6 +162,10 @@ export default async function CheckinGlobalPage({
             </Card>
           )
         })}
+      </div>
+
+      <div className="border-t border-border pt-5">
+        <MinhasHorasAluno alunoId={alunoId} />
       </div>
     </div>
   )

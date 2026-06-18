@@ -10,6 +10,7 @@ export type ItemNav = {
   href: string
   rotulo: string
   icone?: React.ReactNode
+  ativoEm?: string[]
 }
 
 function normalizarCaminho(caminho: string) {
@@ -25,7 +26,11 @@ function correspondeAoItem(pathname: string, href: string) {
 
 function obterHrefAtivo(pathname: string, itens: ItemNav[]) {
   return itens
-    .filter((item) => correspondeAoItem(pathname, item.href))
+    .filter(
+      (item) =>
+        correspondeAoItem(pathname, item.href) ||
+        item.ativoEm?.some((href) => correspondeAoItem(pathname, href)),
+    )
     .toSorted((a, b) => b.href.length - a.href.length)[0]?.href
 }
 

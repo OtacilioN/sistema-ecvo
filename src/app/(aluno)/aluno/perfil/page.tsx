@@ -6,17 +6,19 @@ import type {
   StatusConciliacao,
   TipoAluno,
 } from "@prisma/client"
-import { FormMinhaSenha } from "@/components/auth/form-minha-senha"
+import { Award, ChevronRight, ClipboardList, IdCard, ShieldCheck } from "lucide-react"
+import Link from "next/link"
+import type { ReactNode } from "react"
 import { Badge, type BadgeProps } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { FormMinhaFoto } from "@/components/usuarios/form-foto-usuario"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { resumoHoras } from "@/lib/services/horas.service"
 import { formatarData, formatarDataHora, minutosParaHoras } from "@/lib/utils/datas"
 import { formatarBRL, formatarCPF } from "@/lib/utils/formato"
-import { FormMeusDadosAluno } from "./form-meus-dados-aluno"
+import { AcoesPerfilAluno } from "./acoes-perfil-aluno"
 
 export const dynamic = "force-dynamic"
 
@@ -137,23 +139,6 @@ export default async function Page() {
               select: {
                 inicio: true,
                 turma: { select: { modalidade: { select: { nome: true } } } },
-              },
-            },
-          },
-        },
-        graduacoes: {
-          orderBy: [{ atual: "desc" }, { concedidaEm: "desc" }],
-          take: 8,
-          include: {
-            graduacao: {
-              include: {
-                modalidade: { select: { nome: true } },
-              },
-            },
-            graduacaoAnterior: { select: { nome: true } },
-            concedidaPor: {
-              select: {
-                usuario: { select: { nome: true } },
               },
             },
           },
@@ -304,28 +289,36 @@ export default async function Page() {
           <CardHeader>
             <CardTitle>Dados pessoais</CardTitle>
           </CardHeader>
-          <CardContent>
-            <FormMeusDadosAluno aluno={dadosPessoaisAluno} />
+          <CardContent className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Campo rotulo="Nome" valor={aluno.usuario.nome} />
+              <Campo rotulo="E-mail" valor={aluno.usuario.email} />
+              <Campo rotulo="CPF" valor={aluno.cpf ? formatarCPF(aluno.cpf) : null} />
+              <Campo rotulo="Telefone" valor={aluno.telefone} />
+              <Campo
+                rotulo="Data de nascimento"
+                valor={aluno.dataNascimento ? formatarData(aluno.dataNascimento) : null}
+              />
+              <Campo rotulo="Contato de emergência" valor={aluno.contatoEmergencia} />
+              <Campo rotulo="Endereço" valor={aluno.endereco} className="sm:col-span-2" />
+              <Campo
+                rotulo="Restrições médicas"
+                valor={aluno.restricoesMedicas}
+                className="sm:col-span-2"
+              />
+            </div>
+            <AcoesPerfilAluno
+              aluno={dadosPessoaisAluno}
+              usuarioFoto={{
+                id: aluno.usuario.id,
+                nome: aluno.usuario.nome,
+                fotoUrl: fotoPerfilUrl,
+              }}
+            />
           </CardContent>
         </Card>
 
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Foto do perfil</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FormMinhaFoto
-                usuario={{
-                  id: aluno.usuario.id,
-                  nome: aluno.usuario.nome,
-                  papel: "ALUNO",
-                  fotoUrl: fotoPerfilUrl,
-                }}
-              />
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader>
               <CardTitle>Modalidades</CardTitle>
@@ -401,10 +394,25 @@ export default async function Page() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Senha de acesso</CardTitle>
+              <CardTitle>Graduações</CardTitle>
             </CardHeader>
-            <CardContent>
-              <FormMinhaSenha />
+            <CardContent className="space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-accent text-accent-foreground">
+                  <Award className="size-5" />
+                </div>
+                <div>
+                  <p className="font-medium">Histórico e exames</p>
+                  <p className="text-sm text-muted-foreground">
+                    Acompanhe sua graduação atual, histórico e inscrições em exames.
+                  </p>
+                </div>
+              </div>
+              <Button asChild className="w-full">
+                <Link href="/aluno/graduacoes">
+                  Acessar graduações <ChevronRight className="size-4" />
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -432,72 +440,23 @@ export default async function Page() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Graduações</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <table className="tabela-responsiva w-full text-sm">
-            <thead className="border-b border-border text-left text-muted-foreground">
-              <tr>
-                <th className="p-4 font-medium">Modalidade</th>
-                <th className="p-4 font-medium">Anterior</th>
-                <th className="p-4 font-medium">Nova</th>
-                <th className="p-4 font-medium">Situação</th>
-                <th className="p-4 font-medium">Concedida em</th>
-                <th className="p-4 font-medium">Professor</th>
-                <th className="p-4 font-medium">Observação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {aluno.graduacoes.map((registro) => (
-                <tr key={registro.id} className="border-b border-border last:border-0 align-top">
-                  <td className="p-4" data-label="Modalidade">
-                    {registro.graduacao.modalidade.nome}
-                  </td>
-                  <td className="p-4" data-label="Anterior">
-                    {registro.graduacaoAnterior?.nome ?? "Inicial"}
-                  </td>
-                  <td className="p-4 font-medium" data-label="Nova">
-                    {registro.graduacao.nome}
-                  </td>
-                  <td className="p-4" data-label="Situação">
-                    <Badge variant={registro.atual ? "success" : "secondary"}>
-                      {registro.atual ? "Atual" : "Histórico"}
-                    </Badge>
-                  </td>
-                  <td className="p-4" data-label="Concedida em">
-                    {formatarData(registro.concedidaEm)}
-                  </td>
-                  <td className="p-4" data-label="Professor">
-                    {registro.concedidaPor.usuario.nome}
-                  </td>
-                  <td className="p-4 text-muted-foreground" data-label="Observação">
-                    {registro.observacao ?? "—"}
-                    {registro.anexoUrl && (
-                      <a
-                        href={registro.anexoUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="block text-sm font-medium text-primary hover:underline"
-                      >
-                        Abrir anexo
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {aluno.graduacoes.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                    Nenhuma graduação registrada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <ResumoHistorico
+          icone={<ClipboardList className="size-5" />}
+          rotulo="Agendamentos"
+          valor={aluno._count.comparecimentos}
+        />
+        <ResumoHistorico
+          icone={<ShieldCheck className="size-5" />}
+          rotulo="Check-ins"
+          valor={aluno._count.checkins}
+        />
+        <ResumoHistorico
+          icone={<IdCard className="size-5" />}
+          rotulo="Documentos"
+          valor={aluno._count.documentos}
+        />
+      </div>
 
       <Card>
         <CardHeader>
@@ -755,6 +714,30 @@ function Campo({
       <p className="text-xs text-muted-foreground">{rotulo}</p>
       <p className="mt-1 text-sm font-medium">{valor && valor.length > 0 ? valor : "—"}</p>
     </div>
+  )
+}
+
+function ResumoHistorico({
+  icone,
+  rotulo,
+  valor,
+}: {
+  icone: ReactNode
+  rotulo: string
+  valor: number
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-3 py-5">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+          {icone}
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">{rotulo}</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums">{valor}</p>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
