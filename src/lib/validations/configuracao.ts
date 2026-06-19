@@ -15,6 +15,7 @@ export const configuracaoAcademiaSchema = z.object({
   rankingHorasAtivo: z.boolean(),
   notificarComparecimento: z.boolean(),
   notificarLembreteTreino: z.boolean(),
+  notificarLembreteAgendamento: z.boolean(),
   notificarCancelamentoAula: z.boolean(),
   notificarFinanceiro: z.boolean(),
   notificarGraduacao: z.boolean(),

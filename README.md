@@ -77,7 +77,12 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
    para manter oito semanas de aulas recorrentes futuras geradas, e
    `/api/tarefas/lembretes-diarios` às 11:00 UTC para gerar mensalidades recorrentes
    da competência atual, notificar gestores sobre mensalidades a vencer/inadimplentes
-   e avisar gestores/professores sobre aniversários de alunos.
+   e avisar gestores/professores sobre aniversários de alunos. O lembrete de agendamento
+   de aulas para alunos roda em `/api/tarefas/lembretes-agendamento-aulas` às 22:30 UTC
+   (19:30 GMT-3), mirando as aulas do dia seguinte. O lembrete de treino para alunos
+   já agendados é disparado por browsers de gestores abertos a cada 15 minutos, mirando
+   aulas 60-75 minutos à frente; como fallback, `/api/tarefas/lembretes-treino` roda
+   diariamente às 19:30 UTC (16:30 GMT-3) mirando as próximas seis horas.
 5. `main` → produção; cada PR → preview com banco isolado.
 
 ## Documentação

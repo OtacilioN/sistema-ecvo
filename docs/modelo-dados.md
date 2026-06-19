@@ -86,7 +86,8 @@ erDiagram
   auditoria e notificação.
 - **ConfiguracaoAcademia** é um singleton (`id = "default"`) com as regras configuráveis: janela de
   agendamento, exigência de agendamento para check-in, política de check-in sem agendamento,
-  bloqueio por inadimplência, lista de espera, ranking de horas e valor base financeiro por modalidade.
+  bloqueio por inadimplência, lista de espera, ranking de horas, notificações e valor base financeiro
+  por modalidade.
 - **RegistroImportado.valorRepasse** guarda o valor financeiro importado de Wellhub/TotalPass quando a
   planilha traz repasse por check-in; o JSON bruto continua preservado em `dadosBrutos`.
 - **Modalidade** pode definir overrides operacionais para janela de agendamento, prazo de

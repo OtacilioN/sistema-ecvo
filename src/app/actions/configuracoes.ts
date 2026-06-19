@@ -22,6 +22,7 @@ export async function acaoAtualizarConfiguracao(
     rankingHorasAtivo: formData.get("rankingHorasAtivo") === "on",
     notificarComparecimento: formData.get("notificarComparecimento") === "on",
     notificarLembreteTreino: formData.get("notificarLembreteTreino") === "on",
+    notificarLembreteAgendamento: formData.get("notificarLembreteAgendamento") === "on",
     notificarCancelamentoAula: formData.get("notificarCancelamentoAula") === "on",
     notificarFinanceiro: formData.get("notificarFinanceiro") === "on",
     notificarGraduacao: formData.get("notificarGraduacao") === "on",

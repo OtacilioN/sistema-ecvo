@@ -1,9 +1,8 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { exigirPapel, getUsuarioAtual } from "@/lib/auth/dal"
+import { getUsuarioAtual } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
-import { gerarLembretesTreino } from "@/lib/services/notificacao.service"
 
 export async function acaoMarcarNotificacaoLida(formData: FormData) {
   const usuario = await getUsuarioAtual()
@@ -25,12 +24,5 @@ export async function acaoMarcarTodasNotificacoesLidas() {
   })
   revalidatePath("/gestao/notificacoes")
   revalidatePath("/professor/notificacoes")
-  revalidatePath("/aluno/notificacoes")
-}
-
-export async function acaoGerarLembretesTreino() {
-  await exigirPapel("GESTOR")
-  await gerarLembretesTreino(db)
-  revalidatePath("/gestao/notificacoes")
   revalidatePath("/aluno/notificacoes")
 }

@@ -1,7 +1,6 @@
 import type { Prisma } from "@prisma/client"
 import Link from "next/link"
 import {
-  acaoGerarLembretesTreino,
   acaoMarcarNotificacaoLida,
   acaoMarcarTodasNotificacoesLidas,
 } from "@/app/actions/notificacoes"
@@ -75,13 +74,6 @@ export async function PaginaNotificacoes({ filtro = "todas" }: { filtro?: Filtro
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           <PushNotificacoesControle />
-          {usuario.papel === "GESTOR" && (
-            <form action={acaoGerarLembretesTreino}>
-              <BotaoEnviar variant="secondary" size="sm">
-                Gerar lembretes
-              </BotaoEnviar>
-            </form>
-          )}
           <form action={acaoMarcarTodasNotificacoesLidas}>
             <BotaoEnviar variant="outline" size="sm">
               Marcar todas como lidas

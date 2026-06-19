@@ -17,6 +17,7 @@ export type ConfiguracaoAcademiaInput = {
   rankingHorasAtivo: boolean
   notificarComparecimento: boolean
   notificarLembreteTreino: boolean
+  notificarLembreteAgendamento: boolean
   notificarCancelamentoAula: boolean
   notificarFinanceiro: boolean
   notificarGraduacao: boolean
@@ -111,6 +112,7 @@ function serializarConfiguracao(
     rankingHorasAtivo: config.rankingHorasAtivo,
     notificarComparecimento: config.notificarComparecimento,
     notificarLembreteTreino: config.notificarLembreteTreino,
+    notificarLembreteAgendamento: config.notificarLembreteAgendamento,
     notificarCancelamentoAula: config.notificarCancelamentoAula,
     notificarFinanceiro: config.notificarFinanceiro,
     notificarGraduacao: config.notificarGraduacao,

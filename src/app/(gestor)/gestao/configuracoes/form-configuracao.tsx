@@ -19,6 +19,7 @@ type Configuracao = {
   rankingHorasAtivo: boolean
   notificarComparecimento: boolean
   notificarLembreteTreino: boolean
+  notificarLembreteAgendamento: boolean
   notificarCancelamentoAula: boolean
   notificarFinanceiro: boolean
   notificarGraduacao: boolean
@@ -169,7 +170,13 @@ export function FormConfiguracao({
             <OpcaoNotificacao
               nome="notificarLembreteTreino"
               ativo={configuracao.notificarLembreteTreino}
-              rotulo="Lembrete de treino"
+              rotulo="Gerar lembretes de treino para alunos que agendaram"
+              disabled={somenteLeitura}
+            />
+            <OpcaoNotificacao
+              nome="notificarLembreteAgendamento"
+              ativo={configuracao.notificarLembreteAgendamento}
+              rotulo="Gerar lembretes de agendamento"
               disabled={somenteLeitura}
             />
             <OpcaoNotificacao

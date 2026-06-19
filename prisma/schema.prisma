@@ -165,6 +165,7 @@ enum TipoAcaoAudit {
 enum TipoNotificacao {
   COMPARECIMENTO
   LEMBRETE_TREINO
+  LEMBRETE_AGENDAMENTO
   CANCELAMENTO_AULA
   FINANCEIRO
   GRADUACAO
@@ -638,6 +639,7 @@ model ConfiguracaoAcademia {
   rankingHorasAtivo                Boolean                          @default(false)
   notificarComparecimento          Boolean                          @default(true)
   notificarLembreteTreino          Boolean                          @default(true)
+  notificarLembreteAgendamento     Boolean                          @default(true)
   notificarCancelamentoAula        Boolean                          @default(true)
   notificarFinanceiro              Boolean                          @default(true)
   notificarGraduacao               Boolean                          @default(true)

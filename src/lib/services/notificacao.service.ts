@@ -1,16 +1,17 @@
 import "server-only"
 import type { Prisma, TipoNotificacao } from "@prisma/client"
-import { formatInTimeZone } from "date-fns-tz"
+import { formatInTimeZone, fromZonedTime } from "date-fns-tz"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { enviarPushParaNotificacao } from "@/lib/services/push.service"
-import { formatarDataHora, TIMEZONE } from "@/lib/utils/datas"
+import { formatarData, formatarDataHora, formatarHora, TIMEZONE } from "@/lib/utils/datas"
 
 type Cliente = Prisma.TransactionClient | typeof db
 
 type CampoConfiguracaoNotificacao =
   | "notificarComparecimento"
   | "notificarLembreteTreino"
+  | "notificarLembreteAgendamento"
   | "notificarCancelamentoAula"
   | "notificarFinanceiro"
   | "notificarGraduacao"
@@ -20,6 +21,7 @@ type CampoConfiguracaoNotificacao =
 const CAMPO_CONFIG: Record<TipoNotificacao, CampoConfiguracaoNotificacao> = {
   COMPARECIMENTO: "notificarComparecimento",
   LEMBRETE_TREINO: "notificarLembreteTreino",
+  LEMBRETE_AGENDAMENTO: "notificarLembreteAgendamento",
   CANCELAMENTO_AULA: "notificarCancelamentoAula",
   FINANCEIRO: "notificarFinanceiro",
   GRADUACAO: "notificarGraduacao",
@@ -34,17 +36,34 @@ function subtrairDias(data: Date, dias: number) {
   return new Date(data.getTime() - dias * 24 * 60 * 60 * 1000)
 }
 
+function intervaloDiaAcademia(chaveData: string): { inicio: Date; fim: Date } {
+  const inicio = fromZonedTime(`${chaveData}T00:00:00`, TIMEZONE)
+  const fim = new Date(inicio.getTime() + 24 * 60 * 60 * 1000)
+  return { inicio, fim }
+}
+
+function intervaloAmanhaAcademia(agora: Date): { inicio: Date; fim: Date } {
+  const amanha = new Date(agora.getTime() + 24 * 60 * 60 * 1000)
+  return intervaloDiaAcademia(formatInTimeZone(amanha, TIMEZONE, "yyyy-MM-dd"))
+}
+
 export function campoConfiguracaoNotificacao(tipo: TipoNotificacao): CampoConfiguracaoNotificacao {
   return CAMPO_CONFIG[tipo]
 }
 
-export async function notificacaoAtiva(cliente: Cliente, tipo: TipoNotificacao): Promise<boolean> {
-  const campo = campoConfiguracaoNotificacao(tipo)
+async function campoNotificacaoAtivo(
+  cliente: Cliente,
+  campo: CampoConfiguracaoNotificacao,
+): Promise<boolean> {
   const config = await cliente.configuracaoAcademia.findUnique({
     where: { id: "default" },
     select: { [campo]: true },
   })
   return config?.[campo] ?? true
+}
+
+export async function notificacaoAtiva(cliente: Cliente, tipo: TipoNotificacao): Promise<boolean> {
+  return campoNotificacaoAtivo(cliente, campoConfiguracaoNotificacao(tipo))
 }
 
 export async function criarNotificacao(
@@ -78,18 +97,21 @@ export async function criarNotificacao(
 
 export async function gerarLembretesTreino(
   cliente: Cliente,
-  params?: { agora?: Date; janelaMinutos?: number },
+  params?: { agora?: Date; antecedenciaMinutos?: number; janelaMinutos?: number },
 ) {
-  if (!(await notificacaoAtiva(cliente, "LEMBRETE_TREINO"))) return { ok: true as const, total: 0 }
+  if (!(await campoNotificacaoAtivo(cliente, "notificarLembreteTreino"))) {
+    return { ok: true as const, total: 0 }
+  }
 
   const agora = params?.agora ?? new Date()
-  const limite = new Date(agora.getTime() + (params?.janelaMinutos ?? 120) * 60_000)
+  const inicioJanela = new Date(agora.getTime() + (params?.antecedenciaMinutos ?? 60) * 60_000)
+  const limite = new Date(inicioJanela.getTime() + (params?.janelaMinutos ?? 15) * 60_000)
   const comparecimentos = await cliente.comparecimento.findMany({
     where: {
       status: "CONFIRMADO",
       aula: {
         cancelada: false,
-        inicio: { gte: agora, lte: limite },
+        inicio: { gte: inicioJanela, lt: limite },
       },
     },
     take: 200,
@@ -136,6 +158,102 @@ export async function gerarLembretesTreino(
   }
 
   return { ok: true as const, total }
+}
+
+export function mensagemLembreteAgendamentoAmanha(params: {
+  aulas: Array<{ inicio: Date; nome: string; modalidade: string }>
+}): { titulo: string; mensagem: string } {
+  const aulas = [...params.aulas].sort((a, b) => a.inicio.getTime() - b.inicio.getTime())
+  const data = aulas[0] ? formatarData(aulas[0].inicio) : "amanhã"
+  const resumo = aulas
+    .map((aula) => `${aula.nome || aula.modalidade} às ${formatarHora(aula.inicio)}`)
+    .join("; ")
+
+  return {
+    titulo: "Agende sua aula de amanhã",
+    mensagem: `${data}: ${resumo}. Faça seu agendamento pelo sistema.`,
+  }
+}
+
+export async function gerarLembretesAgendamentoAulasAmanha(
+  cliente: Cliente = db,
+  params?: { agora?: Date },
+) {
+  if (!(await campoNotificacaoAtivo(cliente, "notificarLembreteAgendamento"))) {
+    return { ok: true as const, total: 0 }
+  }
+
+  const agora = params?.agora ?? new Date()
+  const { inicio, fim } = intervaloAmanhaAcademia(agora)
+  const aulas = await cliente.aula.findMany({
+    where: {
+      cancelada: false,
+      inicio: { gte: inicio, lt: fim },
+    },
+    orderBy: { inicio: "asc" },
+    select: {
+      id: true,
+      inicio: true,
+      turma: {
+        select: {
+          nome: true,
+          modalidade: {
+            select: {
+              nome: true,
+              alunos: {
+                where: {
+                  status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
+                  usuario: { ativo: true },
+                },
+                select: {
+                  id: true,
+                  usuarioId: true,
+                },
+              },
+            },
+          },
+        },
+      },
+      comparecimentos: {
+        where: { status: { in: ["CONFIRMADO", "LISTA_ESPERA"] } },
+        select: { alunoId: true },
+      },
+    },
+  })
+
+  const aulasPorUsuario = new Map<
+    string,
+    Array<{ inicio: Date; nome: string; modalidade: string }>
+  >()
+
+  for (const aula of aulas) {
+    const alunosJaAgendados = new Set(aula.comparecimentos.map((item) => item.alunoId))
+    for (const aluno of aula.turma.modalidade.alunos) {
+      if (alunosJaAgendados.has(aluno.id)) continue
+
+      const lista = aulasPorUsuario.get(aluno.usuarioId) ?? []
+      lista.push({
+        inicio: aula.inicio,
+        nome: aula.turma.nome ?? aula.turma.modalidade.nome,
+        modalidade: aula.turma.modalidade.nome,
+      })
+      aulasPorUsuario.set(aluno.usuarioId, lista)
+    }
+  }
+
+  let total = 0
+  for (const [usuarioId, aulasAluno] of aulasPorUsuario) {
+    const conteudo = mensagemLembreteAgendamentoAmanha({ aulas: aulasAluno })
+    if (await criarNotificacaoUnica(cliente, usuarioId, "LEMBRETE_AGENDAMENTO", conteudo)) total++
+  }
+
+  return {
+    ok: true as const,
+    data: formatInTimeZone(inicio, TIMEZONE, "yyyy-MM-dd"),
+    aulasEncontradas: aulas.length,
+    alunosNotificados: total,
+    total,
+  }
 }
 
 export function mensagemLembreteAniversario(params: { alunoNome: string; dataNascimento: Date }): {
