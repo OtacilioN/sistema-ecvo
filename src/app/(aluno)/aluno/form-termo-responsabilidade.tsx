@@ -1,7 +1,7 @@
 "use client"
 
 import { ShieldCheck } from "lucide-react"
-import { useActionState, useMemo, useState } from "react"
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   acaoAceitarTermoResponsabilidade,
   type EstadoTermoResponsabilidade,
@@ -10,6 +10,7 @@ import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Label } from "@/components/ui/label"
 import {
   DECLARACAO_RESPONSAVEL_MENOR_ID,
+  DECLARACOES_TERMO_IDS,
   DECLARACOES_TERMO_RESPONSABILIDADE,
 } from "@/lib/termo-responsabilidade"
 
@@ -22,17 +23,45 @@ export function FormTermoResponsabilidade({ menorDeIdade }: Props) {
     acaoAceitarTermoResponsabilidade,
     undefined,
   )
-  const [marcados, setMarcados] = useState<Record<string, boolean>>({})
-  const totalObrigatorio = DECLARACOES_TERMO_RESPONSABILIDADE.length + (menorDeIdade ? 1 : 0)
-  const totalMarcado = useMemo(() => Object.values(marcados).filter(Boolean).length, [marcados])
+  const formRef = useRef<HTMLFormElement>(null)
+  const declaracoesObrigatorias = useMemo(
+    () =>
+      menorDeIdade
+        ? [...DECLARACOES_TERMO_IDS, DECLARACAO_RESPONSAVEL_MENOR_ID]
+        : DECLARACOES_TERMO_IDS,
+    [menorDeIdade],
+  )
+  const [marcados, setMarcados] = useState<Set<string>>(() => new Set())
+  const totalObrigatorio = declaracoesObrigatorias.length
+  const totalMarcado = useMemo(
+    () => declaracoesObrigatorias.filter((id) => marcados.has(id)).length,
+    [declaracoesObrigatorias, marcados],
+  )
   const todosMarcados = totalMarcado === totalObrigatorio
 
-  function alternar(id: string, checked: boolean) {
-    setMarcados((atual) => ({ ...atual, [id]: checked }))
-  }
+  const sincronizarMarcados = useCallback(
+    (form = formRef.current) => {
+      if (!form) return
+
+      const selecionados = new Set(new FormData(form).getAll("declaracoes").map(String))
+      setMarcados(new Set(declaracoesObrigatorias.filter((id) => selecionados.has(id))))
+    },
+    [declaracoesObrigatorias],
+  )
+
+  useEffect(() => {
+    sincronizarMarcados()
+
+    function aoRestaurarPagina() {
+      sincronizarMarcados()
+    }
+
+    window.addEventListener("pageshow", aoRestaurarPagina)
+    return () => window.removeEventListener("pageshow", aoRestaurarPagina)
+  }, [sincronizarMarcados])
 
   return (
-    <form action={acao} className="space-y-4">
+    <form ref={formRef} action={acao} autoComplete="off" className="space-y-4">
       <div className="space-y-3">
         {DECLARACOES_TERMO_RESPONSABILIDADE.map((declaracao) => (
           <Label
@@ -43,8 +72,7 @@ export function FormTermoResponsabilidade({ menorDeIdade }: Props) {
               type="checkbox"
               name="declaracoes"
               value={declaracao.id}
-              checked={Boolean(marcados[declaracao.id])}
-              onChange={(event) => alternar(declaracao.id, event.target.checked)}
+              onChange={(event) => sincronizarMarcados(event.currentTarget.form)}
               className="mt-1 size-4 accent-primary"
             />
             <span className="text-sm font-normal">{declaracao.texto}</span>
@@ -57,8 +85,7 @@ export function FormTermoResponsabilidade({ menorDeIdade }: Props) {
               type="checkbox"
               name="declaracoes"
               value={DECLARACAO_RESPONSAVEL_MENOR_ID}
-              checked={Boolean(marcados[DECLARACAO_RESPONSAVEL_MENOR_ID])}
-              onChange={(event) => alternar(DECLARACAO_RESPONSAVEL_MENOR_ID, event.target.checked)}
+              onChange={(event) => sincronizarMarcados(event.currentTarget.form)}
               className="mt-1 size-4 accent-primary"
             />
             <span className="text-sm font-normal">
