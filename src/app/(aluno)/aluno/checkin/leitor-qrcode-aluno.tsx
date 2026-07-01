@@ -39,6 +39,8 @@ export function LeitorQRCodeAluno() {
         return
       }
 
+      setErro(null)
+      setStatus("encontrado")
       router.push(`/aluno/checkin?token=${encodeURIComponent(token)}`)
     },
     [router],
@@ -75,7 +77,6 @@ export function LeitorQRCodeAluno() {
             if (resultado) {
               controles.stop()
               controlsRef.current = null
-              setStatus("encontrado")
               irParaTokenLido(resultado.getText())
               return
             }

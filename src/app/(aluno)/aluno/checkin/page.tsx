@@ -78,8 +78,6 @@ export default async function CheckinGlobalPage({
         </div>
       </div>
 
-      <LeitorQRCodeAluno />
-
       {tokenInformado && !tokenAtual && (
         <Card className="border-destructive/40 bg-destructive/5">
           <CardContent className="flex gap-3 py-5 text-sm text-destructive">
@@ -93,6 +91,8 @@ export default async function CheckinGlobalPage({
           </CardContent>
         </Card>
       )}
+
+      {!tokenAtual && <LeitorQRCodeAluno />}
 
       {!alunoOperacional && (
         <Card>
