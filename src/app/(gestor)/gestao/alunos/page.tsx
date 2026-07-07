@@ -12,13 +12,13 @@ export const dynamic = "force-dynamic"
 export default async function AlunosPage() {
   const usuario = await exigirGestao()
   const podeAdministrarAluno = usuario.papel === "GESTOR"
+  const competenciaAtual = chaveCompetencia()
   const [alunos, modalidades, planos] = await Promise.all([
-    listarAlunos(),
+    listarAlunos({ competenciaMensalidade: competenciaAtual }),
     listarModalidades({ apenasAtivas: true }),
     db.plano.findMany({ orderBy: [{ ativo: "desc" }, { nome: "asc" }] }),
   ])
   const opcoesModalidades = modalidades.map((m) => ({ id: m.id, nome: m.nome }))
-  const competenciaAtual = chaveCompetencia()
   const opcoesPlanos = planos.map((plano) => ({
     id: plano.id,
     nome: plano.nome,
@@ -59,6 +59,16 @@ export default async function AlunosPage() {
           planoId: a.planoId,
           planoNome: a.plano?.nome ?? null,
           planoValor: a.plano ? Number(a.plano.valor) : null,
+          mensalidadeAtual: a.mensalidades[0]
+            ? {
+                id: a.mensalidades[0].id,
+                competencia: a.mensalidades[0].competencia,
+                valor: Number(a.mensalidades[0].valor),
+                status: a.mensalidades[0].status,
+                pagoEm: a.mensalidades[0].pagoEm,
+                formaPagamento: a.mensalidades[0].formaPagamento,
+              }
+            : null,
           diaVencimento: a.diaVencimento,
           modalidades: a.modalidades.map((m) => m.id),
           cobrancasModalidades: a.modalidadesPlano.map((modalidade) => ({

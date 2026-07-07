@@ -10,7 +10,11 @@ import { TERMO_RESPONSABILIDADE_VERSAO } from "@/lib/termo-responsabilidade"
 // Serviço de ALUNOS (RF-001..004). Criar um aluno cria o Usuario (papel ALUNO) + Aluno,
 // conecta modalidades e, se menor de idade, o responsável.
 
-export function listarAlunos(opts?: { busca?: string; status?: StatusAluno }) {
+export function listarAlunos(opts?: {
+  busca?: string
+  status?: StatusAluno
+  competenciaMensalidade?: string
+}) {
   const where: Prisma.AlunoWhereInput = {}
   if (opts?.status) where.status = opts.status
   if (opts?.busca) {
@@ -36,6 +40,20 @@ export function listarAlunos(opts?: { busca?: string; status?: StatusAluno }) {
       },
       responsavel: true,
       plano: { select: { nome: true, valor: true } },
+      mensalidades: opts?.competenciaMensalidade
+        ? {
+            where: { competencia: opts.competenciaMensalidade },
+            select: {
+              id: true,
+              competencia: true,
+              valor: true,
+              status: true,
+              pagoEm: true,
+              formaPagamento: true,
+            },
+            take: 1,
+          }
+        : false,
       _count: { select: { documentos: true } },
     },
   })

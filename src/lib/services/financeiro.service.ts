@@ -39,6 +39,15 @@ export type ItemRepasseModalidadeCobranca = ItemRepasseModalidade & {
   plataformaExterna?: Plataforma | null
 }
 
+export type ItemRepasseMensalidadeSnapshot = {
+  modalidadeId: string | null
+  modalidadeNome: string | null
+  professorId: string | null
+  professorNome: string | null
+  plataformaExterna: Plataforma | null
+  valorBase: number
+}
+
 export type PoliticaRepasseFinanceiro = "MENSALIDADE_INTERNA" | "REPASSE_EXTERNO"
 
 export type ResultadoRepasseFinanceiro = {
@@ -287,6 +296,79 @@ export function modalidadesMensalidadeInterna(
   return itens
     .filter((item) => !item.plataformaExterna)
     .map(({ plataformaExterna: _, ...item }) => item)
+}
+
+export function lerRepasseSnapshotMensalidade(
+  snapshot: Prisma.JsonValue | null,
+): ItemRepasseMensalidadeSnapshot[] {
+  if (!Array.isArray(snapshot)) return []
+
+  const itens: ItemRepasseMensalidadeSnapshot[] = []
+  for (const item of snapshot) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue
+    const registro = item as Record<string, Prisma.JsonValue>
+    const plataformaExterna = registro.plataformaExterna
+    if (
+      plataformaExterna !== null &&
+      plataformaExterna !== "WELLHUB" &&
+      plataformaExterna !== "TOTALPASS"
+    ) {
+      continue
+    }
+    const valorBase = Number(registro.valorBase)
+    itens.push({
+      modalidadeId: typeof registro.modalidadeId === "string" ? registro.modalidadeId : null,
+      modalidadeNome: typeof registro.modalidadeNome === "string" ? registro.modalidadeNome : null,
+      professorId: typeof registro.professorId === "string" ? registro.professorId : null,
+      professorNome: typeof registro.professorNome === "string" ? registro.professorNome : null,
+      plataformaExterna,
+      valorBase: Number.isFinite(valorBase) && valorBase > 0 ? valorBase : 100,
+    })
+  }
+
+  return itens
+}
+
+function montarRepasseSnapshotMensalidade(params: {
+  modalidadesPlano: Array<{
+    plataformaExterna: Plataforma | null
+    modalidade: {
+      id: string
+      nome: string
+      turmas: Array<{
+        professorId: string | null
+        professor: { usuario: { nome: string } } | null
+      }>
+    }
+  }>
+  valorBaseModalidade: number
+}): ItemRepasseMensalidadeSnapshot[] {
+  return params.modalidadesPlano.map((vinculo) => {
+    const professores = new Map<string, string>()
+    for (const turma of vinculo.modalidade.turmas) {
+      if (turma.professorId) {
+        professores.set(turma.professorId, turma.professor?.usuario.nome ?? "Professor")
+      }
+    }
+
+    let professorId: string | null = null
+    let professorNome =
+      professores.size === 0 ? "Sem professor definido" : "Mais de um professor ativo"
+    if (professores.size === 1) {
+      const [id, nome] = Array.from(professores.entries())[0]
+      professorId = id
+      professorNome = nome
+    }
+
+    return {
+      modalidadeId: vinculo.modalidade.id,
+      modalidadeNome: vinculo.modalidade.nome,
+      professorId,
+      professorNome,
+      plataformaExterna: vinculo.plataformaExterna,
+      valorBase: params.valorBaseModalidade,
+    }
+  })
 }
 
 export function mensagemStatusMensalidade(params: {
@@ -638,13 +720,37 @@ async function obterOuCriarMensalidade(params: {
   competencia: string
   autorId?: string
 }) {
-  const aluno = await db.aluno.findUnique({
-    where: { id: params.alunoId },
-    include: {
-      plano: true,
-      modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
-    },
-  })
+  const [aluno, configuracao] = await Promise.all([
+    db.aluno.findUnique({
+      where: { id: params.alunoId },
+      include: {
+        plano: true,
+        modalidadesPlano: {
+          select: {
+            plataformaExterna: true,
+            modalidade: {
+              select: {
+                id: true,
+                nome: true,
+                turmas: {
+                  where: { ativa: true, professorId: { not: null } },
+                  orderBy: { criadoEm: "asc" },
+                  select: {
+                    professorId: true,
+                    professor: { select: { usuario: { select: { nome: true } } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+    db.configuracaoAcademia.findUnique({
+      where: { id: "default" },
+      select: { valorBaseModalidade: true },
+    }),
+  ])
 
   if (!aluno) return { ok: false as const, motivo: "Aluno não encontrado." }
   if (!aluno.plano) {
@@ -653,9 +759,14 @@ async function obterOuCriarMensalidade(params: {
       motivo: "Mensalidade interna exige plano vinculado ao aluno.",
     }
   }
-  const modalidadesInternas = aluno.modalidadesPlano.filter(
-    (modalidade) => !modalidade.plataformaExterna,
+  const valorBaseModalidade = Number(
+    configuracao?.valorBaseModalidade ?? CONFIGURACAO_REPASSE_PADRAO.valorBaseModalidade,
   )
+  const repasseSnapshot = montarRepasseSnapshotMensalidade({
+    modalidadesPlano: aluno.modalidadesPlano,
+    valorBaseModalidade,
+  })
+  const modalidadesInternas = repasseSnapshot.filter((modalidade) => !modalidade.plataformaExterna)
   if (modalidadesInternas.length === 0) {
     return {
       ok: false as const,
@@ -679,6 +790,7 @@ async function obterOuCriarMensalidade(params: {
         competencia: params.competencia,
         valor: plano.valor,
         vencimento: vencimentoDaCompetencia(params.competencia, aluno.diaVencimento),
+        repasseSnapshot: repasseSnapshot as unknown as Prisma.InputJsonValue,
       },
     })
 
@@ -695,6 +807,7 @@ async function obterOuCriarMensalidade(params: {
             valor: Number(criada.valor),
             diaVencimento: aluno.diaVencimento,
             modalidadeIds: modalidadesInternas.map((modalidade) => modalidade.modalidadeId),
+            repasseSnapshot,
             vencimento: criada.vencimento.toISOString(),
             status: criada.status,
           },
@@ -765,7 +878,15 @@ export async function baixarMensalidade(params: {
     include: { aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } } },
   })
   if (!mensalidade) return { ok: false as const, motivo: "Mensalidade não encontrada." }
-  if (mensalidade.status === "PAGA" || mensalidade.status === "ISENTA") {
+  if (mensalidade.status === "PAGA") {
+    return {
+      ok: false as const,
+      motivo: mensalidade.pagoEm
+        ? `Competência já paga em ${formatarData(mensalidade.pagoEm)}.`
+        : "Competência já paga.",
+    }
+  }
+  if (mensalidade.status === "ISENTA") {
     return { ok: false as const, motivo: "Mensalidade já está quitada." }
   }
 

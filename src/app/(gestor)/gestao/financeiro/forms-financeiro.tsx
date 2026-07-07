@@ -18,6 +18,7 @@ import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
+import { formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
 type ModalidadeOpcao = { id: string; nome: string }
@@ -34,6 +35,14 @@ export type AlunoBaixaMensalidade = {
   nome: string
   planoNome: string | null
   planoValor: number | null
+  mensalidadeAtual: {
+    id: string
+    competencia: string
+    valor: number
+    status: StatusMensalidade
+    pagoEm: Date | null
+    formaPagamento: string | null
+  } | null
   diaVencimento: number
 }
 type PlanoOpcao = { id: string; nome: string }
@@ -47,6 +56,14 @@ export type PlanoEdicao = {
 }
 
 type StatusMensalidade = "EM_ABERTO" | "PAGA" | "VENCIDA" | "CANCELADA" | "ISENTA"
+
+const ROTULO_STATUS_MENSALIDADE: Record<StatusMensalidade, string> = {
+  EM_ABERTO: "Em aberto",
+  PAGA: "Paga",
+  VENCIDA: "Vencida",
+  CANCELADA: "Cancelada",
+  ISENTA: "Isenta",
+}
 
 export function FormPlano({ aoConcluir }: { aoConcluir?: () => void }) {
   const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(acaoCriarPlano, undefined)
@@ -341,6 +358,9 @@ export function FormBaixaMensalidadeAluno({
     undefined,
   )
   const semPlano = !aluno.planoNome || aluno.planoValor === null
+  const mensalidadeAtual = aluno.mensalidadeAtual
+  const jaPaga = mensalidadeAtual?.status === "PAGA"
+  const valorCompetencia = mensalidadeAtual?.valor ?? aluno.planoValor ?? 0
 
   useEffect(() => {
     if (estado?.ok) aoConcluir?.()
@@ -369,7 +389,7 @@ export function FormBaixaMensalidadeAluno({
             </div>
             <div>
               <dt className="text-muted-foreground">Valor</dt>
-              <dd className="font-semibold">{formatarBRL(aluno.planoValor ?? 0)}</dd>
+              <dd className="font-semibold">{formatarBRL(valorCompetencia)}</dd>
             </div>
           </dl>
         )}
@@ -377,18 +397,61 @@ export function FormBaixaMensalidadeAluno({
 
       {!semPlano && (
         <>
+          <div className="rounded-md border border-border p-4 text-sm sm:col-span-2">
+            <p className="font-medium">Pagamento da competência</p>
+            {mensalidadeAtual ? (
+              <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd className="font-medium">
+                    {ROTULO_STATUS_MENSALIDADE[mensalidadeAtual.status]}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Valor registrado</dt>
+                  <dd className="font-medium">{formatarBRL(mensalidadeAtual.valor)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Pagamento</dt>
+                  <dd className="font-medium">
+                    {mensalidadeAtual.pagoEm
+                      ? formatarData(mensalidadeAtual.pagoEm)
+                      : "Ainda não pago"}
+                  </dd>
+                </div>
+                {mensalidadeAtual.formaPagamento && (
+                  <div className="sm:col-span-3">
+                    <dt className="text-muted-foreground">Forma registrada</dt>
+                    <dd className="font-medium">{mensalidadeAtual.formaPagamento}</dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <p className="mt-2 text-muted-foreground">
+                Nenhuma mensalidade registrada para esta competência.
+              </p>
+            )}
+            {jaPaga && (
+              <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-800">
+                Esta competência já foi paga
+                {mensalidadeAtual?.pagoEm ? ` em ${formatarData(mensalidadeAtual.pagoEm)}` : ""}.
+                Não é permitido dar baixa novamente.
+              </p>
+            )}
+          </div>
           <CampoTexto
             id="formaPagamento"
             rotulo="Forma de pagamento"
             placeholder="Pix, cartão..."
+            disabled={jaPaga}
           />
-          <CampoTexto id="observacao" rotulo="Observação" />
+          <CampoTexto id="observacao" rotulo="Observação" disabled={jaPaga} />
         </>
       )}
 
       <Erro estado={estado} />
       <div className="flex justify-end sm:col-span-2">
-        <BotaoEnviar disabled={semPlano}>
+        <BotaoEnviar disabled={semPlano || jaPaga}>
           <WalletCards className="size-4" /> Dar baixa
         </BotaoEnviar>
       </div>

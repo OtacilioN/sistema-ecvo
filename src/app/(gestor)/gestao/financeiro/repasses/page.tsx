@@ -9,7 +9,9 @@ import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import {
   calcularRepasseFinanceiro,
+  type ItemRepasseMensalidadeSnapshot,
   type ItemRepasseModalidade,
+  lerRepasseSnapshotMensalidade,
 } from "@/lib/services/financeiro.service"
 import { chaveCompetencia, formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
@@ -178,9 +180,15 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   for (const mensalidade of mensalidades) {
     const valorRecebido = mensalidade.status === "PAGA" ? Number(mensalidade.valor) : 0
-    const itens = mensalidade.aluno.modalidadesPlano
-      .filter(({ plataformaExterna }) => !plataformaExterna)
-      .map(({ modalidade }) => itemModalidadeMensalidade(modalidade, pendencias))
+    const snapshot = lerRepasseSnapshotMensalidade(mensalidade.repasseSnapshot)
+    const itens =
+      snapshot.length > 0
+        ? snapshot
+            .filter(({ plataformaExterna }) => !plataformaExterna)
+            .map((item, index) => itemModalidadeSnapshot(mensalidade.id, item, index, pendencias))
+        : mensalidade.aluno.modalidadesPlano
+            .filter(({ plataformaExterna }) => !plataformaExterna)
+            .map(({ modalidade }) => itemModalidadeMensalidade(modalidade, pendencias))
     if (itens.length === 0) {
       pendencias.push({
         chave: `mensalidade:${mensalidade.id}`,
@@ -606,6 +614,37 @@ function itemModalidadeMensalidade(
     professorNome: professores.size === 0 ? "Sem professor definido" : "Mais de um professor ativo",
     modalidadeId: modalidade.id,
     modalidadeNome: modalidade.nome,
+  }
+}
+
+function itemModalidadeSnapshot(
+  mensalidadeId: string,
+  item: ItemRepasseMensalidadeSnapshot,
+  index: number,
+  pendencias: PendenciaRepasse[],
+): ItemRepasseModalidade {
+  if (item.professorId) {
+    return {
+      professorId: item.professorId,
+      professorNome: item.professorNome,
+      modalidadeId: item.modalidadeId,
+      modalidadeNome: item.modalidadeNome,
+      valorBase: item.valorBase,
+    }
+  }
+
+  pendencias.push({
+    chave: `mensalidade:${mensalidadeId}:snapshot:${item.modalidadeId ?? index}`,
+    origem: "Mensalidade interna",
+    referencia: item.modalidadeNome ?? "Modalidade sem nome",
+    motivo: item.professorNome ?? "Snapshot de mensalidade sem professor definido.",
+  })
+  return {
+    professorId: `pendencia:mensalidade:${mensalidadeId}:${item.modalidadeId ?? index}`,
+    professorNome: item.professorNome ?? "Sem professor definido",
+    modalidadeId: item.modalidadeId,
+    modalidadeNome: item.modalidadeNome,
+    valorBase: item.valorBase,
   }
 }
 

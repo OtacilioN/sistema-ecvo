@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   atualizarVencimentosMensalidadesAluno,
   calcularRepasseFinanceiro,
+  lerRepasseSnapshotMensalidade,
   mensagemInadimplenciaMensalidade,
   mensagemInadimplenciaMensalidadeAluno,
   mensagemLembreteVencimentoMensalidade,
@@ -547,6 +548,47 @@ describe("calcularRepasseFinanceiro", () => {
     ])
 
     expect(itens).toEqual([{ professorId: "prof-oyama", modalidadeId: "muay-thai" }])
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: 90,
+        itens,
+      }),
+    ).toMatchObject({
+      professores: [{ professorId: "prof-oyama", valor: 60 }],
+      socioA: 15,
+      socioB: 15,
+    })
+  })
+
+  it("preserva repasse pelo snapshot da mensalidade mesmo após nova modalidade interna", () => {
+    const snapshot = lerRepasseSnapshotMensalidade([
+      {
+        modalidadeId: "kickboxing",
+        modalidadeNome: "Kickboxing",
+        professorId: "prof-vinicius",
+        professorNome: "Vinicius de Oliveira",
+        plataformaExterna: "WELLHUB",
+        valorBase: 100,
+      },
+      {
+        modalidadeId: "muay-thai-oyama",
+        modalidadeNome: "Muay Thai Oyama",
+        professorId: "prof-oyama",
+        professorNome: "Oyama",
+        plataformaExterna: null,
+        valorBase: 100,
+      },
+    ])
+    const itens = snapshot
+      .filter((item) => !item.plataformaExterna)
+      .map((item) => ({
+        professorId: item.professorId ?? "pendencia",
+        professorNome: item.professorNome,
+        modalidadeId: item.modalidadeId,
+        modalidadeNome: item.modalidadeNome,
+        valorBase: item.valorBase,
+      }))
+
     expect(
       calcularRepasseFinanceiro({
         valorRecebido: 90,

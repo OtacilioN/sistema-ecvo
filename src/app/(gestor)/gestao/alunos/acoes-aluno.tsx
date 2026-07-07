@@ -36,6 +36,7 @@ type Plano = {
 
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
 type StatusAluno = StatusAlunoDominio
+type StatusMensalidade = "EM_ABERTO" | "PAGA" | "VENCIDA" | "CANCELADA" | "ISENTA"
 
 type ResponsavelAluno = {
   nome: string
@@ -67,6 +68,14 @@ export type AlunoLinha = {
   planoId: string | null
   planoNome: string | null
   planoValor: number | null
+  mensalidadeAtual: {
+    id: string
+    competencia: string
+    valor: number
+    status: StatusMensalidade
+    pagoEm: Date | null
+    formaPagamento: string | null
+  } | null
   diaVencimento: number
   modalidades: string[]
   cobrancasModalidades: Array<{
@@ -274,6 +283,7 @@ export function AcoesAluno({
             nome: aluno.nome,
             planoNome: aluno.planoNome,
             planoValor: aluno.planoValor,
+            mensalidadeAtual: aluno.mensalidadeAtual,
             diaVencimento: aluno.diaVencimento,
           }}
           competenciaAtual={competenciaAtual}

@@ -565,6 +565,7 @@ model Mensalidade {
   pagoEm         DateTime?
   formaPagamento String?
   observacao     String?
+  repasseSnapshot Json?
   criadoEm       DateTime          @default(now())
   atualizadoEm   DateTime          @updatedAt
 
