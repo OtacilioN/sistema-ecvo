@@ -110,7 +110,7 @@ export async function listarHistoricoObservacoesTecnicas(alunoIds: string[]) {
     observacoesAluno.push({
       id: log.id,
       observacao,
-      autor: log.autor.nome,
+      autor: log.autor?.nome ?? "Usuário excluído",
       registradaEm: formatarDataHora(log.criadoEm),
     })
     historico.set(log.entidadeId, observacoesAluno)
@@ -553,14 +553,6 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
     },
   })
   if (!aluno) return { ok: false as const, motivo: "Aluno não encontrado." }
-
-  const hasLogs = await db.logAuditoria.count({ where: { autorId: aluno.usuario.id } })
-  if (hasLogs > 0) {
-    return {
-      ok: false as const,
-      motivo: "Não é possível excluir este aluno porque ele já possui logs de auditoria próprios.",
-    }
-  }
 
   await db.$transaction(async (tx) => {
     await tx.usuario.delete({ where: { id: aluno.usuario.id } })

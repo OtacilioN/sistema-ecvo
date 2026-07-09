@@ -660,8 +660,8 @@ model TokenCheckinAcademia {
 
 model LogAuditoria {
   id            String        @id @default(cuid())
-  autor         Usuario       @relation("AutorLog", fields: [autorId], references: [id])
-  autorId       String
+  autor         Usuario?      @relation("AutorLog", fields: [autorId], references: [id], onDelete: SetNull)
+  autorId       String?
   acao          TipoAcaoAudit
   entidade      String
   entidadeId    String

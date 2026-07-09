@@ -96,5 +96,6 @@ erDiagram
 - **GraduacaoAluno** guarda a graduação concedida e, quando houver, `graduacaoAnteriorId`; isso preserva o
   histórico `anterior -> nova` exigido por RF-042 sem depender do log de auditoria para reconstruir a troca.
 - **LogAuditoria** guarda `valorAntigo`/`valorNovo` como JSON, gravado na mesma transação da ação crítica.
+  O autor pode ficar vazio quando o usuário é excluído; o log permanece preservado para auditoria.
 - **InscricaoPush** guarda as inscrições Web Push autorizadas por usuário/dispositivo; `Notificacao` continua
   sendo a caixa interna de referência, e o push é um canal adicional quando configurado.

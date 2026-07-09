@@ -228,15 +228,6 @@ export async function excluirProfessor(params: { professorId: string; autorId: s
   })
   if (!professor) return { ok: false as const, motivo: "Professor não encontrado." }
 
-  const hasLogs = await db.logAuditoria.count({ where: { autorId: professor.usuario.id } })
-  if (hasLogs > 0) {
-    return {
-      ok: false as const,
-      motivo:
-        "Não é possível excluir este professor porque ele já possui logs de auditoria próprios.",
-    }
-  }
-
   await db.$transaction(async (tx) => {
     await tx.usuario.delete({ where: { id: professor.usuario.id } })
     await registrarLog(

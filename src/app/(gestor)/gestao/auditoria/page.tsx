@@ -73,8 +73,8 @@ export default async function Page() {
           id: log.id,
           criadoEm: log.criadoEm,
           acao: log.acao,
-          autorNome: log.autor.nome,
-          autorPapel: log.autor.papel,
+          autorNome: log.autor?.nome ?? "Usuário excluído",
+          autorPapel: log.autor?.papel ?? "Registro preservado",
           entidade: log.entidade,
           entidadeId: log.entidadeId,
           detalheEntidade:
