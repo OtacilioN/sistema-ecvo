@@ -51,6 +51,7 @@ type LinhaExtratoRepasse = {
   chave: string
   origem: string
   status: string
+  competencia: string | null
   pagador: string
   data: Date | null
   formaPagamento: string | null
@@ -65,12 +66,12 @@ function valorUnico(valor: string | string[] | undefined) {
   return Array.isArray(valor) ? valor[0] : valor
 }
 
-function competenciaValida(valor: string | undefined) {
+function mesRepasseValido(valor: string | undefined) {
   return valor && /^\d{4}-\d{2}$/.test(valor) ? valor : chaveCompetencia()
 }
 
-function intervaloCompetencia(competencia: string) {
-  const inicio = new Date(`${competencia}-01T00:00:00-03:00`)
+function intervaloMesRepasse(mesRepasse: string) {
+  const inicio = new Date(`${mesRepasse}-01T00:00:00-03:00`)
   const fim = new Date(inicio)
   fim.setMonth(fim.getMonth() + 1)
   return { inicio, fim }
@@ -79,8 +80,8 @@ function intervaloCompetencia(competencia: string) {
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   await exigirGestao()
   const params = await searchParams
-  const competencia = competenciaValida(valorUnico(params.competencia))
-  const { inicio, fim } = intervaloCompetencia(competencia)
+  const mesRepasse = mesRepasseValido(valorUnico(params.competencia))
+  const { inicio, fim } = intervaloMesRepasse(mesRepasse)
 
   const [configuracao, mensalidades, registrosExternos] = await Promise.all([
     db.configuracaoAcademia.upsert({
@@ -91,8 +92,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     }),
     db.mensalidade.findMany({
       where: {
-        competencia,
-        status: { in: ["PAGA", "ISENTA"] },
+        status: "PAGA",
+        pagoEm: { gte: inicio, lt: fim },
       },
       include: {
         aluno: {
@@ -212,6 +213,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       chave: `mensalidade:${mensalidade.id}`,
       origem: "Mensalidade interna",
       status: mensalidade.status === "PAGA" ? "Paga" : "Isenta",
+      competencia: mensalidade.competencia,
       pagador: mensalidade.aluno.usuario.nome,
       data: mensalidade.pagoEm ?? mensalidade.atualizadoEm,
       formaPagamento: mensalidade.formaPagamento,
@@ -288,6 +290,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       chave: `externo:${registro.id}`,
       origem,
       status: "Conciliado",
+      competencia: null,
       pagador: registro.aluno?.usuario.nome ?? registro.nome ?? registro.email ?? "Sem aluno",
       data: registro.dataReferencia,
       formaPagamento: origem,
@@ -353,8 +356,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <CardContent className="py-4">
           <form className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
             <div className="grid gap-2">
-              <Label htmlFor="competencia">Competência</Label>
-              <Input id="competencia" type="month" name="competencia" defaultValue={competencia} />
+              <Label htmlFor="competencia">Mês do repasse</Label>
+              <Input id="competencia" type="month" name="competencia" defaultValue={mesRepasse} />
             </div>
             <Button type="submit">Filtrar</Button>
             <Button asChild variant="outline">
@@ -415,7 +418,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 {professoresOrdenados.length === 0 && (
                   <tr>
                     <td colSpan={6} className="p-10 text-center text-muted-foreground">
-                      Nenhum professor com repasse na competência.
+                      Nenhum professor com repasse no mês selecionado.
                     </td>
                   </tr>
                 )}
@@ -466,7 +469,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 {linhasOrdenadas.length === 0 && (
                   <tr>
                     <td colSpan={5} className="p-10 text-center text-muted-foreground">
-                      Nenhum repasse na competência.
+                      Nenhum repasse no mês selecionado.
                     </td>
                   </tr>
                 )}
@@ -510,6 +513,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   <th className="p-4 font-medium">Pagador</th>
                   <th className="p-4 font-medium">Origem</th>
                   <th className="p-4 font-medium">Status</th>
+                  <th className="p-4 font-medium">Competência</th>
                   <th className="p-4 font-medium">Data</th>
                   <th className="p-4 font-medium">Forma</th>
                   <th className="p-4 font-medium">Professores</th>
@@ -532,6 +536,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                       <Badge variant={linha.status === "Isenta" ? "secondary" : "outline"}>
                         {linha.status}
                       </Badge>
+                    </td>
+                    <td className="p-4" data-label="Competência">
+                      {linha.competencia ?? "—"}
                     </td>
                     <td className="p-4" data-label="Data">
                       {linha.data ? formatarData(linha.data) : "—"}
@@ -558,8 +565,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 ))}
                 {extratoOrdenado.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="p-10 text-center text-muted-foreground">
-                      Nenhuma receita encontrada na competência.
+                    <td colSpan={11} className="p-10 text-center text-muted-foreground">
+                      Nenhuma receita encontrada no mês selecionado.
                     </td>
                   </tr>
                 )}
