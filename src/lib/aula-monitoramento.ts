@@ -14,6 +14,7 @@ export type LinhaMonitoramentoAula = {
   alunoId: string
   nome: string
   observacoesTecnicas: string | null
+  historicoObservacoesTecnicas: ObservacaoTecnicaHistorico[]
   status: StatusLinha
   checkinId: string | null
   temComparecimento: boolean
@@ -25,6 +26,15 @@ export type TentativaInadimplenteAula = {
   motivo: string
   ultimaTentativaEm: Date
   totalTentativas: number
+  observacoesTecnicas: string | null
+  historicoObservacoesTecnicas: ObservacaoTecnicaHistorico[]
+}
+
+export type ObservacaoTecnicaHistorico = {
+  id: string
+  observacao: string
+  autor: string
+  registradaEm: string
 }
 
 export const PRIORIDADE_STATUS_LINHA: Record<StatusLinha, number> = {

@@ -12,6 +12,7 @@ import { Dialog } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ItemMenu, MenuAcoes, SeparadorMenu } from "@/components/ui/menu-acoes"
 import { Textarea } from "@/components/ui/textarea"
+import type { ObservacaoTecnicaHistorico } from "@/lib/aula-monitoramento"
 
 type DialogoAberto = "checkin" | "observacao" | null
 
@@ -20,12 +21,14 @@ export function AcoesCardAlunoCheckin({
   alunoId,
   nome,
   observacoesTecnicas,
+  historicoObservacoesTecnicas,
   checkinLancado,
 }: {
   aulaId: string
   alunoId: string
   nome: string
   observacoesTecnicas: string | null
+  historicoObservacoesTecnicas: ObservacaoTecnicaHistorico[]
   checkinLancado: boolean
 }) {
   const [dialogo, setDialogo] = useState<DialogoAberto>(null)
@@ -110,7 +113,7 @@ export function AcoesCardAlunoCheckin({
           <input type="hidden" name="alunoId" value={alunoId} />
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor={`observacao-${alunoId}`}>
-              Observação
+              Observação atual
             </label>
             <Textarea
               id={`observacao-${alunoId}`}
@@ -120,6 +123,30 @@ export function AcoesCardAlunoCheckin({
               maxLength={2000}
               placeholder="Registre restrições, cuidados, comportamento ou orientação técnica."
             />
+          </div>
+          <div className="rounded-md border border-border bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-sm font-semibold">Histórico de observações</h3>
+              <span className="text-xs text-muted-foreground">
+                {historicoObservacoesTecnicas.length} registro(s)
+              </span>
+            </div>
+            {historicoObservacoesTecnicas.length > 0 ? (
+              <div className="mt-3 max-h-64 space-y-3 overflow-y-auto pr-1">
+                {historicoObservacoesTecnicas.map((registro) => (
+                  <div key={registro.id} className="border-l-2 border-primary/40 pl-3">
+                    <p className="whitespace-pre-wrap text-sm">{registro.observacao}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {registro.registradaEm} · {registro.autor}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Nenhuma observação técnica registrada para este aluno.
+              </p>
+            )}
           </div>
           {observacao?.erro && <p className="text-sm text-destructive">{observacao.erro}</p>}
           <div className="flex justify-end">

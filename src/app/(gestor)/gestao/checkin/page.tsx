@@ -15,7 +15,11 @@ import { AcoesCardAlunoCheckin } from "@/components/checkin/acoes-card-aluno"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
-import { type LinhaMonitoramentoAula, ROTULO_STATUS_LINHA } from "@/lib/aula-monitoramento"
+import {
+  type LinhaMonitoramentoAula,
+  type ObservacaoTecnicaHistorico,
+  ROTULO_STATUS_LINHA,
+} from "@/lib/aula-monitoramento"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { carregarMonitoramentoAula } from "@/lib/services/aula-monitoramento.service"
@@ -64,6 +68,7 @@ type LinhaPainel = {
   badges: string[]
   detalhe: string
   observacoesTecnicas: string | null
+  historicoObservacoesTecnicas: ObservacaoTecnicaHistorico[]
   totalTentativasInadimplencia: number
 }
 
@@ -207,6 +212,7 @@ function montarLinhaPainel(
       ],
       detalhe: "Tentou fazer check-in e foi barrado.",
       observacoesTecnicas: linha.observacoesTecnicas,
+      historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
       totalTentativasInadimplencia: tentativaInadimplente.totalTentativas,
     }
   }
@@ -219,6 +225,7 @@ function montarLinhaPainel(
       badges: ["Check-in", "Agendamento"],
       detalhe: "Presença confirmada e agendamento marcado.",
       observacoesTecnicas: linha.observacoesTecnicas,
+      historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
       totalTentativasInadimplencia: 0,
     }
   }
@@ -231,6 +238,7 @@ function montarLinhaPainel(
       badges: ["Check-in"],
       detalhe: "Presença confirmada sem agendamento prévio.",
       observacoesTecnicas: linha.observacoesTecnicas,
+      historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
       totalTentativasInadimplencia: 0,
     }
   }
@@ -243,6 +251,7 @@ function montarLinhaPainel(
       badges: [rotuloStatus.texto],
       detalhe: "Ainda sem check-in válido.",
       observacoesTecnicas: linha.observacoesTecnicas,
+      historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
       totalTentativasInadimplencia: 0,
     }
   }
@@ -257,6 +266,7 @@ function montarLinhaPainel(
         ? "Sem agendamento e sem check-in."
         : "Sem presença válida para esta aula.",
     observacoesTecnicas: linha.observacoesTecnicas,
+    historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
     totalTentativasInadimplencia: 0,
   }
 }
@@ -328,7 +338,8 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
               : "1 tentativa",
           ],
           detalhe: "Tentou fazer check-in e foi barrado.",
-          observacoesTecnicas: null,
+          observacoesTecnicas: tentativa.observacoesTecnicas,
+          historicoObservacoesTecnicas: tentativa.historicoObservacoesTecnicas,
           totalTentativasInadimplencia: tentativa.totalTentativas,
         }),
       ) ?? []
@@ -464,6 +475,7 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
                                 alunoId={linha.alunoId}
                                 nome={linha.nome}
                                 observacoesTecnicas={linha.observacoesTecnicas}
+                                historicoObservacoesTecnicas={linha.historicoObservacoesTecnicas}
                                 checkinLancado={
                                   linha.statusPainel === "CHECKIN" ||
                                   linha.statusPainel === "CHECKIN_COMPARECIMENTO"

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
+import { obterHistoricoObservacoesTecnicas } from "@/lib/services/aluno.service"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { resumoHoras } from "@/lib/services/horas.service"
 import { formatarData, formatarDataHora, minutosParaHoras } from "@/lib/utils/datas"
@@ -91,7 +92,7 @@ const VARIANTE_COMPARECIMENTO: Record<StatusComparecimento, BadgeProps["variant"
 
 export default async function Page() {
   const { alunoId } = await exigirAluno()
-  const [aluno, horas] = await Promise.all([
+  const [aluno, horas, historicoObservacoesTecnicas] = await Promise.all([
     db.aluno.findUnique({
       where: { id: alunoId },
       include: {
@@ -186,6 +187,7 @@ export default async function Page() {
       },
     }),
     resumoHoras(alunoId),
+    obterHistoricoObservacoesTecnicas(alunoId),
   ])
 
   if (!aluno) return null
@@ -417,6 +419,47 @@ export default async function Page() {
           </Card>
         </div>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Observações técnicas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {aluno.observacoesTecnicas && (
+            <div className="rounded-md border border-border bg-muted/30 p-4">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">
+                Observação atual
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{aluno.observacoesTecnicas}</p>
+            </div>
+          )}
+
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold">Histórico registrado</p>
+              <span className="text-xs text-muted-foreground">
+                {historicoObservacoesTecnicas.length} registro(s)
+              </span>
+            </div>
+            {historicoObservacoesTecnicas.length > 0 ? (
+              <div className="mt-3 space-y-3">
+                {historicoObservacoesTecnicas.map((registro) => (
+                  <div key={registro.id} className="border-l-2 border-primary/40 pl-3">
+                    <p className="whitespace-pre-wrap text-sm">{registro.observacao}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {registro.registradaEm} · {registro.autor}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Nenhuma observação técnica registrada.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {aluno.responsavel && (
         <Card>

@@ -12,13 +12,18 @@ import { Badge } from "@/components/ui/badge"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { ROTULO_STATUS_LINHA, type StatusLinha } from "@/lib/aula-monitoramento"
+import {
+  type ObservacaoTecnicaHistorico,
+  ROTULO_STATUS_LINHA,
+  type StatusLinha,
+} from "@/lib/aula-monitoramento"
 
 export function LinhaPresenca({
   aulaId,
   alunoId,
   nome,
   observacoesTecnicas,
+  historicoObservacoesTecnicas,
   status,
   checkinId,
   somenteLeitura = false,
@@ -27,6 +32,7 @@ export function LinhaPresenca({
   alunoId: string
   nome: string
   observacoesTecnicas: string | null
+  historicoObservacoesTecnicas: ObservacaoTecnicaHistorico[]
   status: StatusLinha
   checkinId: string | null
   somenteLeitura?: boolean
@@ -106,23 +112,51 @@ export function LinhaPresenca({
             </div>
           </form>
         )}
-        <form action={acaoObservacao} className="mt-3 grid gap-2">
-          <input type="hidden" name="aulaId" value={aulaId} />
-          <input type="hidden" name="alunoId" value={alunoId} />
-          <Textarea
-            name="observacoesTecnicas"
-            defaultValue={observacoesTecnicas ?? ""}
-            placeholder="Observações técnicas"
-            className="min-h-16 text-xs"
-            maxLength={2000}
-          />
-          <div className="flex items-center gap-2">
-            <BotaoEnviar size="sm" variant="secondary">
-              Salvar observação
-            </BotaoEnviar>
-            {observacao?.ok && <span className="text-xs text-success">Salvo.</span>}
+        {!somenteLeitura && (
+          <form action={acaoObservacao} className="mt-3 grid gap-2">
+            <input type="hidden" name="aulaId" value={aulaId} />
+            <input type="hidden" name="alunoId" value={alunoId} />
+            <Textarea
+              name="observacoesTecnicas"
+              defaultValue={observacoesTecnicas ?? ""}
+              placeholder="Observação técnica atual"
+              className="min-h-16 text-xs"
+              maxLength={2000}
+            />
+            <div className="flex items-center gap-2">
+              <BotaoEnviar size="sm" variant="secondary">
+                Salvar observação
+              </BotaoEnviar>
+              {observacao?.ok && <span className="text-xs text-success">Salvo.</span>}
+            </div>
+          </form>
+        )}
+        <div className="mt-3 rounded-md border border-border bg-muted/30 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">
+              Histórico técnico
+            </p>
+            <span className="text-xs text-muted-foreground">
+              {historicoObservacoesTecnicas.length} registro(s)
+            </span>
           </div>
-        </form>
+          {historicoObservacoesTecnicas.length > 0 ? (
+            <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
+              {historicoObservacoesTecnicas.map((registro) => (
+                <div key={registro.id} className="border-l-2 border-primary/40 pl-3">
+                  <p className="whitespace-pre-wrap text-sm">{registro.observacao}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {registro.registradaEm} · {registro.autor}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Nenhuma observação técnica registrada para este aluno.
+            </p>
+          )}
+        </div>
         {erro && <p className="mt-1 text-xs text-destructive">{erro}</p>}
       </td>
     </tr>

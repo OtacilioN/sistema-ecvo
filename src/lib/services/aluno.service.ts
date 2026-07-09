@@ -1,11 +1,13 @@
 import "server-only"
 import type { Plataforma, Prisma, StatusAluno, TipoAluno } from "@prisma/client"
+import type { ObservacaoTecnicaHistorico } from "@/lib/aula-monitoramento"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { atualizarVencimentosMensalidadesAluno } from "@/lib/services/financeiro.service"
 import { excluirFotosInternasAntigas } from "@/lib/storage/blob-fotos"
 import { TERMO_RESPONSABILIDADE_VERSAO } from "@/lib/termo-responsabilidade"
+import { formatarDataHora } from "@/lib/utils/datas"
 
 // Serviço de ALUNOS (RF-001..004). Criar um aluno cria o Usuario (papel ALUNO) + Aluno,
 // conecta modalidades e, se menor de idade, o responsável.
@@ -70,6 +72,55 @@ export function obterAluno(alunoId: string) {
       plano: true,
     },
   })
+}
+
+function extrairObservacaoTecnica(valor: Prisma.JsonValue | null | undefined) {
+  if (!valor || typeof valor !== "object" || Array.isArray(valor)) return null
+  const observacao = (valor as Record<string, Prisma.JsonValue>).observacoesTecnicas
+  if (typeof observacao !== "string") return null
+  const texto = observacao.trim()
+  return texto.length > 0 ? texto : null
+}
+
+export async function listarHistoricoObservacoesTecnicas(alunoIds: string[]) {
+  const idsUnicos = [...new Set(alunoIds)].filter(Boolean)
+  const historico = new Map<string, ObservacaoTecnicaHistorico[]>()
+  if (idsUnicos.length === 0) return historico
+
+  const logs = await db.logAuditoria.findMany({
+    where: {
+      acao: "OBSERVACAO_TECNICA",
+      entidade: "Aluno",
+      entidadeId: { in: idsUnicos },
+    },
+    orderBy: { criadoEm: "desc" },
+    select: {
+      id: true,
+      entidadeId: true,
+      valorNovo: true,
+      criadoEm: true,
+      autor: { select: { nome: true } },
+    },
+  })
+
+  for (const log of logs) {
+    const observacao = extrairObservacaoTecnica(log.valorNovo)
+    if (!observacao) continue
+    const observacoesAluno = historico.get(log.entidadeId) ?? []
+    observacoesAluno.push({
+      id: log.id,
+      observacao,
+      autor: log.autor.nome,
+      registradaEm: formatarDataHora(log.criadoEm),
+    })
+    historico.set(log.entidadeId, observacoesAluno)
+  }
+
+  return historico
+}
+
+export async function obterHistoricoObservacoesTecnicas(alunoId: string) {
+  return (await listarHistoricoObservacoesTecnicas([alunoId])).get(alunoId) ?? []
 }
 
 type DadosAluno = {

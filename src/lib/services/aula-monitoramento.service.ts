@@ -7,6 +7,7 @@ import {
   type TentativaInadimplenteAula,
 } from "@/lib/aula-monitoramento"
 import { db } from "@/lib/db"
+import { listarHistoricoObservacoesTecnicas } from "@/lib/services/aluno.service"
 
 export async function carregarMonitoramentoAula(aulaId: string) {
   const aula = await db.aula.findUnique({
@@ -26,7 +27,11 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       tentativasCheckinInadimplente: {
         where: { aluno: { status: { in: [...STATUS_ALUNO_OPERACIONAIS] } } },
         orderBy: { criadoEm: "desc" },
-        include: { aluno: { select: { usuario: { select: { nome: true } } } } },
+        include: {
+          aluno: {
+            select: { observacoesTecnicas: true, usuario: { select: { nome: true } } },
+          },
+        },
       },
     },
   })
@@ -39,6 +44,11 @@ export async function carregarMonitoramentoAula(aulaId: string) {
     },
     select: { id: true, observacoesTecnicas: true, usuario: { select: { nome: true } } },
   })
+  const alunoIds = [
+    ...matriculados.map((matriculado) => matriculado.id),
+    ...aula.tentativasCheckinInadimplente.map((tentativa) => tentativa.alunoId),
+  ]
+  const historicoObservacoesPorAluno = await listarHistoricoObservacoesTecnicas(alunoIds)
 
   const linhas = new Map<string, LinhaMonitoramentoAula>()
   for (const matriculado of matriculados) {
@@ -46,6 +56,7 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       alunoId: matriculado.id,
       nome: matriculado.usuario.nome,
       observacoesTecnicas: matriculado.observacoesTecnicas,
+      historicoObservacoesTecnicas: historicoObservacoesPorAluno.get(matriculado.id) ?? [],
       status: "AUSENTE",
       checkinId: null,
       temComparecimento: false,
@@ -73,6 +84,7 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       alunoId: checkin.alunoId,
       nome,
       observacoesTecnicas: null,
+      historicoObservacoesTecnicas: historicoObservacoesPorAluno.get(checkin.alunoId) ?? [],
       status: "AUSENTE" as StatusLinha,
       checkinId: null,
       temComparecimento: false,
@@ -102,6 +114,8 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       motivo: tentativa.motivo,
       ultimaTentativaEm: tentativa.criadoEm,
       totalTentativas: 1,
+      observacoesTecnicas: tentativa.aluno.observacoesTecnicas,
+      historicoObservacoesTecnicas: historicoObservacoesPorAluno.get(tentativa.alunoId) ?? [],
     })
   }
 
