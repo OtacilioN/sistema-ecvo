@@ -42,6 +42,7 @@ export const NAV_PROFESSOR: ItemNav[] = [
   { href: "/professor", rotulo: "Início", icone: <LayoutDashboard className={ic} /> },
   { href: "/professor/turmas", rotulo: "Minhas aulas", icone: <CalendarDays className={ic} /> },
   { href: "/professor/graduacoes", rotulo: "Graduações", icone: <Award className={ic} /> },
+  { href: "/professor/financeiro", rotulo: "Financeiro", icone: <CreditCard className={ic} /> },
   { href: "/professor/notificacoes", rotulo: "Notificações", icone: <Bell className={ic} /> },
   { href: "/professor/perfil", rotulo: "Minha conta", icone: <KeyRound className={ic} /> },
 ]

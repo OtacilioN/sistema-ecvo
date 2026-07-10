@@ -1,5 +1,5 @@
 import {
-  gerarLembretesFinanceirosGestores,
+  gerarLembretesFinanceiros,
   gerarMensalidadesRecorrentes,
 } from "@/lib/services/financeiro.service"
 import {
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
   const mensalidades = await gerarMensalidadesRecorrentes()
   const [financeiro, aniversarios, expurgoNotificacoes] = await Promise.all([
-    gerarLembretesFinanceirosGestores(),
+    gerarLembretesFinanceiros(),
     gerarLembretesAniversario(),
     expurgarNotificacoesAntigas(),
   ])

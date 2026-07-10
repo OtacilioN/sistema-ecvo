@@ -1095,14 +1095,12 @@ export async function registrarPagamentoAvulso(params: {
   return { ok: true as const, pagamento }
 }
 
-export async function gerarLembretesFinanceirosGestores(
-  cliente: Cliente = db,
-  params?: { agora?: Date },
-) {
+export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: { agora?: Date }) {
   const agora = params?.agora ?? new Date()
   const hoje = inicioDoDia(agora)
   const amanha = intervaloDoDia(new Date(hoje.getTime() + 24 * 60 * 60 * 1000))
   const vencidas = await vencerMensalidadesAtrasadas(cliente, { agora })
+  const professoresNotificados = new Set<string>()
 
   const [gestores, vencemAmanha, inadimplentes] = await Promise.all([
     cliente.usuario.findMany({
@@ -1139,6 +1137,13 @@ export async function gerarLembretesFinanceirosGestores(
     for (const gestor of gestores) {
       if (await criarNotificacaoFinanceiraUnica(cliente, gestor.id, conteudo)) lembretesCriados++
     }
+    const professores = await listarUsuariosProfessoresDoAluno(cliente, mensalidade.alunoId)
+    for (const professor of professores) {
+      professoresNotificados.add(professor.usuarioId)
+      if (await criarNotificacaoFinanceiraUnica(cliente, professor.usuarioId, conteudo)) {
+        lembretesCriados++
+      }
+    }
   }
 
   for (const mensalidade of inadimplentes) {
@@ -1153,11 +1158,19 @@ export async function gerarLembretesFinanceirosGestores(
         inadimplenciasCriadas++
       }
     }
+    const professores = await listarUsuariosProfessoresDoAluno(cliente, mensalidade.alunoId)
+    for (const professor of professores) {
+      professoresNotificados.add(professor.usuarioId)
+      if (await criarNotificacaoFinanceiraUnica(cliente, professor.usuarioId, conteudo)) {
+        inadimplenciasCriadas++
+      }
+    }
   }
 
   return {
     ok: true as const,
     gestoresNotificados: gestores.length,
+    professoresNotificados: professoresNotificados.size,
     mensalidadesVencidasAtualizadas: vencidas.mensalidadesVencidas,
     alunosInadimplentesNotificados: vencidas.alunosNotificados,
     mensalidadesAVencer: vencemAmanha.length,
@@ -1166,6 +1179,37 @@ export async function gerarLembretesFinanceirosGestores(
     inadimplenciasCriadas,
     totalCriado: lembretesCriados + inadimplenciasCriadas,
   }
+}
+
+export const gerarLembretesFinanceirosGestores = gerarLembretesFinanceiros
+
+export async function listarMensalidadesAcompanhamentoProfessor(
+  professorId: string,
+  cliente: Cliente = db,
+  params?: { agora?: Date },
+) {
+  const hoje = inicioDoDia(params?.agora ?? new Date())
+  const fimAmanha = new Date(hoje.getTime() + 2 * 24 * 60 * 60 * 1000)
+
+  return cliente.mensalidade.findMany({
+    where: {
+      OR: [{ status: "VENCIDA" }, { status: "EM_ABERTO", vencimento: { lt: fimAmanha } }],
+      aluno: {
+        status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
+        usuario: { ativo: true },
+        OR: condicoesAlunoDoProfessor(professorId),
+      },
+    },
+    orderBy: [{ vencimento: "asc" }, { criadoEm: "desc" }],
+    include: {
+      aluno: {
+        select: {
+          usuario: { select: { nome: true } },
+          plano: { select: { nome: true } },
+        },
+      },
+    },
+  })
 }
 
 export async function vencerMensalidadesAtrasadas(
@@ -1214,6 +1258,90 @@ export async function vencerMensalidadesAtrasadas(
   }
 
   return { ok: true as const, mensalidadesVencidas, alunosNotificados }
+}
+
+function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[] {
+  return [
+    {
+      modalidades: {
+        some: {
+          professores: { some: { id: professorId, ativo: true, usuario: { ativo: true } } },
+        },
+      },
+    },
+    {
+      modalidadesPlano: {
+        some: {
+          modalidade: {
+            professores: { some: { id: professorId, ativo: true, usuario: { ativo: true } } },
+          },
+        },
+      },
+    },
+    {
+      modalidades: {
+        some: {
+          turmas: { some: { professorId, ativa: true } },
+        },
+      },
+    },
+    {
+      modalidadesPlano: {
+        some: {
+          modalidade: {
+            turmas: { some: { professorId, ativa: true } },
+          },
+        },
+      },
+    },
+  ]
+}
+
+async function listarUsuariosProfessoresDoAluno(cliente: Cliente, alunoId: string) {
+  return cliente.professor.findMany({
+    where: {
+      ativo: true,
+      usuario: { ativo: true },
+      OR: condicoesProfessorDoAluno(alunoId),
+    },
+    select: { usuarioId: true },
+    orderBy: { usuario: { nome: "asc" } },
+  })
+}
+
+function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[] {
+  return [
+    {
+      modalidades: {
+        some: {
+          alunos: { some: { id: alunoId } },
+        },
+      },
+    },
+    {
+      modalidades: {
+        some: {
+          alunosPlanos: { some: { alunoId } },
+        },
+      },
+    },
+    {
+      turmas: {
+        some: {
+          ativa: true,
+          modalidade: { alunos: { some: { id: alunoId } } },
+        },
+      },
+    },
+    {
+      turmas: {
+        some: {
+          ativa: true,
+          modalidade: { alunosPlanos: { some: { alunoId } } },
+        },
+      },
+    },
+  ]
 }
 
 export function vencimentoDaCompetencia(competencia: string, diaVencimento: number): Date {

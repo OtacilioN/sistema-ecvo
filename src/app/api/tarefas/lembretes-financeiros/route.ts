@@ -1,4 +1,4 @@
-import { gerarLembretesFinanceirosGestores } from "@/lib/services/financeiro.service"
+import { gerarLembretesFinanceiros } from "@/lib/services/financeiro.service"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     return Response.json({ erro: "Não autorizado." }, { status: 401 })
   }
 
-  const resultado = await gerarLembretesFinanceirosGestores()
+  const resultado = await gerarLembretesFinanceiros()
 
   return Response.json(resultado)
 }
