@@ -170,6 +170,7 @@ enum TipoNotificacao {
   FINANCEIRO
   GRADUACAO
   CHECKIN_INVALIDADO
+  CHECKIN_REALIZADO
   ANIVERSARIO
 }
 
@@ -312,6 +313,7 @@ model Modalidade {
   descricao                        String?
   duracaoPadraoMin                 Int                               @default(60)
   ativa                            Boolean                           @default(true)
+  checkinSemRestricaoHorario       Boolean                           @default(false)
   janelaComparecimentoHoras        Int?
   prazoCancelamentoHoras           Int?
   exigirComparecimentoParaCheckin  Boolean?
@@ -395,29 +397,34 @@ model Comparecimento {
 
 // Checkin = confirmação de participação. VALIDO ⇒ presença + horas (RF-019..030)
 model Checkin {
-  id                  String              @id @default(cuid())
-  aluno               Aluno               @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  alunoId             String
-  aula                Aula                @relation(fields: [aulaId], references: [id], onDelete: Cascade)
-  aulaId              String
-  status              StatusCheckin       @default(VALIDO)
-  origem              OrigemCheckin       @default(BOTAO)
+  id                       String              @id @default(cuid())
+  aluno                    Aluno               @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId                  String
+  aula                     Aula                @relation(fields: [aulaId], references: [id], onDelete: Cascade)
+  aulaId                   String
+  status                   StatusCheckin       @default(VALIDO)
+  origem                   OrigemCheckin       @default(BOTAO)
+  // Momento efetivo do registro. Pode diferir do horário da aula quando a modalidade usa check-in livre.
+  realizadoEm              DateTime            @default(now())
+  // Snapshot: mantém o contexto mesmo se a regra da modalidade for alterada depois.
+  associadoAutomaticamente Boolean             @default(false)
   // Lançamento por terceiro (gestor/professor) e registro retroativo (RF-019/031)
-  lancadoPorId        String?
-  retroativo          Boolean             @default(false)
+  lancadoPorId             String?
+  retroativo               Boolean             @default(false)
   // Invalidação/exclusão (RF-027/028)
-  invalidadoPorId     String?
-  invalidadoEm        DateTime?
-  justificativa       String?
-  movimentos          MovimentoHoras[]
-  registrosImportados RegistroImportado[]
-  criadoEm            DateTime            @default(now())
-  atualizadoEm        DateTime            @updatedAt
+  invalidadoPorId          String?
+  invalidadoEm             DateTime?
+  justificativa            String?
+  movimentos               MovimentoHoras[]
+  registrosImportados      RegistroImportado[]
+  criadoEm                 DateTime            @default(now())
+  atualizadoEm             DateTime            @updatedAt
 
   // Sem dupla contagem da mesma aula para o mesmo aluno (RF-039)
   @@unique([alunoId, aulaId])
   @@index([status])
   @@index([aulaId])
+  @@index([alunoId, realizadoEm])
 }
 
 // Tentativa bloqueada de check-in por inadimplência. Não gera presença nem horas.
@@ -645,6 +652,7 @@ model ConfiguracaoAcademia {
   notificarFinanceiro              Boolean                          @default(true)
   notificarGraduacao               Boolean                          @default(true)
   notificarCheckinInvalidado       Boolean                          @default(true)
+  notificarCheckinRealizado        Boolean                          @default(true)
   notificarAniversario             Boolean                          @default(true)
   valorBaseModalidade              Decimal                          @default(100.00) @db.Decimal(10, 2)
   atualizadoEm                     DateTime                         @default(now()) @updatedAt

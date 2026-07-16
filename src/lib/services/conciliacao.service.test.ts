@@ -66,12 +66,31 @@ describe("classificarConciliacao", () => {
       classificarConciliacao({
         aluno,
         checkins: [
-          { id: "checkin-1", status: "VALIDO", aula: { inicio: new Date("2026-06-10T19:00:00Z") } },
+          { id: "checkin-1", status: "VALIDO", aula: { inicio: new Date("2026-06-10T22:00:00Z") } },
         ],
         horarioReferencia: "19:15",
         duplicadoPlanilha: false,
       }),
     ).toEqual({ status: "CONCILIADO", checkinId: "checkin-1" })
+  })
+
+  it("usa o horário real quando a aula foi associada automaticamente", () => {
+    expect(
+      classificarConciliacao({
+        aluno,
+        checkins: [
+          {
+            id: "checkin-livre",
+            status: "VALIDO",
+            aula: { inicio: new Date("2026-06-10T18:00:00Z") },
+            realizadoEm: new Date("2026-06-10T14:00:00Z"),
+            associadoAutomaticamente: true,
+          },
+        ],
+        horarioReferencia: "11:00",
+        duplicadoPlanilha: false,
+      }),
+    ).toEqual({ status: "CONCILIADO", checkinId: "checkin-livre" })
   })
 
   it("marca check-in invalidado como divergência", () => {

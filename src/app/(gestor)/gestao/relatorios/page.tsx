@@ -97,7 +97,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       where: {
         status: "VALIDO",
         aluno: { status: { in: statusAlunosOperacionais } },
-        ...(periodo ? { criadoEm: periodo } : {}),
+        ...(periodo ? { realizadoEm: periodo } : {}),
       },
     }),
     db.comparecimento.count({

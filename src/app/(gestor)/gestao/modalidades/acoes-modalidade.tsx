@@ -26,6 +26,7 @@ export type ModalidadeLinha = {
     minFrequencia: number | null
     minTempoNoGrauDias: number | null
   }[]
+  checkinSemRestricaoHorario: boolean
   janelaComparecimentoHoras: number | null
   prazoCancelamentoHoras: number | null
   exigirComparecimentoParaCheckin: boolean | null

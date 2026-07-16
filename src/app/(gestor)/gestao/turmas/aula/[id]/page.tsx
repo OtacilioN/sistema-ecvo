@@ -67,6 +67,8 @@ export default async function AulaGestaoDetalhe({ params }: { params: Promise<{ 
                   historicoObservacoesTecnicas={linha.historicoObservacoesTecnicas}
                   status={linha.status}
                   checkinId={linha.checkinId}
+                  checkinRealizadoEm={linha.checkinRealizadoEm}
+                  checkinAssociadoAutomaticamente={linha.checkinAssociadoAutomaticamente}
                   somenteLeitura={!podeEditar}
                 />
               ))}

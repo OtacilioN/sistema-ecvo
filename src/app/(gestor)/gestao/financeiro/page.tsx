@@ -95,14 +95,19 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   const mensalidades = [...mensalidadesEncontradas]
     .sort((a, b) => {
-      const prioridadeA = ordemStatusMensalidade[statusMensalidadeEfetivo(a)]
-      const prioridadeB = ordemStatusMensalidade[statusMensalidadeEfetivo(b)]
+      const statusA = statusMensalidadeEfetivo(a)
+      const statusB = statusMensalidadeEfetivo(b)
+      const prioridadeA = ordemStatusMensalidade[statusA]
+      const prioridadeB = ordemStatusMensalidade[statusB]
 
-      return (
-        prioridadeA - prioridadeB ||
-        a.vencimento.getTime() - b.vencimento.getTime() ||
-        a.aluno.usuario.nome.localeCompare(b.aluno.usuario.nome)
-      )
+      if (prioridadeA !== prioridadeB) return prioridadeA - prioridadeB
+
+      const vencimento =
+        statusA === "PAGA" && statusB === "PAGA"
+          ? b.vencimento.getTime() - a.vencimento.getTime()
+          : a.vencimento.getTime() - b.vencimento.getTime()
+
+      return vencimento || a.aluno.usuario.nome.localeCompare(b.aluno.usuario.nome)
     })
     .slice(0, limiteMensalidades)
 

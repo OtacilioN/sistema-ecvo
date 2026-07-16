@@ -124,7 +124,7 @@ export default async function Page() {
           },
         },
         checkins: {
-          orderBy: { criadoEm: "desc" },
+          orderBy: { realizadoEm: "desc" },
           take: 5,
           select: {
             id: true,
@@ -135,6 +135,8 @@ export default async function Page() {
             invalidadoPorId: true,
             invalidadoEm: true,
             criadoEm: true,
+            realizadoEm: true,
+            associadoAutomaticamente: true,
             justificativa: true,
             aula: {
               select: {
@@ -585,7 +587,8 @@ export default async function Page() {
                     <td className="p-4" data-label="Data">
                       <span>{formatarDataHora(checkin.aula.inicio)}</span>
                       <span className="block text-xs text-muted-foreground">
-                        Registro: {formatarDataHora(checkin.criadoEm)}
+                        Check-in: {formatarDataHora(checkin.realizadoEm)}
+                        {checkin.associadoAutomaticamente ? " · associado automaticamente" : ""}
                       </span>
                     </td>
                     <td className="p-4" data-label="Modalidade">

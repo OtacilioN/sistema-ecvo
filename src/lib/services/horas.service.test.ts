@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  estornarCheckin,
   META_DEZ_MIL_HORAS_MIN,
   minutosDeEstorno,
   podeAjustarHoras,
@@ -17,6 +18,51 @@ describe("minutosDeEstorno", () => {
   })
   it("é idempotente quanto ao sinal de entrada", () => {
     expect(minutosDeEstorno(-90)).toBe(-90)
+  })
+})
+
+describe("estornarCheckin", () => {
+  it("estorna apenas o crédito vivo após reativação e nova invalidação", async () => {
+    const movimentos = [
+      {
+        id: "credito-1",
+        alunoId: "aluno-1",
+        modalidadeId: "jiu",
+        checkinId: "checkin-1",
+        tipo: "CREDITO",
+        minutos: 60,
+        estornaMovimentoId: null as string | null,
+      },
+    ]
+    const cliente = {
+      movimentoHoras: {
+        findMany: ({ where }: { where: { tipo: string } }) =>
+          Promise.resolve(movimentos.filter((movimento) => movimento.tipo === where.tipo)),
+        create: ({ data }: { data: (typeof movimentos)[number] }) => {
+          const criado = { ...data, id: `movimento-${movimentos.length + 1}` }
+          movimentos.push(criado)
+          return Promise.resolve(criado)
+        },
+      },
+    }
+
+    await estornarCheckin(cliente as never, { checkinId: "checkin-1" })
+    movimentos.push({
+      id: "credito-2",
+      alunoId: "aluno-1",
+      modalidadeId: "jiu",
+      checkinId: "checkin-1",
+      tipo: "CREDITO",
+      minutos: 60,
+      estornaMovimentoId: null,
+    })
+    const segundoEstorno = await estornarCheckin(cliente as never, { checkinId: "checkin-1" })
+    const terceiroEstorno = await estornarCheckin(cliente as never, { checkinId: "checkin-1" })
+
+    expect(segundoEstorno).toHaveLength(1)
+    expect(segundoEstorno[0]?.estornaMovimentoId).toBe("credito-2")
+    expect(terceiroEstorno).toEqual([])
+    expect(totalMinutos(movimentos)).toBe(0)
   })
 })
 

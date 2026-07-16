@@ -120,6 +120,7 @@ const politicaCheckinOverride = z
 
 export const regrasModalidadeSchema = z.object({
   modalidadeId: z.string().min(1, "Selecione a modalidade"),
+  checkinSemRestricaoHorario: z.boolean(),
   janelaComparecimentoHoras: numeroInteiroOpcional(0, 168),
   prazoCancelamentoHoras: numeroInteiroOpcional(0, 168),
   exigirComparecimentoParaCheckin: booleanOverride,

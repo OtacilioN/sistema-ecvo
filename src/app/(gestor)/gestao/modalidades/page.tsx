@@ -25,6 +25,7 @@ export default async function ModalidadesPage() {
           descricao: m.descricao,
           duracaoPadraoMin: m.duracaoPadraoMin,
           ativa: m.ativa,
+          checkinSemRestricaoHorario: m.checkinSemRestricaoHorario,
           janelaComparecimentoHoras: m.janelaComparecimentoHoras,
           prazoCancelamentoHoras: m.prazoCancelamentoHoras,
           exigirComparecimentoParaCheckin: m.exigirComparecimentoParaCheckin,

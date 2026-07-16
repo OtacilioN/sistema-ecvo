@@ -169,6 +169,7 @@ export function TabelaModalidades({
 }
 
 function resumoRegras(modalidade: {
+  checkinSemRestricaoHorario: boolean
   janelaComparecimentoHoras: number | null
   prazoCancelamentoHoras: number | null
   exigirComparecimentoParaCheckin: boolean | null
@@ -176,6 +177,7 @@ function resumoRegras(modalidade: {
   listaEsperaAtiva: boolean | null
 }) {
   const regras = [
+    modalidade.checkinSemRestricaoHorario ? "Horário de check-in: livre" : null,
     modalidade.janelaComparecimentoHoras !== null
       ? `Janela de agendamento: ${modalidade.janelaComparecimentoHoras}h`
       : null,

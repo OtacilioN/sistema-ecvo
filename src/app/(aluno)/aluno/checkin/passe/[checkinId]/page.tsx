@@ -153,7 +153,7 @@ export default async function PasseCheckinPage({
           <div>
             <p className="font-medium">{checkin.aluno.usuario.nome}</p>
             <p className="text-xs text-muted-foreground">
-              Check-in registrado às {formatarHora(checkin.criadoEm)}
+              Check-in registrado às {formatarHora(checkin.realizadoEm)}
             </p>
           </div>
           <Button asChild variant="outline">

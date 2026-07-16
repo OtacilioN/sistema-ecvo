@@ -1,0 +1,4 @@
+ALTER TYPE "TipoNotificacao" ADD VALUE IF NOT EXISTS 'CHECKIN_REALIZADO';
+
+ALTER TABLE "ConfiguracaoAcademia"
+ADD COLUMN IF NOT EXISTS "notificarCheckinRealizado" BOOLEAN NOT NULL DEFAULT true;

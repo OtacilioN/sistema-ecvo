@@ -44,6 +44,7 @@ describe("campoConfiguracaoNotificacao", () => {
     expect(campoConfiguracaoNotificacao("FINANCEIRO")).toBe("notificarFinanceiro")
     expect(campoConfiguracaoNotificacao("GRADUACAO")).toBe("notificarGraduacao")
     expect(campoConfiguracaoNotificacao("CHECKIN_INVALIDADO")).toBe("notificarCheckinInvalidado")
+    expect(campoConfiguracaoNotificacao("CHECKIN_REALIZADO")).toBe("notificarCheckinRealizado")
     expect(campoConfiguracaoNotificacao("ANIVERSARIO")).toBe("notificarAniversario")
   })
 })

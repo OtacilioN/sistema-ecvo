@@ -40,7 +40,10 @@ export default async function AlunoAgenda() {
     include: {
       turma: { select: { nome: true, local: true, modalidade: { select: { nome: true } } } },
       comparecimentos: { where: { alunoId }, select: { status: true } },
-      checkins: { where: { alunoId }, select: { status: true } },
+      checkins: {
+        where: { alunoId },
+        select: { status: true, realizadoEm: true, associadoAutomaticamente: true },
+      },
     },
   })
   const chaveHoje = formatarDataInput(agora)
@@ -60,6 +63,9 @@ export default async function AlunoAgenda() {
     const emListaEspera = comp?.status === "LISTA_ESPERA"
     const presente = aula.checkins.some((c) => c.status === "VALIDO")
     const pendenteRevisao = aula.checkins.some((c) => c.status === "PENDENTE_REVISAO")
+    const registroCheckin = aula.checkins.find(
+      (c) => c.status === "VALIDO" || c.status === "PENDENTE_REVISAO",
+    )
     const janelaAberta = podeMarcarComparecimento({
       agora,
       inicioAula: aula.inicio,
@@ -96,6 +102,11 @@ export default async function AlunoAgenda() {
                   <Badge variant="warning">Pendente de revisão</Badge>
                 )}
                 {presente && <Badge variant="success">Presente</Badge>}
+                {registroCheckin?.associadoAutomaticamente && (
+                  <Badge variant="outline">
+                    Check-in às {formatarHora(registroCheckin.realizadoEm)}
+                  </Badge>
+                )}
               </div>
               <div>
                 <p className="font-semibold">{aula.turma.nome}</p>

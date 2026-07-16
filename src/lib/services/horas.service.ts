@@ -122,13 +122,21 @@ export async function estornarCheckin(
   cliente: Cliente,
   params: { checkinId: string; autorId?: string; motivo?: string },
 ) {
-  const creditos = await cliente.movimentoHoras.findMany({
-    where: { checkinId: params.checkinId, tipo: "CREDITO" },
-  })
-  if (creditos.length === 0) return []
+  const [creditos, estornos] = await Promise.all([
+    cliente.movimentoHoras.findMany({
+      where: { checkinId: params.checkinId, tipo: "CREDITO" },
+    }),
+    cliente.movimentoHoras.findMany({
+      where: { checkinId: params.checkinId, tipo: "ESTORNO", estornaMovimentoId: { not: null } },
+      select: { estornaMovimentoId: true },
+    }),
+  ])
+  const creditosJaEstornados = new Set(estornos.map((estorno) => estorno.estornaMovimentoId))
+  const creditosVivos = creditos.filter((credito) => !creditosJaEstornados.has(credito.id))
+  if (creditosVivos.length === 0) return []
 
   return Promise.all(
-    creditos.map((credito) =>
+    creditosVivos.map((credito) =>
       cliente.movimentoHoras.create({
         data: {
           alunoId: credito.alunoId,

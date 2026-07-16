@@ -15,11 +15,12 @@ import {
   type TentativaInadimplenteAula,
 } from "@/lib/aula-monitoramento"
 import { cn } from "@/lib/utils"
-import { formatarDataHora } from "@/lib/utils/datas"
+import { formatarDataHora, formatarHora } from "@/lib/utils/datas"
 import { AcoesCardAlunoCheckin } from "./acoes-card-aluno"
 
 export type StatusPainel =
   | "INADIMPLENTE"
+  | "PENDENTE_REVISAO"
   | "CHECKIN_COMPARECIMENTO"
   | "CHECKIN"
   | "COMPARECIMENTO"
@@ -38,10 +39,11 @@ export type LinhaPainel = {
 
 const prioridadePainel: Record<StatusPainel, number> = {
   INADIMPLENTE: 0,
-  CHECKIN_COMPARECIMENTO: 1,
-  CHECKIN: 2,
-  COMPARECIMENTO: 3,
-  AUSENTE: 4,
+  PENDENTE_REVISAO: 1,
+  CHECKIN_COMPARECIMENTO: 2,
+  CHECKIN: 3,
+  COMPARECIMENTO: 4,
+  AUSENTE: 5,
 }
 
 const visualPainel: Record<
@@ -60,6 +62,14 @@ const visualPainel: Record<
     className: "border-red-600 bg-red-50 text-red-950 shadow-[0_10px_26px_rgba(185,28,28,0.16)]",
     badgeClassName: "border-red-700 bg-red-700 text-white",
     Icone: ShieldAlert,
+  },
+  PENDENTE_REVISAO: {
+    titulo: "Revisão",
+    resumo: "Check-in pendente",
+    className:
+      "border-amber-500 bg-amber-50 text-amber-950 shadow-[0_10px_24px_rgba(245,158,11,0.14)]",
+    badgeClassName: "border-amber-700 bg-amber-700 text-white",
+    Icone: Clock3,
   },
   CHECKIN_COMPARECIMENTO: {
     titulo: "Check-in + agendamento",
@@ -100,6 +110,10 @@ function montarLinhaPainel(
   const temCheckin = linha.status === "PRESENTE"
   const temComparecimento = linha.temComparecimento || linha.status === "COMPARECEU"
   const rotuloStatus = ROTULO_STATUS_LINHA[linha.status]
+  const badgeHorarioReal =
+    linha.checkinAssociadoAutomaticamente && linha.checkinRealizadoEm
+      ? `Check-in às ${formatarHora(linha.checkinRealizadoEm)}`
+      : null
 
   if (tentativaInadimplente) {
     return {
@@ -119,12 +133,25 @@ function montarLinhaPainel(
     }
   }
 
+  if (linha.status === "PENDENTE_REVISAO") {
+    return {
+      alunoId: linha.alunoId,
+      nome: linha.nome,
+      statusPainel: "PENDENTE_REVISAO",
+      badges: ["Pendente de revisão", ...(badgeHorarioReal ? [badgeHorarioReal] : [])],
+      detalhe: "Check-in aguardando aprovação da equipe.",
+      observacoesTecnicas: linha.observacoesTecnicas,
+      historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
+      totalTentativasInadimplencia: 0,
+    }
+  }
+
   if (temCheckin && temComparecimento) {
     return {
       alunoId: linha.alunoId,
       nome: linha.nome,
       statusPainel: "CHECKIN_COMPARECIMENTO",
-      badges: ["Check-in", "Agendamento"],
+      badges: ["Check-in", "Agendamento", ...(badgeHorarioReal ? [badgeHorarioReal] : [])],
       detalhe: "Presença confirmada e agendamento marcado.",
       observacoesTecnicas: linha.observacoesTecnicas,
       historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
@@ -137,7 +164,7 @@ function montarLinhaPainel(
       alunoId: linha.alunoId,
       nome: linha.nome,
       statusPainel: "CHECKIN",
-      badges: ["Check-in"],
+      badges: ["Check-in", ...(badgeHorarioReal ? [badgeHorarioReal] : [])],
       detalhe: "Presença confirmada sem agendamento prévio.",
       observacoesTecnicas: linha.observacoesTecnicas,
       historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
@@ -150,7 +177,7 @@ function montarLinhaPainel(
       alunoId: linha.alunoId,
       nome: linha.nome,
       statusPainel: "COMPARECIMENTO",
-      badges: [rotuloStatus.texto],
+      badges: [rotuloStatus.texto, ...(badgeHorarioReal ? [badgeHorarioReal] : [])],
       detalhe: "Ainda sem check-in válido.",
       observacoesTecnicas: linha.observacoesTecnicas,
       historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
@@ -162,7 +189,7 @@ function montarLinhaPainel(
     alunoId: linha.alunoId,
     nome: linha.nome,
     statusPainel: "AUSENTE",
-    badges: [rotuloStatus.texto],
+    badges: [rotuloStatus.texto, ...(badgeHorarioReal ? [badgeHorarioReal] : [])],
     detalhe:
       linha.status === "AUSENTE"
         ? "Sem agendamento e sem check-in."
@@ -220,6 +247,7 @@ function contarPorStatus(linhas: LinhaPainel[]) {
     },
     {
       INADIMPLENTE: 0,
+      PENDENTE_REVISAO: 0,
       CHECKIN_COMPARECIMENTO: 0,
       CHECKIN: 0,
       COMPARECIMENTO: 0,
@@ -243,10 +271,11 @@ export function PainelAulaCheckin({
 
   return (
     <>
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         {(
           [
             "INADIMPLENTE",
+            "PENDENTE_REVISAO",
             "CHECKIN_COMPARECIMENTO",
             "CHECKIN",
             "COMPARECIMENTO",
@@ -275,7 +304,7 @@ export function PainelAulaCheckin({
               <UsersRound className="size-4" /> Alunos da aula
             </h2>
             <p className="text-sm text-muted-foreground">
-              Ordenado por inadimplência, check-in com agendamento, check-in, agendamento e
+              Ordenado por inadimplência, revisão, check-in com agendamento, check-in, agendamento e
               ausentes.
             </p>
           </div>

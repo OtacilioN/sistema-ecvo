@@ -17,6 +17,8 @@ export type LinhaMonitoramentoAula = {
   historicoObservacoesTecnicas: ObservacaoTecnicaHistorico[]
   status: StatusLinha
   checkinId: string | null
+  checkinRealizadoEm: Date | null
+  checkinAssociadoAutomaticamente: boolean
   temComparecimento: boolean
 }
 

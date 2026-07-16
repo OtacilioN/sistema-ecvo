@@ -7,6 +7,11 @@ import type {
   TipoAluno,
 } from "@prisma/client"
 import { alunoSemMatriculaAtiva } from "@/lib/alunos/status"
+import {
+  type AulaCandidataCheckinLivre,
+  podeRealizarCheckinNaJanela,
+  selecionarAulaReferenciaCheckinLivre,
+} from "@/lib/checkin-horario"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
@@ -17,7 +22,7 @@ import {
   MENSAGEM_TERMO_RESPONSABILIDADE_PENDENTE,
   termoResponsabilidadeAtualAceito,
 } from "@/lib/services/termo-responsabilidade.service"
-import { formatarDataHora, inicioDoDiaAcademia } from "@/lib/utils/datas"
+import { fimExclusivoDoDiaAcademia, formatarDataHora, inicioDoDiaAcademia } from "@/lib/utils/datas"
 
 // Serviço de CHECK-IN — o coração do loop de treino (RF-019..031).
 // REGRAS INVIOLÁVEIS:
@@ -26,9 +31,9 @@ import { formatarDataHora, inicioDoDiaAcademia } from "@/lib/utils/datas"
 //  • Invalidar/excluir NÃO apaga horas: lança ESTORNO (minutos negativos) na MESMA transação
 //    que marca o check-in e grava o LogAuditoria (RN-005/RF-027/035).
 
-const MINUTO_MS = 60_000
-
 // ───────────────────────── Lógica pura (testável sem banco) ─────────────────────────
+
+export { podeRealizarCheckinNaJanela } from "@/lib/checkin-horario"
 
 export type ContextoCheckin = {
   statusAluno: StatusAluno
@@ -107,28 +112,176 @@ export function checkinRetroativo(params: { fimAula: Date; agora?: Date }): bool
   return (params.agora ?? new Date()).getTime() > params.fimAula.getTime()
 }
 
-export function podeRealizarCheckinNaJanela(params: {
+export function checkinImpedeNovoRegistro(
+  status: "VALIDO" | "PENDENTE_REVISAO" | "INVALIDADO" | "EXCLUIDO" | null | undefined,
+  lancadoPorTerceiro: boolean,
+): boolean {
+  return status === "VALIDO" || (status === "PENDENTE_REVISAO" && !lancadoPorTerceiro)
+}
+
+export function conteudoNotificacaoCheckinRealizado(params: {
+  alunoNome: string
+  nomeAula: string
   inicioAula: Date
-  fimAula: Date
-  agora?: Date
-  toleranciaMinutos?: number
-}): boolean {
-  const tolerancia = params.toleranciaMinutos ?? 30
-  const agora = (params.agora ?? new Date()).getTime()
-  const inicio = params.inicioAula.getTime()
-  const fim = params.fimAula.getTime()
-  return agora >= inicio - tolerancia * MINUTO_MS && agora <= fim
+  pendenteRevisao: boolean
+}): { titulo: string; mensagem: string } {
+  const contexto = `${params.alunoNome} fez check-in em ${params.nomeAula} (${formatarDataHora(
+    params.inicioAula,
+  )}).`
+  return params.pendenteRevisao
+    ? {
+        titulo: "Check-in pendente de revisão",
+        mensagem: `${contexto} Aguarda sua aprovação.`,
+      }
+    : { titulo: "Check-in realizado", mensagem: contexto }
+}
+
+type ProfessorParaNotificacao = {
+  usuarioId: string
+  ativo: boolean
+  usuario: { ativo: boolean }
+}
+
+export function usuarioProfessorResponsavelCheckin(params: {
+  professorAula: ProfessorParaNotificacao | null
+  professorTurma: ProfessorParaNotificacao | null
+}): string | null {
+  for (const professor of [params.professorAula, params.professorTurma]) {
+    if (professor?.ativo && professor.usuario.ativo) return professor.usuarioId
+  }
+  return null
 }
 
 // ───────────────────────── Operações no banco ─────────────────────────
 
 export type ResultadoCheckin =
-  | { ok: true; checkinId: string; status?: "VALIDO" | "PENDENTE_REVISAO" }
+  | {
+      ok: true
+      checkinId: string
+      aulaId?: string
+      status?: "VALIDO" | "PENDENTE_REVISAO"
+    }
   | {
       ok: false
       motivo: string
-      codigo?: "FORA_DA_JANELA" | "INADIMPLENTE" | "TOKEN_INVALIDO" | "TERMO_NAO_ACEITO"
+      codigo?:
+        | "FORA_DA_JANELA"
+        | "INADIMPLENTE"
+        | "TOKEN_INVALIDO"
+        | "TERMO_NAO_ACEITO"
+        | "SEM_AULA_REFERENCIA"
     }
+
+class ErroConcorrenciaCheckin extends Error {}
+
+type AulaParaReferencia = {
+  id: string
+  inicio: Date
+  fim: Date
+  cancelada: boolean
+  turma: { capacidade: number }
+  comparecimentos: Array<{ alunoId: string; status: string }>
+  checkins: Array<{ alunoId: string; status: string }>
+}
+
+export function montarCandidataCheckinLivre(
+  aula: AulaParaReferencia,
+  alunoId: string,
+): AulaCandidataCheckinLivre {
+  const temAgendamento = aula.comparecimentos.some(
+    (item) =>
+      item.alunoId === alunoId &&
+      (item.status === "CONFIRMADO" || item.status === "CONVERTIDO_CHECKIN"),
+  )
+  const temCheckin = aula.checkins.some(
+    (item) =>
+      item.alunoId === alunoId && (item.status === "VALIDO" || item.status === "PENDENTE_REVISAO"),
+  )
+  const ocupantes = new Set([
+    ...aula.comparecimentos
+      .filter((item) => item.status === "CONFIRMADO" || item.status === "CONVERTIDO_CHECKIN")
+      .map((item) => item.alunoId),
+    ...aula.checkins.filter((item) => item.status === "VALIDO").map((item) => item.alunoId),
+  ])
+
+  return {
+    id: aula.id,
+    inicio: aula.inicio,
+    fim: aula.fim,
+    cancelada: aula.cancelada,
+    temAgendamento,
+    temCheckin,
+    vagasDisponiveis:
+      aula.turma.capacidade === 0 ? null : Math.max(0, aula.turma.capacidade - ocupantes.size),
+  }
+}
+
+async function resolverAulaReferenciaCheckinQr(params: {
+  alunoId: string
+  aulaId: string
+  agora: Date
+}): Promise<
+  | { ok: true; aulaId: string; associadoAutomaticamente: boolean }
+  | { ok: false; motivo: string; codigo?: "SEM_AULA_REFERENCIA" }
+> {
+  const aulaSolicitada = await db.aula.findUnique({
+    where: { id: params.aulaId },
+    select: {
+      id: true,
+      turma: {
+        select: {
+          modalidadeId: true,
+          modalidade: { select: { checkinSemRestricaoHorario: true } },
+        },
+      },
+    },
+  })
+  if (!aulaSolicitada) return { ok: false, motivo: "Aula não encontrada." }
+  if (!aulaSolicitada.turma.modalidade.checkinSemRestricaoHorario) {
+    return { ok: true, aulaId: aulaSolicitada.id, associadoAutomaticamente: false }
+  }
+
+  const inicioDia = inicioDoDiaAcademia(params.agora)
+  const fimDia = fimExclusivoDoDiaAcademia(params.agora)
+  const aulas = await db.aula.findMany({
+    where: {
+      cancelada: false,
+      OR: [
+        { inicio: { gte: inicioDia, lt: fimDia } },
+        { inicio: { lt: inicioDia }, fim: { gte: params.agora } },
+      ],
+      turma: {
+        ativa: true,
+        ehEvento: false,
+        modalidadeId: aulaSolicitada.turma.modalidadeId,
+        modalidade: { ativa: true },
+      },
+    },
+    orderBy: [{ inicio: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      inicio: true,
+      fim: true,
+      cancelada: true,
+      turma: { select: { capacidade: true } },
+      comparecimentos: { select: { alunoId: true, status: true } },
+      checkins: { select: { alunoId: true, status: true } },
+    },
+  })
+  const referencia = selecionarAulaReferenciaCheckinLivre(
+    aulas.map((aula) => montarCandidataCheckinLivre(aula, params.alunoId)),
+    params.agora,
+  )
+  if (!referencia) {
+    return {
+      ok: false,
+      codigo: "SEM_AULA_REFERENCIA",
+      motivo: "Não há aula oficial desta modalidade hoje para vincular o check-in.",
+    }
+  }
+
+  return { ok: true, aulaId: referencia.id, associadoAutomaticamente: true }
+}
 
 async function configuracao() {
   return (
@@ -251,14 +404,50 @@ export async function realizarCheckinQr(params: {
     }
   }
 
-  return realizarCheckin({
+  const agora = params.agora ?? new Date()
+  const referencia = await resolverAulaReferenciaCheckinQr({
     alunoId: params.alunoId,
     aulaId: params.aulaId,
+    agora,
+  })
+  if (!referencia.ok) return referencia
+
+  const resultado = await realizarCheckin({
+    alunoId: params.alunoId,
+    aulaId: referencia.aulaId,
     autorId: params.autorId,
     origem: "QR_CODE",
     exigirJanelaCheckin: true,
     bloquearInadimplenciaSempre: true,
-    agora: params.agora,
+    associadoAutomaticamente: referencia.associadoAutomaticamente,
+    agora,
+  })
+  if (
+    resultado.ok ||
+    !referencia.associadoAutomaticamente ||
+    resultado.motivo !== "Aula sem vagas disponíveis."
+  ) {
+    return resultado
+  }
+
+  // A referência pode ter lotado entre a seleção e o lock transacional. Reconsulta uma vez
+  // para aproveitar o próximo horário futuro disponível, sem confirmar além da capacidade.
+  const novaReferencia = await resolverAulaReferenciaCheckinQr({
+    alunoId: params.alunoId,
+    aulaId: params.aulaId,
+    agora,
+  })
+  if (!novaReferencia.ok || novaReferencia.aulaId === referencia.aulaId) return resultado
+
+  return realizarCheckin({
+    alunoId: params.alunoId,
+    aulaId: novaReferencia.aulaId,
+    autorId: params.autorId,
+    origem: "QR_CODE",
+    exigirJanelaCheckin: true,
+    bloquearInadimplenciaSempre: true,
+    associadoAutomaticamente: true,
+    agora,
   })
 }
 
@@ -276,6 +465,7 @@ export async function realizarCheckin(params: {
   justificativa?: string
   exigirJanelaCheckin?: boolean
   bloquearInadimplenciaSempre?: boolean
+  associadoAutomaticamente?: boolean
   agora?: Date
 }): Promise<ResultadoCheckin> {
   const agora = params.agora ?? new Date()
@@ -287,6 +477,7 @@ export async function realizarCheckin(params: {
       select: {
         status: true,
         tipo: true,
+        usuario: { select: { nome: true } },
         modalidades: { select: { id: true } },
         modalidadesPlano: { select: { modalidadeId: true } },
       },
@@ -302,17 +493,26 @@ export async function realizarCheckin(params: {
         turma: {
           select: {
             capacidade: true,
+            nome: true,
+            professor: {
+              select: { usuarioId: true, ativo: true, usuario: { select: { ativo: true } } },
+            },
             modalidadeId: true,
             modalidade: {
               select: {
+                nome: true,
                 janelaComparecimentoHoras: true,
                 prazoCancelamentoHoras: true,
                 exigirComparecimentoParaCheckin: true,
                 politicaCheckinSemComparecimento: true,
                 listaEsperaAtiva: true,
+                checkinSemRestricaoHorario: true,
               },
             },
           },
+        },
+        professor: {
+          select: { usuarioId: true, ativo: true, usuario: { select: { ativo: true } } },
         },
         comparecimentos: {
           where: { status: { in: ["CONFIRMADO", "CONVERTIDO_CHECKIN"] } },
@@ -335,6 +535,7 @@ export async function realizarCheckin(params: {
   if (!aula) return { ok: false, motivo: "Aula não encontrada." }
   if (
     params.exigirJanelaCheckin &&
+    !aula.turma.modalidade.checkinSemRestricaoHorario &&
     !podeRealizarCheckinNaJanela({ inicioAula: aula.inicio, fimAula: aula.fim, agora })
   ) {
     return {
@@ -346,12 +547,18 @@ export async function realizarCheckin(params: {
   if (!aluno.modalidades.some((modalidade) => modalidade.id === aula.turma.modalidadeId)) {
     return { ok: false, motivo: "Aluno não está matriculado na modalidade desta aula." }
   }
-  if (jaCheckin?.status === "VALIDO") {
-    return { ok: false, motivo: "Check-in já realizado nesta aula." }
+  const lancadoPorTerceiro = Boolean(params.lancadoPorId)
+  if (checkinImpedeNovoRegistro(jaCheckin?.status, lancadoPorTerceiro)) {
+    return {
+      ok: false,
+      motivo:
+        jaCheckin?.status === "PENDENTE_REVISAO"
+          ? "Check-in desta aula já está pendente de revisão."
+          : "Check-in já realizado nesta aula.",
+    }
   }
 
   const regras = resolverRegrasTreino(config, aula.turma.modalidade)
-  const lancadoPorTerceiro = Boolean(params.lancadoPorId)
   const termoAceito = await termoResponsabilidadeAtualAceito(params.alunoId)
   const mensalidadeInternaNaModalidade = aluno.modalidadesPlano.some(
     (modalidade) => modalidade.modalidadeId === aula.turma.modalidadeId,
@@ -410,75 +617,170 @@ export async function realizarCheckin(params: {
   }
 
   const statusNovo = avaliacao.pendenteRevisao ? "PENDENTE_REVISAO" : "VALIDO"
-  const checkinId = await db.$transaction(async (tx) => {
-    // Reaproveita o registro se já existir invalidado/excluído (mantém histórico via @@unique).
-    const checkin = jaCheckin
-      ? await tx.checkin.update({
-          where: { id: jaCheckin.id },
-          data: {
-            status: statusNovo,
-            origem: params.origem ?? "BOTAO",
-            retroativo: params.retroativo ?? false,
-            lancadoPorId: params.lancadoPorId ?? null,
-            invalidadoPorId: null,
-            invalidadoEm: null,
-            justificativa: params.justificativa ?? null,
-          },
+  let checkinId: string
+  try {
+    checkinId = await db.$transaction(async (tx) => {
+      // Serializa check-ins da mesma aula para revalidar duplicidade e capacidade sem corrida.
+      await tx.$queryRaw`SELECT "id" FROM "Aula" WHERE "id" = ${aula.id} FOR UPDATE`
+      const [aulaAtual, checkinAtual, comparecimentoAtual, comparecimentosAtivos, checkinsValidos] =
+        await Promise.all([
+          tx.aula.findUnique({
+            where: { id: aula.id },
+            select: {
+              inicio: true,
+              cancelada: true,
+              duracaoMin: true,
+              turma: { select: { capacidade: true, modalidadeId: true } },
+            },
+          }),
+          tx.checkin.findUnique({
+            where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: aula.id } },
+            select: { id: true, status: true },
+          }),
+          tx.comparecimento.findUnique({
+            where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: aula.id } },
+            select: { id: true, status: true },
+          }),
+          tx.comparecimento.findMany({
+            where: {
+              aulaId: aula.id,
+              status: { in: ["CONFIRMADO", "CONVERTIDO_CHECKIN"] },
+            },
+            select: { alunoId: true },
+          }),
+          tx.checkin.findMany({
+            where: { aulaId: aula.id, status: "VALIDO" },
+            select: { alunoId: true },
+          }),
+        ])
+
+      if (!aulaAtual || aulaAtual.cancelada) {
+        throw new ErroConcorrenciaCheckin("Aula cancelada ou indisponível.")
+      }
+
+      if (checkinImpedeNovoRegistro(checkinAtual?.status, lancadoPorTerceiro)) {
+        throw new ErroConcorrenciaCheckin(
+          checkinAtual?.status === "PENDENTE_REVISAO"
+            ? "Check-in desta aula já está pendente de revisão."
+            : "Check-in já realizado nesta aula.",
+        )
+      }
+
+      const temReserva =
+        comparecimentoAtual?.status === "CONFIRMADO" ||
+        comparecimentoAtual?.status === "CONVERTIDO_CHECKIN"
+      const ocupacaoAtual = new Set([
+        ...comparecimentosAtivos.map((item) => item.alunoId),
+        ...checkinsValidos.map((item) => item.alunoId),
+      ]).size
+      if (
+        !temReserva &&
+        aulaAtual.turma.capacidade > 0 &&
+        ocupacaoAtual >= aulaAtual.turma.capacidade
+      ) {
+        throw new ErroConcorrenciaCheckin("Aula sem vagas disponíveis.")
+      }
+
+      // Reaproveita o registro se já existir invalidado/excluído (mantém histórico via @@unique).
+      const checkin = checkinAtual
+        ? await tx.checkin.update({
+            where: { id: checkinAtual.id },
+            data: {
+              status: statusNovo,
+              origem: params.origem ?? "BOTAO",
+              retroativo: params.retroativo ?? false,
+              lancadoPorId: params.lancadoPorId ?? null,
+              invalidadoPorId: null,
+              invalidadoEm: null,
+              justificativa: params.justificativa ?? null,
+              realizadoEm: agora,
+              associadoAutomaticamente: params.associadoAutomaticamente ?? false,
+            },
+          })
+        : await tx.checkin.create({
+            data: {
+              alunoId: params.alunoId,
+              aulaId: params.aulaId,
+              status: statusNovo,
+              origem: params.origem ?? "BOTAO",
+              retroativo: params.retroativo ?? false,
+              lancadoPorId: params.lancadoPorId ?? null,
+              justificativa: params.justificativa ?? null,
+              realizadoEm: agora,
+              associadoAutomaticamente: params.associadoAutomaticamente ?? false,
+            },
+          })
+
+      if (
+        !avaliacao.pendenteRevisao &&
+        comparecimentoAtual &&
+        comparecimentoAtual.status !== "CONVERTIDO_CHECKIN"
+      ) {
+        await tx.comparecimento.update({
+          where: { id: comparecimentoAtual.id },
+          data: { status: "CONVERTIDO_CHECKIN" },
         })
-      : await tx.checkin.create({
-          data: {
+      }
+
+      if (!avaliacao.pendenteRevisao) {
+        // RN-002: horas = duração da aula, na modalidade da turma.
+        await creditarPorCheckin(tx, {
+          alunoId: params.alunoId,
+          modalidadeId: aulaAtual.turma.modalidadeId,
+          checkinId: checkin.id,
+          minutos: aulaAtual.duracaoMin,
+        })
+      }
+
+      await registrarLog(
+        {
+          autorId: params.autorId,
+          acao: params.retroativo ? "REGISTRO_RETROATIVO" : "CHECKIN_CRIADO",
+          entidade: "Checkin",
+          entidadeId: checkin.id,
+          valorNovo: {
             alunoId: params.alunoId,
             aulaId: params.aulaId,
             status: statusNovo,
-            origem: params.origem ?? "BOTAO",
-            retroativo: params.retroativo ?? false,
-            lancadoPorId: params.lancadoPorId ?? null,
-            justificativa: params.justificativa ?? null,
+            minutos: avaliacao.pendenteRevisao ? 0 : aulaAtual.duracaoMin,
+            realizadoEm: agora.toISOString(),
+            aulaInicio: aulaAtual.inicio.toISOString(),
+            associadoAutomaticamente: params.associadoAutomaticamente ?? false,
           },
-        })
-
-    if (
-      !avaliacao.pendenteRevisao &&
-      comparecimento &&
-      comparecimento.status !== "CONVERTIDO_CHECKIN"
-    ) {
-      await tx.comparecimento.update({
-        where: { id: comparecimento.id },
-        data: { status: "CONVERTIDO_CHECKIN" },
-      })
-    }
-
-    if (!avaliacao.pendenteRevisao) {
-      // RN-002: horas = duração da aula, na modalidade da turma.
-      await creditarPorCheckin(tx, {
-        alunoId: params.alunoId,
-        modalidadeId: aula.turma.modalidadeId,
-        checkinId: checkin.id,
-        minutos: aula.duracaoMin,
-      })
-    }
-
-    await registrarLog(
-      {
-        autorId: params.autorId,
-        acao: params.retroativo ? "REGISTRO_RETROATIVO" : "CHECKIN_CRIADO",
-        entidade: "Checkin",
-        entidadeId: checkin.id,
-        valorNovo: {
-          alunoId: params.alunoId,
-          aulaId: params.aulaId,
-          status: statusNovo,
-          minutos: avaliacao.pendenteRevisao ? 0 : aula.duracaoMin,
+          justificativa: params.justificativa ?? null,
         },
-        justificativa: params.justificativa ?? null,
-      },
-      tx,
-    )
+        tx,
+      )
 
-    return checkin.id
-  })
+      if (!params.lancadoPorId) {
+        const professorUsuarioId = usuarioProfessorResponsavelCheckin({
+          professorAula: aula.professor,
+          professorTurma: aula.turma.professor,
+        })
+        if (professorUsuarioId) {
+          await criarNotificacao(tx, {
+            usuarioId: professorUsuarioId,
+            tipo: "CHECKIN_REALIZADO",
+            ...conteudoNotificacaoCheckinRealizado({
+              alunoNome: aluno.usuario.nome,
+              nomeAula: aula.turma.nome ?? aula.turma.modalidade.nome,
+              inicioAula: aulaAtual.inicio,
+              pendenteRevisao: avaliacao.pendenteRevisao ?? false,
+            }),
+          })
+        }
+      }
 
-  return { ok: true, checkinId, status: statusNovo }
+      return checkin.id
+    })
+  } catch (erro) {
+    if (erro instanceof ErroConcorrenciaCheckin) {
+      return { ok: false, motivo: erro.message }
+    }
+    throw erro
+  }
+
+  return { ok: true, checkinId, aulaId: aula.id, status: statusNovo }
 }
 
 /**
@@ -498,7 +800,14 @@ export async function invalidarCheckin(params: {
   if (!checkin) return { ok: false, motivo: "Check-in não encontrado." }
   if (checkin.status !== "VALIDO") return { ok: false, motivo: "Check-in já não está válido." }
 
-  await db.$transaction(async (tx) => {
+  const foiInvalidado = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Checkin" WHERE "id" = ${checkin.id} FOR UPDATE`
+    const checkinAtual = await tx.checkin.findUnique({
+      where: { id: checkin.id },
+      select: { status: true },
+    })
+    if (checkinAtual?.status !== "VALIDO") return false
+
     await tx.checkin.update({
       where: { id: checkin.id },
       data: {
@@ -534,7 +843,11 @@ export async function invalidarCheckin(params: {
       titulo: params.excluir ? "Check-in excluído" : "Check-in invalidado",
       mensagem: params.justificativa,
     })
+
+    return true
   })
+
+  if (!foiInvalidado) return { ok: false, motivo: "Check-in já não está válido." }
 
   return { ok: true, checkinId: checkin.id }
 }

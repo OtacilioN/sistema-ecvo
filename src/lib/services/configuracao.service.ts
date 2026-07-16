@@ -22,6 +22,7 @@ export type ConfiguracaoAcademiaInput = {
   notificarFinanceiro: boolean
   notificarGraduacao: boolean
   notificarCheckinInvalidado: boolean
+  notificarCheckinRealizado: boolean
   notificarAniversario: boolean
   valorBaseModalidade: number
 }
@@ -117,6 +118,7 @@ function serializarConfiguracao(
     notificarFinanceiro: config.notificarFinanceiro,
     notificarGraduacao: config.notificarGraduacao,
     notificarCheckinInvalidado: config.notificarCheckinInvalidado,
+    notificarCheckinRealizado: config.notificarCheckinRealizado,
     notificarAniversario: config.notificarAniversario,
     valorBaseModalidade: Number(config.valorBaseModalidade),
   }

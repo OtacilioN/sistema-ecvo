@@ -18,6 +18,10 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
 - **QR global de check-in**: `TokenCheckinAcademia` guarda o único token válido por vez. Ao rotacionar,
   URLs antigas deixam de validar. Tentativas de aluno inadimplente ficam em
   `TentativaCheckinInadimplente`; elas disparam alerta e auditoria, mas não criam `Checkin` nem horas.
+- **Check-in livre por modalidade**: `Modalidade.checkinSemRestricaoHorario` permite o registro fora da
+  janela padrão. O check-in continua vinculado a uma `Aula` oficial para preservar presença, horas,
+  capacidade e duplicidade; `Checkin.realizadoEm` guarda o horário real e
+  `associadoAutomaticamente` preserva que a aula foi escolhida pelo sistema.
 
 ## Entidades
 
@@ -91,8 +95,9 @@ erDiagram
 - **RegistroImportado.valorRepasse** guarda o valor financeiro importado de Wellhub/TotalPass quando a
   planilha traz repasse por check-in; o JSON bruto continua preservado em `dadosBrutos`.
 - **Modalidade** pode definir overrides operacionais para janela de agendamento, prazo de
-  cancelamento, exigência/política de check-in sem agendamento e lista de espera. Campos nulos herdam a
-  regra global de `ConfiguracaoAcademia`.
+  cancelamento, exigência/política de check-in sem agendamento e lista de espera. Também pode ativar
+  check-in sem restrição de horário; esta opção é própria da modalidade e não altera a exigência de
+  agendamento. Campos nulos herdam a regra global de `ConfiguracaoAcademia`.
 - **GraduacaoAluno** guarda a graduação concedida e, quando houver, `graduacaoAnteriorId`; isso preserva o
   histórico `anterior -> nova` exigido por RF-042 sem depender do log de auditoria para reconstruir a troca.
 - **LogAuditoria** guarda `valorAntigo`/`valorNovo` como JSON, gravado na mesma transação da ação crítica.

@@ -199,27 +199,51 @@ export async function marcarComparecimento(params: {
     return { ok: false, motivo: "Fora da janela de agendamento." }
   }
 
-  // Reativa um agendamento previamente cancelado, se existir (mantém histórico via @@unique).
-  const existente = await db.comparecimento.findUnique({
-    where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: params.aulaId } },
-  })
-  if (existente?.status === "CONFIRMADO" || existente?.status === "LISTA_ESPERA") {
-    return { ok: true, comparecimentoId: existente.id, status: existente.status }
-  }
+  const resultado = await db.$transaction(async (tx) => {
+    // O mesmo lock usado pelo check-in mantém vaga, agendamento e presença sincronizados.
+    await tx.$queryRaw`SELECT "id" FROM "Aula" WHERE "id" = ${params.aulaId} FOR UPDATE`
+    const [aulaAtual, existente, comparecimentosAtivos, checkinsValidos] = await Promise.all([
+      tx.aula.findUnique({
+        where: { id: params.aulaId },
+        select: { cancelada: true, turma: { select: { capacidade: true } } },
+      }),
+      tx.comparecimento.findUnique({
+        where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: params.aulaId } },
+      }),
+      tx.comparecimento.findMany({
+        where: {
+          aulaId: params.aulaId,
+          status: { in: ["CONFIRMADO", "CONVERTIDO_CHECKIN"] },
+        },
+        select: { alunoId: true },
+      }),
+      tx.checkin.findMany({
+        where: { aulaId: params.aulaId, status: "VALIDO" },
+        select: { alunoId: true },
+      }),
+    ])
 
-  const confirmados = await db.comparecimento.count({
-    where: { aulaId: params.aulaId, status: "CONFIRMADO" },
-  })
-  const novoStatus = statusAoMarcarComparecimento({
-    capacidade: aula.turma.capacidade,
-    confirmados,
-    listaEsperaAtiva: regras.listaEsperaAtiva,
-  })
-  if (!novoStatus) {
-    return { ok: false, motivo: "Turma lotada." }
-  }
+    if (!aulaAtual || aulaAtual.cancelada) return { erro: "Aula indisponível." } as const
+    if (
+      existente?.status === "CONFIRMADO" ||
+      existente?.status === "LISTA_ESPERA" ||
+      existente?.status === "CONVERTIDO_CHECKIN"
+    ) {
+      return { salvo: existente } as const
+    }
 
-  const comparecimento = await db.$transaction(async (tx) => {
+    const ocupantes = new Set([
+      ...comparecimentosAtivos.map((item) => item.alunoId),
+      ...checkinsValidos.map((item) => item.alunoId),
+    ])
+    const novoStatus = statusAoMarcarComparecimento({
+      capacidade: aulaAtual.turma.capacidade,
+      confirmados: ocupantes.has(params.alunoId) ? Math.max(0, ocupantes.size - 1) : ocupantes.size,
+      listaEsperaAtiva: regras.listaEsperaAtiva,
+    })
+    if (!novoStatus) return { erro: "Turma lotada." } as const
+
+    // Reativa um agendamento cancelado, se existir (mantém histórico via @@unique).
     const salvo = existente
       ? await tx.comparecimento.update({
           where: { id: existente.id },
@@ -239,10 +263,15 @@ export async function marcarComparecimento(params: {
           : `${aula.turma.nome ?? aula.turma.modalidade.nome}: você entrou na lista de espera.`,
     })
 
-    return salvo
+    return { salvo } as const
   })
 
-  return { ok: true, comparecimentoId: comparecimento.id, status: comparecimento.status }
+  if ("erro" in resultado && resultado.erro) return { ok: false, motivo: resultado.erro }
+  return {
+    ok: true,
+    comparecimentoId: resultado.salvo.id,
+    status: resultado.salvo.status,
+  }
 }
 
 /** Cancela um agendamento dentro do prazo configurado (RF-015/017). */

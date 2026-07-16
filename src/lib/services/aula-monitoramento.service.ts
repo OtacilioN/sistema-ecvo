@@ -21,6 +21,8 @@ export async function carregarMonitoramentoAula(aulaId: string) {
           id: true,
           alunoId: true,
           status: true,
+          realizadoEm: true,
+          associadoAutomaticamente: true,
           aluno: { select: { usuario: { select: { nome: true } } } },
         },
       },
@@ -59,6 +61,8 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       historicoObservacoesTecnicas: historicoObservacoesPorAluno.get(matriculado.id) ?? [],
       status: "AUSENTE",
       checkinId: null,
+      checkinRealizadoEm: null,
+      checkinAssociadoAutomaticamente: false,
       temComparecimento: false,
     })
   }
@@ -87,14 +91,20 @@ export async function carregarMonitoramentoAula(aulaId: string) {
       historicoObservacoesTecnicas: historicoObservacoesPorAluno.get(checkin.alunoId) ?? [],
       status: "AUSENTE" as StatusLinha,
       checkinId: null,
+      checkinRealizadoEm: null,
+      checkinAssociadoAutomaticamente: false,
       temComparecimento: false,
     }
     if (checkin.status === "VALIDO") {
       linha.status = "PRESENTE"
       linha.checkinId = checkin.id
+      linha.checkinRealizadoEm = checkin.realizadoEm
+      linha.checkinAssociadoAutomaticamente = checkin.associadoAutomaticamente
     } else if (checkin.status === "PENDENTE_REVISAO") {
       linha.status = "PENDENTE_REVISAO"
       linha.checkinId = checkin.id
+      linha.checkinRealizadoEm = checkin.realizadoEm
+      linha.checkinAssociadoAutomaticamente = checkin.associadoAutomaticamente
     } else if (linha.status !== "PRESENTE") {
       linha.status = checkin.status === "EXCLUIDO" ? "EXCLUIDO" : "INVALIDADO"
     }

@@ -95,10 +95,15 @@ aluno experimental.
 - **RF-019** Realização de check-in (botão, QR Code, lançamento por gestor/professor).
 - **RF-020** Validação (aluno ativo; permissão; plano mensal interno adimplente se configurado; aula
   existente; há agendamento se exigido; vaga disponível).
+- **RF-020.1** A modalidade pode liberar check-in sem restrição de horário. Nesse modo, o sistema
+  associa o registro a uma aula oficial do mesmo dia: prioriza agendamento confirmado, aula em andamento,
+  próxima aula futura e, após o último horário, a última aula encerrada. O horário real do check-in é
+  preservado e sinalizado; sem aula oficial no dia, o check-in é bloqueado.
 - **RF-021** Check-in associado ao agendamento correspondente.
 - **RF-022** Check-in sem agendamento prévio: permitir / bloquear / apenas com aprovação.
 - **RF-023** Check-in válido gera presença automaticamente e horas conforme a duração da aula.
-- **RF-024** Histórico de check-ins (data, hora, aula, modalidade, método, responsável, status, validade).
+- **RF-024** Histórico de check-ins (data, horário real, aula oficial de referência, modalidade, método,
+  responsável, status, validade e indicação de associação automática).
 
 ### Presença e invalidação
 - **RF-025** Presença derivada de todo check-in válido.

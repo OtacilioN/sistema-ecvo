@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select"
 type ModalidadeRegras = {
   id: string
   nome: string
+  checkinSemRestricaoHorario: boolean
   janelaComparecimentoHoras: number | null
   prazoCancelamentoHoras: number | null
   exigirComparecimentoParaCheckin: boolean | null
@@ -38,6 +39,25 @@ export function FormRegrasModalidade({
   return (
     <form action={acao} className="grid gap-4">
       <input type="hidden" name="modalidadeId" value={modalidade.id} />
+      <label
+        htmlFor="checkinSemRestricaoHorario-modalidade"
+        className="flex cursor-pointer items-start gap-3 rounded-md border border-border bg-muted/30 p-4"
+      >
+        <input
+          id="checkinSemRestricaoHorario-modalidade"
+          name="checkinSemRestricaoHorario"
+          type="checkbox"
+          defaultChecked={modalidade.checkinSemRestricaoHorario}
+          className="mt-1 size-4 accent-primary"
+        />
+        <span>
+          <span className="block text-sm font-medium">Permitir check-in a qualquer horário</span>
+          <span className="mt-1 block text-xs text-muted-foreground">
+            Com agendamento, o check-in usa a aula reservada; sem ele, usa a aula em andamento ou o
+            próximo horário oficial disponível do dia, mantendo o horário real do registro.
+          </span>
+        </span>
+      </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="janelaComparecimentoHoras-modalidade">

@@ -24,6 +24,7 @@ type Configuracao = {
   notificarFinanceiro: boolean
   notificarGraduacao: boolean
   notificarCheckinInvalidado: boolean
+  notificarCheckinRealizado: boolean
   notificarAniversario: boolean
   valorBaseModalidade: number
 }
@@ -201,6 +202,12 @@ export function FormConfiguracao({
               nome="notificarCheckinInvalidado"
               ativo={configuracao.notificarCheckinInvalidado}
               rotulo="Check-in invalidado"
+              disabled={somenteLeitura}
+            />
+            <OpcaoNotificacao
+              nome="notificarCheckinRealizado"
+              ativo={configuracao.notificarCheckinRealizado}
+              rotulo="Check-in realizado pelo aluno"
               disabled={somenteLeitura}
             />
             <OpcaoNotificacao

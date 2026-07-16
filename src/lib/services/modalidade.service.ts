@@ -215,6 +215,7 @@ async function sincronizarGraduacoesModalidade(
 export async function atualizarRegrasModalidade(params: {
   modalidadeId: string
   autorId: string
+  checkinSemRestricaoHorario: boolean
   janelaComparecimentoHoras: number | null
   prazoCancelamentoHoras: number | null
   exigirComparecimentoParaCheckin: boolean | null
@@ -226,6 +227,7 @@ export async function atualizarRegrasModalidade(params: {
     select: {
       id: true,
       nome: true,
+      checkinSemRestricaoHorario: true,
       janelaComparecimentoHoras: true,
       prazoCancelamentoHoras: true,
       exigirComparecimentoParaCheckin: true,
@@ -239,6 +241,7 @@ export async function atualizarRegrasModalidade(params: {
     const modalidade = await tx.modalidade.update({
       where: { id: atual.id },
       data: {
+        checkinSemRestricaoHorario: params.checkinSemRestricaoHorario,
         janelaComparecimentoHoras: params.janelaComparecimentoHoras,
         prazoCancelamentoHoras: params.prazoCancelamentoHoras,
         exigirComparecimentoParaCheckin: params.exigirComparecimentoParaCheckin,
@@ -248,6 +251,7 @@ export async function atualizarRegrasModalidade(params: {
       select: {
         id: true,
         nome: true,
+        checkinSemRestricaoHorario: true,
         janelaComparecimentoHoras: true,
         prazoCancelamentoHoras: true,
         exigirComparecimentoParaCheckin: true,
@@ -318,6 +322,7 @@ export async function excluirModalidade(params: { modalidadeId: string; autorId:
 
 function serializarRegrasModalidade(regras: {
   nome: string
+  checkinSemRestricaoHorario: boolean
   janelaComparecimentoHoras: number | null
   prazoCancelamentoHoras: number | null
   exigirComparecimentoParaCheckin: boolean | null
@@ -326,6 +331,7 @@ function serializarRegrasModalidade(regras: {
 }): Prisma.InputJsonValue {
   return {
     nome: regras.nome,
+    checkinSemRestricaoHorario: regras.checkinSemRestricaoHorario,
     janelaComparecimentoHoras: regras.janelaComparecimentoHoras,
     prazoCancelamentoHoras: regras.prazoCancelamentoHoras,
     exigirComparecimentoParaCheckin: regras.exigirComparecimentoParaCheckin,

@@ -27,6 +27,7 @@ export async function acaoAtualizarConfiguracao(
     notificarFinanceiro: formData.get("notificarFinanceiro") === "on",
     notificarGraduacao: formData.get("notificarGraduacao") === "on",
     notificarCheckinInvalidado: formData.get("notificarCheckinInvalidado") === "on",
+    notificarCheckinRealizado: formData.get("notificarCheckinRealizado") === "on",
     notificarAniversario: formData.get("notificarAniversario") === "on",
     valorBaseModalidade: formData.get("valorBaseModalidade"),
   })

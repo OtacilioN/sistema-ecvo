@@ -85,7 +85,13 @@ export async function acaoCheckinAlunoQr(
   revalidatePath("/gestao/notificacoes")
   revalidatePath("/professor/notificacoes")
 
-  if (r.ok) redirect(`/aluno/checkin/passe/${r.checkinId}`)
+  if (r.ok) {
+    if (r.aulaId && r.aulaId !== aulaId) {
+      revalidatePath(`/professor/aula/${r.aulaId}`)
+      revalidatePath(`/gestao/turmas/aula/${r.aulaId}`)
+    }
+    redirect(`/aluno/checkin/passe/${r.checkinId}`)
+  }
 
   return {
     erro: r.motivo,

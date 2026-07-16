@@ -1,4 +1,4 @@
-import { format } from "date-fns"
+import { addDays, format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { formatInTimeZone, fromZonedTime, toZonedTime } from "date-fns-tz"
 
@@ -56,6 +56,11 @@ export function paraFusoAcademia(data: Date): Date {
 export function inicioDoDiaAcademia(data: Date): Date {
   const dia = formatInTimeZone(data, TIMEZONE, "yyyy-MM-dd")
   return fromZonedTime(`${dia}T00:00:00`, TIMEZONE)
+}
+
+export function fimExclusivoDoDiaAcademia(data: Date): Date {
+  const amanha = addDays(paraFusoAcademia(data), 1)
+  return fromZonedTime(`${format(amanha, "yyyy-MM-dd")}T00:00:00`, TIMEZONE)
 }
 
 /** Formata uma duração em minutos como "1h30" / "45min" / "2h". */

@@ -17,6 +17,7 @@ import {
   ROTULO_STATUS_LINHA,
   type StatusLinha,
 } from "@/lib/aula-monitoramento"
+import { formatarHora } from "@/lib/utils/datas"
 
 export function LinhaPresenca({
   aulaId,
@@ -26,6 +27,8 @@ export function LinhaPresenca({
   historicoObservacoesTecnicas,
   status,
   checkinId,
+  checkinRealizadoEm,
+  checkinAssociadoAutomaticamente,
   somenteLeitura = false,
 }: {
   aulaId: string
@@ -35,6 +38,8 @@ export function LinhaPresenca({
   historicoObservacoesTecnicas: ObservacaoTecnicaHistorico[]
   status: StatusLinha
   checkinId: string | null
+  checkinRealizadoEm: Date | null
+  checkinAssociadoAutomaticamente: boolean
   somenteLeitura?: boolean
 }) {
   const [lancar, acaoLancar] = useActionState<EstadoTreino, FormData>(acaoLancarCheckin, undefined)
@@ -57,6 +62,11 @@ export function LinhaPresenca({
       </td>
       <td className="p-4" data-label="Situação">
         <Badge variant={rotulo.variant}>{rotulo.texto}</Badge>
+        {checkinAssociadoAutomaticamente && checkinRealizadoEm && (
+          <Badge variant="outline" className="ml-1">
+            Check-in às {formatarHora(checkinRealizadoEm)}
+          </Badge>
+        )}
       </td>
       <td className="p-4" data-label="Ação">
         {somenteLeitura ? (

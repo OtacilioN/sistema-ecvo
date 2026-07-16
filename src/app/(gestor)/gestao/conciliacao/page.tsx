@@ -66,7 +66,7 @@ export default async function Page() {
           status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
         },
       },
-      orderBy: { criadoEm: "desc" },
+      orderBy: { realizadoEm: "desc" },
       take: 80,
       include: {
         aluno: { select: { usuario: { select: { nome: true } } } },
@@ -84,7 +84,9 @@ export default async function Page() {
   }))
   const checkinsOpcao = checkins.map((checkin) => ({
     id: checkin.id,
-    rotulo: `${checkin.aluno.usuario.nome} · ${checkin.aula.turma.modalidade.nome} · ${formatarDataHora(checkin.aula.inicio)} · ${checkin.status}`,
+    rotulo: `${checkin.aluno.usuario.nome} · ${checkin.aula.turma.modalidade.nome} · ${formatarDataHora(
+      checkin.associadoAutomaticamente ? checkin.realizadoEm : checkin.aula.inicio,
+    )} · ${checkin.status}`,
   }))
 
   const totais = importacoes.reduce(

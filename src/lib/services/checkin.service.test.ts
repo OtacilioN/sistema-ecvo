@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest"
 import {
   avaliarCheckin,
   type ContextoCheckin,
+  checkinImpedeNovoRegistro,
   checkinRetroativo,
+  conteudoNotificacaoCheckinRealizado,
   podeRealizarCheckinNaJanela,
   statusPresenca,
+  usuarioProfessorResponsavelCheckin,
 } from "./checkin.service"
 
 const base: ContextoCheckin = {
@@ -134,6 +137,71 @@ describe("statusPresenca", () => {
     expect(statusPresenca({ status: "PENDENTE_REVISAO" })).toBe("PENDENTE_REVISAO")
     expect(statusPresenca({ status: "INVALIDADO" })).toBe("INVALIDADO")
     expect(statusPresenca({ status: "EXCLUIDO" })).toBe("EXCLUIDO")
+  })
+})
+
+describe("checkinImpedeNovoRegistro", () => {
+  it("mantém o pendente bloqueado para o aluno e permite que a equipe o aprove", () => {
+    expect(checkinImpedeNovoRegistro("PENDENTE_REVISAO", false)).toBe(true)
+    expect(checkinImpedeNovoRegistro("PENDENTE_REVISAO", true)).toBe(false)
+    expect(checkinImpedeNovoRegistro("VALIDO", true)).toBe(true)
+  })
+})
+
+describe("conteudoNotificacaoCheckinRealizado", () => {
+  it("avisa o professor sobre o check-in válido", () => {
+    expect(
+      conteudoNotificacaoCheckinRealizado({
+        alunoNome: "Ana Silva",
+        nomeAula: "Turma avançada",
+        inicioAula: new Date("2026-06-10T22:00:00Z"),
+        pendenteRevisao: false,
+      }),
+    ).toEqual({
+      titulo: "Check-in realizado",
+      mensagem: "Ana Silva fez check-in em Turma avançada (10/06/2026 às 19:00).",
+    })
+  })
+
+  it("deixa explícito quando o check-in aguarda revisão", () => {
+    expect(
+      conteudoNotificacaoCheckinRealizado({
+        alunoNome: "Ana Silva",
+        nomeAula: "Turma avançada",
+        inicioAula: new Date("2026-06-10T22:00:00Z"),
+        pendenteRevisao: true,
+      }),
+    ).toEqual({
+      titulo: "Check-in pendente de revisão",
+      mensagem:
+        "Ana Silva fez check-in em Turma avançada (10/06/2026 às 19:00). Aguarda sua aprovação.",
+    })
+  })
+})
+
+describe("usuarioProfessorResponsavelCheckin", () => {
+  const professor = (usuarioId: string, ativo = true, usuarioAtivo = true) => ({
+    usuarioId,
+    ativo,
+    usuario: { ativo: usuarioAtivo },
+  })
+
+  it("prioriza o professor efetivo da aula", () => {
+    expect(
+      usuarioProfessorResponsavelCheckin({
+        professorAula: professor("substituto"),
+        professorTurma: professor("titular"),
+      }),
+    ).toBe("substituto")
+  })
+
+  it("usa o professor da turma quando não há professor efetivo ativo", () => {
+    expect(
+      usuarioProfessorResponsavelCheckin({
+        professorAula: professor("inativo", false),
+        professorTurma: professor("titular"),
+      }),
+    ).toBe("titular")
   })
 })
 

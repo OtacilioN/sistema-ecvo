@@ -20,6 +20,7 @@ export const configuracaoAcademiaSchema = z.object({
   notificarFinanceiro: z.boolean(),
   notificarGraduacao: z.boolean(),
   notificarCheckinInvalidado: z.boolean(),
+  notificarCheckinRealizado: z.boolean(),
   notificarAniversario: z.boolean(),
   valorBaseModalidade: z.coerce.number().positive("Informe o valor base por modalidade"),
 })

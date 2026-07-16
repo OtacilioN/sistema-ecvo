@@ -1,9 +1,14 @@
 import "server-only"
-import type { Checkin, Plataforma, Prisma, StatusConciliacao } from "@prisma/client"
+import type { Plataforma, Prisma, StatusConciliacao } from "@prisma/client"
 import { type Row, readSheet } from "read-excel-file/universal"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import {
+  fimExclusivoDoDiaAcademia,
+  formatarHora as formatarHoraAcademia,
+  inicioDoDiaAcademia,
+} from "@/lib/utils/datas"
 
 export type LinhaImportada = {
   dadosBrutos: Record<string, string>
@@ -26,7 +31,11 @@ type AlunoIdentificacao = {
   idExterno: string | null
 }
 
-type CheckinConciliacao = Pick<Checkin, "id" | "status"> & {
+type CheckinConciliacao = {
+  id: string
+  status: "VALIDO" | "PENDENTE_REVISAO" | "INVALIDADO" | "EXCLUIDO"
+  realizadoEm?: Date
+  associadoAutomaticamente?: boolean
   aula: { inicio: Date }
 }
 
@@ -142,7 +151,12 @@ export function classificarConciliacao(params: {
   const horarioReferencia = params.horarioReferencia
   if (horarioReferencia) {
     const porHorario = checkinsValidos.find((checkin) =>
-      horarioCompativel(checkin.aula.inicio, horarioReferencia),
+      horarioCompativel(
+        checkin.associadoAutomaticamente && checkin.realizadoEm
+          ? checkin.realizadoEm
+          : checkin.aula.inicio,
+        horarioReferencia,
+      ),
     )
     if (!porHorario) return { status: "DIVERGENCIA_HORARIO", checkinId: null }
     return { status: "CONCILIADO", checkinId: porHorario.id }
@@ -226,9 +240,24 @@ async function importarLinhasConciliacao(params: ImportarLinhasConciliacaoParams
         ? await db.checkin.findMany({
             where: {
               alunoId: aluno.id,
-              aula: intervaloDaData(linha.dataReferencia),
+              OR: [
+                {
+                  associadoAutomaticamente: true,
+                  realizadoEm: intervaloDaData(linha.dataReferencia).inicio,
+                },
+                {
+                  associadoAutomaticamente: false,
+                  aula: intervaloDaData(linha.dataReferencia),
+                },
+              ],
             },
-            include: { aula: { select: { inicio: true } } },
+            select: {
+              id: true,
+              status: true,
+              realizadoEm: true,
+              associadoAutomaticamente: true,
+              aula: { select: { inicio: true } },
+            },
           })
         : []
     const classificacao = classificarConciliacao({
@@ -508,17 +537,16 @@ function normalizarHora(valor?: string): string | null {
 }
 
 function intervaloDaData(data: Date) {
-  const inicio = new Date(data)
-  inicio.setUTCHours(0, 0, 0, 0)
-  const fim = new Date(inicio)
-  fim.setUTCDate(fim.getUTCDate() + 1)
+  const inicio = inicioDoDiaAcademia(data)
+  const fim = fimExclusivoDoDiaAcademia(data)
   return { inicio: { gte: inicio, lt: fim } }
 }
 
 function horarioCompativel(data: Date, horario: string): boolean {
   const [h, m] = horario.split(":").map(Number)
   const alvoMin = h * 60 + m
-  const dataMin = data.getUTCHours() * 60 + data.getUTCMinutes()
+  const [horaData, minutoData] = formatarHoraAcademia(data).split(":").map(Number)
+  const dataMin = horaData * 60 + minutoData
   return Math.abs(dataMin - alvoMin) <= 60
 }
 

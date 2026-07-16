@@ -187,6 +187,7 @@ export async function acaoAtualizarRegrasModalidade(
   const usuario = await exigirPapel("GESTOR")
   const parsed = regrasModalidadeSchema.safeParse({
     modalidadeId: formData.get("modalidadeId"),
+    checkinSemRestricaoHorario: formData.get("checkinSemRestricaoHorario") === "on",
     janelaComparecimentoHoras: formData.get("janelaComparecimentoHoras"),
     prazoCancelamentoHoras: formData.get("prazoCancelamentoHoras"),
     exigirComparecimentoParaCheckin: formData.get("exigirComparecimentoParaCheckin"),
@@ -201,6 +202,8 @@ export async function acaoAtualizarRegrasModalidade(
   revalidatePath("/gestao/modalidades")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno")
+  revalidatePath("/aluno/checkin")
+  revalidatePath("/gestao/checkin")
   return { ok: true }
 }
 

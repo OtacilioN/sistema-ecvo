@@ -95,7 +95,7 @@ export default async function QrCodeCheckinPage() {
           Faça o check-in
         </h2>
         <p className="mt-3 max-w-xl text-lg text-muted-foreground">
-          Leia este QR Code com o celular e confirme a aula liberada no horário.
+          Leia este QR Code com o celular e confirme a aula disponível.
         </p>
 
         <div className="my-10 rounded-xl border-8 border-black bg-white p-4 print:my-14">
@@ -111,7 +111,7 @@ export default async function QrCodeCheckinPage() {
         </div>
 
         <p className="max-w-lg text-balance text-base font-medium text-foreground">
-          Check-in disponível de 30 minutos antes até o fim do horário da aula.
+          A disponibilidade do check-in segue as regras de cada modalidade.
         </p>
       </section>
     </div>

@@ -16,6 +16,7 @@ type CampoConfiguracaoNotificacao =
   | "notificarFinanceiro"
   | "notificarGraduacao"
   | "notificarCheckinInvalidado"
+  | "notificarCheckinRealizado"
   | "notificarAniversario"
 
 const CAMPO_CONFIG: Record<TipoNotificacao, CampoConfiguracaoNotificacao> = {
@@ -26,6 +27,7 @@ const CAMPO_CONFIG: Record<TipoNotificacao, CampoConfiguracaoNotificacao> = {
   FINANCEIRO: "notificarFinanceiro",
   GRADUACAO: "notificarGraduacao",
   CHECKIN_INVALIDADO: "notificarCheckinInvalidado",
+  CHECKIN_REALIZADO: "notificarCheckinRealizado",
   ANIVERSARIO: "notificarAniversario",
 }
 

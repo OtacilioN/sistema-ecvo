@@ -5,9 +5,16 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { exigirAluno } from "@/lib/auth/dal"
+import { selecionarAulaReferenciaCheckinLivre } from "@/lib/checkin-horario"
 import { db } from "@/lib/db"
+import { montarCandidataCheckinLivre } from "@/lib/services/checkin.service"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
-import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
+import {
+  fimExclusivoDoDiaAcademia,
+  formatarDataExtenso,
+  formatarHora,
+  inicioDoDiaAcademia,
+} from "@/lib/utils/datas"
 import { MinhasHorasAluno } from "../minhas-horas-aluno"
 import { FormCheckinGlobal } from "./form-checkin-global"
 import { LeitorQRCodeAluno } from "./leitor-qrcode-aluno"
@@ -29,7 +36,10 @@ export default async function CheckinGlobalPage({
 
   const aluno = await db.aluno.findUnique({
     where: { id: alunoId },
-    select: { status: true, modalidades: { select: { id: true } } },
+    select: {
+      status: true,
+      modalidades: { select: { id: true, checkinSemRestricaoHorario: true } },
+    },
   })
   const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))
   const modalidadeIds = alunoOperacional
@@ -37,32 +47,75 @@ export default async function CheckinGlobalPage({
     : []
   const agora = new Date()
   const proximoInicioLiberado = new Date(agora.getTime() + JANELA_CHECKIN_MS)
+  const inicioDia = inicioDoDiaAcademia(agora)
+  const fimDia = fimExclusivoDoDiaAcademia(agora)
 
-  const aulas = tokenAtual
+  const aulasCandidatas = tokenAtual
     ? await db.aula.findMany({
         where: {
           cancelada: false,
-          inicio: { lte: proximoInicioLiberado },
-          fim: { gte: agora },
-          turma: { modalidadeId: { in: modalidadeIds } },
+          OR: [
+            { inicio: { gte: inicioDia, lt: fimDia } },
+            { inicio: { lt: inicioDia }, fim: { gte: agora } },
+          ],
+          turma: {
+            ativa: true,
+            modalidadeId: { in: modalidadeIds },
+            modalidade: { ativa: true },
+          },
         },
-        orderBy: { inicio: "asc" },
-        take: 8,
+        orderBy: [{ inicio: "asc" }, { id: "asc" }],
         include: {
           turma: {
             select: {
+              capacidade: true,
               nome: true,
               local: true,
-              modalidade: { select: { nome: true } },
+              ehEvento: true,
+              modalidade: {
+                select: { id: true, nome: true, checkinSemRestricaoHorario: true },
+              },
             },
           },
+          comparecimentos: { select: { alunoId: true, status: true } },
           checkins: {
-            where: { alunoId },
-            select: { id: true, status: true },
+            select: {
+              id: true,
+              alunoId: true,
+              status: true,
+              realizadoEm: true,
+              associadoAutomaticamente: true,
+            },
           },
         },
       })
     : []
+
+  const referenciasLivres = new Set<string>()
+  const aulasLivresPorModalidade = new Map<string, typeof aulasCandidatas>()
+  for (const aula of aulasCandidatas) {
+    if (!aula.turma.modalidade.checkinSemRestricaoHorario || aula.turma.ehEvento) continue
+    const modalidadeId = aula.turma.modalidade.id
+    aulasLivresPorModalidade.set(modalidadeId, [
+      ...(aulasLivresPorModalidade.get(modalidadeId) ?? []),
+      aula,
+    ])
+  }
+  for (const candidatas of aulasLivresPorModalidade.values()) {
+    const referencia = selecionarAulaReferenciaCheckinLivre(
+      candidatas.map((aula) => montarCandidataCheckinLivre(aula, alunoId)),
+      agora,
+    )
+    if (referencia) referenciasLivres.add(referencia.id)
+  }
+
+  const aulas = aulasCandidatas
+    .filter((aula) =>
+      aula.turma.modalidade.checkinSemRestricaoHorario
+        ? referenciasLivres.has(aula.id)
+        : aula.inicio <= proximoInicioLiberado && aula.fim >= agora,
+    )
+    .slice(0, 8)
 
   return (
     <div className="space-y-5">
@@ -113,7 +166,8 @@ export default async function CheckinGlobalPage({
             <div>
               <p className="font-medium text-foreground">Nenhuma aula liberada agora.</p>
               <p className="mt-1">
-                O check-in abre 30 minutos antes e fecha no fim do horário da aula.
+                Nas modalidades com horário livre, é necessário haver uma aula oficial no dia. Nas
+                demais, o check-in abre 30 minutos antes e fecha no fim da aula.
               </p>
             </div>
           </CardContent>
@@ -122,22 +176,35 @@ export default async function CheckinGlobalPage({
 
       <div className="grid gap-3">
         {aulas.map((aula) => {
-          const checkinValido = aula.checkins.find((checkin) => checkin.status === "VALIDO")
-          const pendenteRevisao = aula.checkins.some(
-            (checkin) => checkin.status === "PENDENTE_REVISAO",
+          const checkinValido = aula.checkins.find(
+            (checkin) => checkin.alunoId === alunoId && checkin.status === "VALIDO",
           )
+          const pendenteRevisao = aula.checkins.some(
+            (checkin) => checkin.alunoId === alunoId && checkin.status === "PENDENTE_REVISAO",
+          )
+          const checkinPendente = aula.checkins.find(
+            (checkin) => checkin.alunoId === alunoId && checkin.status === "PENDENTE_REVISAO",
+          )
+          const registro = checkinValido ?? checkinPendente
+          const horarioLivre = aula.turma.modalidade.checkinSemRestricaoHorario
 
           return (
             <Card key={aula.id}>
               <CardHeader>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">{aula.turma.modalidade.nome}</Badge>
+                  {horarioLivre && <Badge variant="secondary">Check-in livre</Badge>}
                   {checkinValido && (
                     <Badge variant="success" className="gap-1">
                       <Check className="size-3.5" /> Presente
                     </Badge>
                   )}
                   {pendenteRevisao && <Badge variant="warning">Pendente de revisão</Badge>}
+                  {registro?.associadoAutomaticamente && (
+                    <Badge variant="outline">
+                      Check-in às {formatarHora(registro.realizadoEm)}
+                    </Badge>
+                  )}
                 </div>
                 <CardTitle className="capitalize">{formatarDataExtenso(aula.inicio)}</CardTitle>
               </CardHeader>
@@ -146,6 +213,12 @@ export default async function CheckinGlobalPage({
                   {formatarHora(aula.inicio)}-{formatarHora(aula.fim)}
                   {aula.turma.local ? ` · ${aula.turma.local}` : ""}
                 </p>
+                {horarioLivre && !registro && (
+                  <p className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                    Seu check-in será associado à aula das {formatarHora(aula.inicio)}. O horário
+                    exato será registrado.
+                  </p>
+                )}
 
                 {checkinValido ? (
                   <Button asChild className="w-full">
