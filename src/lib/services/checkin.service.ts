@@ -13,6 +13,7 @@ import {
   selecionarAulaReferenciaCheckinLivre,
 } from "@/lib/checkin-horario"
 import { db } from "@/lib/db"
+import { coordenadasGeograficasValidas, estaProximoDaAcademia } from "@/lib/geolocalizacao"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
 import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
@@ -168,6 +169,8 @@ export type ResultadoCheckin =
         | "FORA_DA_JANELA"
         | "INADIMPLENTE"
         | "TOKEN_INVALIDO"
+        | "FORA_DA_AREA"
+        | "LOCALIZACAO_INVALIDA"
         | "TERMO_NAO_ACEITO"
         | "SEM_AULA_REFERENCIA"
     }
@@ -216,7 +219,7 @@ export function montarCandidataCheckinLivre(
   }
 }
 
-async function resolverAulaReferenciaCheckinQr(params: {
+async function resolverAulaReferenciaCheckinAluno(params: {
   alunoId: string
   aulaId: string
   agora: Date
@@ -404,23 +407,72 @@ export async function realizarCheckinQr(params: {
     }
   }
 
-  const agora = params.agora ?? new Date()
-  const referencia = await resolverAulaReferenciaCheckinQr({
+  return realizarCheckinComAulaReferencia({
     alunoId: params.alunoId,
     aulaId: params.aulaId,
-    agora,
+    autorId: params.autorId,
+    origem: "QR_CODE",
+    agora: params.agora ?? new Date(),
   })
+}
+
+/**
+ * Confirma o check-in pela localização atual do dispositivo. As coordenadas não são persistidas;
+ * elas apenas autorizam esta tentativa quando estão a até 300 m da academia.
+ */
+export async function realizarCheckinGeolocalizacao(params: {
+  alunoId: string
+  aulaId: string
+  autorId: string
+  latitude: number
+  longitude: number
+  agora?: Date
+}): Promise<ResultadoCheckin> {
+  if (!coordenadasGeograficasValidas(params.latitude, params.longitude)) {
+    return {
+      ok: false,
+      codigo: "LOCALIZACAO_INVALIDA",
+      motivo: "Não foi possível validar a localização informada.",
+    }
+  }
+
+  if (!estaProximoDaAcademia(params.latitude, params.longitude)) {
+    return {
+      ok: false,
+      codigo: "FORA_DA_AREA",
+      motivo:
+        "Você precisa estar a até 300 metros da academia para fazer check-in pela localização.",
+    }
+  }
+
+  return realizarCheckinComAulaReferencia({
+    alunoId: params.alunoId,
+    aulaId: params.aulaId,
+    autorId: params.autorId,
+    origem: "GEOLOCALIZACAO",
+    agora: params.agora ?? new Date(),
+  })
+}
+
+async function realizarCheckinComAulaReferencia(params: {
+  alunoId: string
+  aulaId: string
+  autorId: string
+  origem: OrigemCheckin
+  agora: Date
+}): Promise<ResultadoCheckin> {
+  const referencia = await resolverAulaReferenciaCheckinAluno(params)
   if (!referencia.ok) return referencia
 
   const resultado = await realizarCheckin({
     alunoId: params.alunoId,
     aulaId: referencia.aulaId,
     autorId: params.autorId,
-    origem: "QR_CODE",
+    origem: params.origem,
     exigirJanelaCheckin: true,
     bloquearInadimplenciaSempre: true,
     associadoAutomaticamente: referencia.associadoAutomaticamente,
-    agora,
+    agora: params.agora,
   })
   if (
     resultado.ok ||
@@ -432,22 +484,18 @@ export async function realizarCheckinQr(params: {
 
   // A referência pode ter lotado entre a seleção e o lock transacional. Reconsulta uma vez
   // para aproveitar o próximo horário futuro disponível, sem confirmar além da capacidade.
-  const novaReferencia = await resolverAulaReferenciaCheckinQr({
-    alunoId: params.alunoId,
-    aulaId: params.aulaId,
-    agora,
-  })
+  const novaReferencia = await resolverAulaReferenciaCheckinAluno(params)
   if (!novaReferencia.ok || novaReferencia.aulaId === referencia.aulaId) return resultado
 
   return realizarCheckin({
     alunoId: params.alunoId,
     aulaId: novaReferencia.aulaId,
     autorId: params.autorId,
-    origem: "QR_CODE",
+    origem: params.origem,
     exigirJanelaCheckin: true,
     bloquearInadimplenciaSempre: true,
     associadoAutomaticamente: true,
-    agora,
+    agora: params.agora,
   })
 }
 
@@ -745,6 +793,7 @@ export async function realizarCheckin(params: {
             minutos: avaliacao.pendenteRevisao ? 0 : aulaAtual.duracaoMin,
             realizadoEm: agora.toISOString(),
             aulaInicio: aulaAtual.inicio.toISOString(),
+            origem: params.origem ?? "BOTAO",
             associadoAutomaticamente: params.associadoAutomaticamente ?? false,
           },
           justificativa: params.justificativa ?? null,

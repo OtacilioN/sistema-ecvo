@@ -6,7 +6,7 @@ O modelo técnico legado `Comparecimento` representa o agendamento da aula pelo 
 | Termo | Significado |
 | --- | --- |
 | **Agendamento de aula** | Reserva/sinalização do aluno para participar de um treino específico. **Não** gera presença nem horas (RN-001). Janela padrão: a partir de 24h antes da aula. |
-| **Check-in** | Confirmação de chegada/participação do aluno no treino. Pode ser por botão, QR Code ou lançado por gestor/professor. |
+| **Check-in** | Confirmação de chegada/participação do aluno no treino. Pode ser por botão, QR Code, geolocalização a até 300 m da academia ou lançado por gestor/professor. |
 | **Check-in com horário livre** | Regra opcional da modalidade que aceita check-in fora da janela padrão. O sistema mantém o horário real e associa o registro a uma aula oficial de referência do mesmo dia. |
 | **Presença** | Resultado derivado de um **check-in válido** (RN-002). Não é uma tabela própria: presença ≡ existe `Checkin` com `status = VALIDO`. |
 | **Invalidar / excluir check-in** | Ação de professor/gestor quando o aluno fez check-in mas não treinou. Remove a presença e **estorna** as horas, com log de auditoria (RF-027/028/035). |

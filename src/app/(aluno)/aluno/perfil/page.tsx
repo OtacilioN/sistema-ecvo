@@ -66,6 +66,7 @@ const VARIANTE_CHECKIN: Record<StatusCheckin, BadgeProps["variant"]> = {
 const ROTULO_ORIGEM_CHECKIN: Record<OrigemCheckin, string> = {
   BOTAO: "Botão",
   QR_CODE: "QR Code",
+  GEOLOCALIZACAO: "Geolocalização",
   LANCADO_GESTOR: "Lançado pelo gestor",
   LANCADO_PROFESSOR: "Lançado pelo professor",
 }

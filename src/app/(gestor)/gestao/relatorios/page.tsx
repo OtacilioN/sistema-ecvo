@@ -467,6 +467,7 @@ const ROTULOS: Record<string, string> = {
   // Origem de check-in
   BOTAO: "Botão",
   QR_CODE: "QR Code",
+  GEOLOCALIZACAO: "Geolocalização",
   LANCADO_GESTOR: "Lançado pelo gestor",
   LANCADO_PROFESSOR: "Lançado pelo professor",
   // Status de agendamento

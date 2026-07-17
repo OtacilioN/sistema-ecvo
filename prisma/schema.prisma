@@ -49,6 +49,7 @@ enum StatusCheckin {
 enum OrigemCheckin {
   BOTAO
   QR_CODE
+  GEOLOCALIZACAO
   LANCADO_GESTOR
   LANCADO_PROFESSOR
 }

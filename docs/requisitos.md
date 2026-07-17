@@ -92,7 +92,7 @@ aluno experimental.
 - **RF-018** No-show: marcou agendamento mas não fez check-in.
 
 ### Check-in
-- **RF-019** Realização de check-in (botão, QR Code, lançamento por gestor/professor).
+- **RF-019** Realização de check-in (botão, QR Code, geolocalização a até 300 m da academia, lançamento por gestor/professor).
 - **RF-020** Validação (aluno ativo; permissão; plano mensal interno adimplente se configurado; aula
   existente; há agendamento se exigido; vaga disponível).
 - **RF-020.1** A modalidade pode liberar check-in sem restrição de horário. Nesse modo, o sistema

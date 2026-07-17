@@ -16,6 +16,7 @@ import {
   inicioDoDiaAcademia,
 } from "@/lib/utils/datas"
 import { MinhasHorasAluno } from "../minhas-horas-aluno"
+import { FormCheckinGeolocalizacao } from "./form-checkin-geolocalizacao"
 import { FormCheckinGlobal } from "./form-checkin-global"
 import { LeitorQRCodeAluno } from "./leitor-qrcode-aluno"
 
@@ -50,7 +51,7 @@ export default async function CheckinGlobalPage({
   const inicioDia = inicioDoDiaAcademia(agora)
   const fimDia = fimExclusivoDoDiaAcademia(agora)
 
-  const aulasCandidatas = tokenAtual
+  const aulasCandidatas = alunoOperacional
     ? await db.aula.findMany({
         where: {
           cancelada: false,
@@ -137,9 +138,7 @@ export default async function CheckinGlobalPage({
             <AlertTriangle className="mt-0.5 size-5 shrink-0" />
             <div>
               <p className="font-medium">QR Code expirado ou inválido.</p>
-              <p className="mt-1 text-destructive/80">
-                Leia o QR Code atual na entrada da academia para liberar o check-in.
-              </p>
+              <p className="mt-1 text-destructive/80">Leia o QR Code atual ou use a localização.</p>
             </div>
           </CardContent>
         </Card>
@@ -159,7 +158,7 @@ export default async function CheckinGlobalPage({
         </Card>
       )}
 
-      {alunoOperacional && tokenAtual && aulas.length === 0 && (
+      {alunoOperacional && aulas.length === 0 && (
         <Card>
           <CardContent className="flex gap-3 py-6 text-sm text-muted-foreground">
             <Clock className="mt-0.5 size-5 shrink-0" />
@@ -228,8 +227,10 @@ export default async function CheckinGlobalPage({
                   <p className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
                     Check-in pendente de revisão.
                   </p>
-                ) : (
+                ) : tokenAtual ? (
                   <FormCheckinGlobal aulaId={aula.id} token={token ?? ""} />
+                ) : (
+                  <FormCheckinGeolocalizacao aulaId={aula.id} />
                 )}
               </CardContent>
             </Card>

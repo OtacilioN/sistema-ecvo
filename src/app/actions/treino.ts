@@ -9,6 +9,7 @@ import {
   checkinRetroativo,
   invalidarCheckin,
   realizarCheckin,
+  realizarCheckinGeolocalizacao,
   realizarCheckinQr,
 } from "@/lib/services/checkin.service"
 import {
@@ -16,6 +17,7 @@ import {
   marcarComparecimento,
   marcarNoShows,
 } from "@/lib/services/comparecimento.service"
+import { coordenadasCheckinSchema } from "@/lib/validations/checkin"
 import { observacaoTecnicaSchema } from "@/lib/validations/observacoes"
 
 export type EstadoTreino =
@@ -64,7 +66,7 @@ export async function acaoCheckinAluno(
   _formData: FormData,
 ): Promise<EstadoTreino> {
   await exigirAluno()
-  return { erro: "Leia o QR Code da entrada da academia para fazer check-in." }
+  return { erro: "Leia o QR Code da entrada ou use a localização para fazer check-in." }
 }
 
 export async function acaoCheckinAlunoQr(
@@ -97,6 +99,49 @@ export async function acaoCheckinAlunoQr(
     erro: r.motivo,
     inadimplente: r.codigo === "INADIMPLENTE",
     tokenInvalido: r.codigo === "TOKEN_INVALIDO",
+    foraDaJanela: r.codigo === "FORA_DA_JANELA",
+    termoPendente: r.codigo === "TERMO_NAO_ACEITO",
+  }
+}
+
+export async function acaoCheckinAlunoGeolocalizacao(
+  _: EstadoTreino,
+  formData: FormData,
+): Promise<EstadoTreino> {
+  const { alunoId, usuario } = await exigirAluno()
+  const dados = coordenadasCheckinSchema.safeParse({
+    aulaId: formData.get("aulaId"),
+    latitude: formData.get("latitude"),
+    longitude: formData.get("longitude"),
+  })
+  if (!dados.success) return { erro: "Não foi possível validar a sua localização." }
+
+  const r = await realizarCheckinGeolocalizacao({
+    alunoId,
+    autorId: usuario.id,
+    ...dados.data,
+  })
+  revalidatePath("/aluno")
+  revalidatePath("/aluno/checkin")
+  revalidatePath(`/aluno/checkin/${dados.data.aulaId}`)
+  revalidatePath(`/professor/aula/${dados.data.aulaId}`)
+  revalidatePath(`/gestao/turmas/aula/${dados.data.aulaId}`)
+  revalidatePath("/gestao/checkin")
+  revalidatePath("/gestao/auditoria")
+  revalidatePath("/gestao/notificacoes")
+  revalidatePath("/professor/notificacoes")
+
+  if (r.ok) {
+    if (r.aulaId && r.aulaId !== dados.data.aulaId) {
+      revalidatePath(`/professor/aula/${r.aulaId}`)
+      revalidatePath(`/gestao/turmas/aula/${r.aulaId}`)
+    }
+    redirect(`/aluno/checkin/passe/${r.checkinId}`)
+  }
+
+  return {
+    erro: r.motivo,
+    inadimplente: r.codigo === "INADIMPLENTE",
     foraDaJanela: r.codigo === "FORA_DA_JANELA",
     termoPendente: r.codigo === "TERMO_NAO_ACEITO",
   }
