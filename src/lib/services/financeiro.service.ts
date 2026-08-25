@@ -23,8 +23,6 @@ export type MensalidadeResumo = {
 export type ConfiguracaoRepasseFinanceiro = {
   valorBaseModalidade: number
   percentualProfessor: number
-  percentualSocioA: number
-  percentualSocioB: number
 }
 
 export type ItemRepasseModalidade = {
@@ -66,6 +64,15 @@ export type ResultadoRepasseFinanceiro = {
       tetoProfessor: number
     }>
   }>
+  sobraAposProfessores: number
+}
+
+export type ResultadoDistribuicaoSobraFinanceira = {
+  sobraAposProfessores: number
+  custosFixos: number
+  saldoAposCustosFixos: number
+  valorDistribuivel: number
+  caixaInvestimento: number
   socioA: number
   socioB: number
 }
@@ -73,9 +80,9 @@ export type ResultadoRepasseFinanceiro = {
 export const CONFIGURACAO_REPASSE_PADRAO: ConfiguracaoRepasseFinanceiro = {
   valorBaseModalidade: 100,
   percentualProfessor: 60,
-  percentualSocioA: 20,
-  percentualSocioB: 20,
 }
+
+export const CUSTOS_FIXOS_MENSAIS = 2670
 
 export function statusMensalidadeEfetivo(
   mensalidade: MensalidadeResumo,
@@ -243,11 +250,10 @@ export function calcularRepasseFinanceiro(params: {
           )
 
   const repasseProfessoresCentavos = valoresProfessor.reduce((total, valor) => total + valor, 0)
-  const restanteSociosCentavos = Math.max(0, valorRecebidoCentavos - repasseProfessoresCentavos)
-  const [socioACentavos, socioBCentavos] = dividirProporcionalmente(restanteSociosCentavos, [
-    config.percentualSocioA,
-    config.percentualSocioB,
-  ])
+  const sobraAposProfessoresCentavos = Math.max(
+    0,
+    valorRecebidoCentavos - repasseProfessoresCentavos,
+  )
 
   const professores = new Map<
     string,
@@ -285,6 +291,37 @@ export function calcularRepasseFinanceiro(params: {
     professores: Array.from(professores.values()).map(({ valorCentavos: _, ...professor }) => ({
       ...professor,
     })),
+    sobraAposProfessores: deCentavos(sobraAposProfessoresCentavos),
+  }
+}
+
+export function calcularDistribuicaoSobraFinanceira(params: {
+  totalRecebido: number
+  totalProfessores: number
+  custosFixos?: number
+}): ResultadoDistribuicaoSobraFinanceira {
+  const totalRecebidoCentavos = paraCentavos(params.totalRecebido)
+  const totalProfessoresCentavos = paraCentavos(params.totalProfessores)
+  const custosFixosCentavos = paraCentavos(params.custosFixos ?? CUSTOS_FIXOS_MENSAIS)
+
+  if (totalRecebidoCentavos < 0 || totalProfessoresCentavos < 0 || custosFixosCentavos < 0) {
+    throw new Error("Totais financeiros e custos fixos não podem ser negativos.")
+  }
+
+  const sobraAposProfessoresCentavos = totalRecebidoCentavos - totalProfessoresCentavos
+  const saldoAposCustosFixosCentavos = sobraAposProfessoresCentavos - custosFixosCentavos
+  const valorDistribuivelCentavos = Math.max(0, saldoAposCustosFixosCentavos)
+  const [caixaInvestimentoCentavos, socioACentavos, socioBCentavos] = dividirProporcionalmente(
+    valorDistribuivelCentavos,
+    [1, 1, 1],
+  )
+
+  return {
+    sobraAposProfessores: deCentavos(sobraAposProfessoresCentavos),
+    custosFixos: deCentavos(custosFixosCentavos),
+    saldoAposCustosFixos: deCentavos(saldoAposCustosFixosCentavos),
+    valorDistribuivel: deCentavos(valorDistribuivelCentavos),
+    caixaInvestimento: deCentavos(caixaInvestimentoCentavos),
     socioA: deCentavos(socioACentavos),
     socioB: deCentavos(socioBCentavos),
   }
@@ -1396,13 +1433,8 @@ function validarConfiguracaoRepasse(config: ConfiguracaoRepasseFinanceiro) {
   if (config.valorBaseModalidade <= 0) {
     throw new Error("Valor base da modalidade deve ser positivo.")
   }
-  const percentuais = [config.percentualProfessor, config.percentualSocioA, config.percentualSocioB]
-  if (percentuais.some((percentual) => percentual < 0)) {
-    throw new Error("Percentuais de repasse não podem ser negativos.")
-  }
-  const total = percentuais.reduce((soma, percentual) => soma + percentual, 0)
-  if (Math.abs(total - 100) > 0.001) {
-    throw new Error("Percentuais de repasse devem somar 100%.")
+  if (config.percentualProfessor < 0 || config.percentualProfessor > 100) {
+    throw new Error("Percentual de repasse do professor deve estar entre 0% e 100%.")
   }
 }
 

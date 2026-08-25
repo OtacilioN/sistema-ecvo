@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import {
+  calcularDistribuicaoSobraFinanceira,
   calcularRepasseFinanceiro,
   type ItemRepasseMensalidadeSnapshot,
   type ItemRepasseModalidade,
   lerRepasseSnapshotMensalidade,
 } from "@/lib/services/financeiro.service"
+import { cn } from "@/lib/utils"
 import { chaveCompetencia, formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
@@ -24,7 +26,7 @@ type LinhaRepasse = {
   chave: string
   destinatarioId: string
   destinatario: string
-  papel: "Professor" | "Sócio A" | "Sócio B" | "Pendência"
+  papel: "Professor" | "Caixa/investimento" | "Sócio A" | "Sócio B" | "Pendência"
   origem: string
   valor: number
   eventos: number
@@ -58,8 +60,7 @@ type LinhaExtratoRepasse = {
   valorRecebido: number
   professores: string
   repasseProfessores: number
-  socioA: number
-  socioB: number
+  sobraAposProfessores: number
 }
 
 function valorUnico(valor: string | string[] | undefined) {
@@ -157,8 +158,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const pendencias: PendenciaRepasse[] = []
   let totalRecebido = 0
   let totalProfessores = 0
-  let totalSocioA = 0
-  let totalSocioB = 0
   const extrato: LinhaExtratoRepasse[] = []
 
   function somarLinha(params: Omit<LinhaRepasse, "chave" | "eventos">) {
@@ -205,10 +204,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       politica: "MENSALIDADE_INTERNA",
       configuracao: { valorBaseModalidade },
     })
+    const repasseProfessores = repasse.professores.reduce(
+      (total, professor) => total + professor.valor,
+      0,
+    )
     totalRecebido += repasse.valorRecebido
-    totalProfessores += repasse.professores.reduce((total, professor) => total + professor.valor, 0)
-    totalSocioA += repasse.socioA
-    totalSocioB += repasse.socioB
+    totalProfessores += repasseProfessores
     extrato.push({
       chave: `mensalidade:${mensalidade.id}`,
       origem: "Mensalidade interna",
@@ -219,12 +220,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       formaPagamento: mensalidade.formaPagamento,
       valorRecebido: repasse.valorRecebido,
       professores: nomesProfessoresRepasse(repasse.professores),
-      repasseProfessores: repasse.professores.reduce(
-        (total, professor) => total + professor.valor,
-        0,
-      ),
-      socioA: repasse.socioA,
-      socioB: repasse.socioB,
+      repasseProfessores,
+      sobraAposProfessores: repasse.sobraAposProfessores,
     })
 
     for (const professor of repasse.professores) {
@@ -236,20 +233,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         valor: professor.valor,
       })
     }
-    somarLinha({
-      destinatarioId: "socio-a",
-      destinatario: "Sócio A",
-      papel: "Sócio A",
-      origem: "Mensalidade interna",
-      valor: repasse.socioA,
-    })
-    somarLinha({
-      destinatarioId: "socio-b",
-      destinatario: "Sócio B",
-      papel: "Sócio B",
-      origem: "Mensalidade interna",
-      valor: repasse.socioB,
-    })
   }
 
   for (const registro of registrosExternos) {
@@ -282,10 +265,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       politica: "REPASSE_EXTERNO",
       configuracao: { valorBaseModalidade },
     })
+    const repasseProfessores = repasse.professores.reduce(
+      (total, professor) => total + professor.valor,
+      0,
+    )
     totalRecebido += repasse.valorRecebido
-    totalProfessores += repasse.professores.reduce((total, professor) => total + professor.valor, 0)
-    totalSocioA += repasse.socioA
-    totalSocioB += repasse.socioB
+    totalProfessores += repasseProfessores
     extrato.push({
       chave: `externo:${registro.id}`,
       origem,
@@ -296,12 +281,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       formaPagamento: origem,
       valorRecebido: repasse.valorRecebido,
       professores: nomesProfessoresRepasse(repasse.professores),
-      repasseProfessores: repasse.professores.reduce(
-        (total, professor) => total + professor.valor,
-        0,
-      ),
-      socioA: repasse.socioA,
-      socioB: repasse.socioB,
+      repasseProfessores,
+      sobraAposProfessores: repasse.sobraAposProfessores,
     })
 
     for (const professor of repasse.professores) {
@@ -313,19 +294,43 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         valor: professor.valor,
       })
     }
-    somarLinha({
-      destinatarioId: "socio-a",
-      destinatario: "Sócio A",
-      papel: "Sócio A",
-      origem,
-      valor: repasse.socioA,
-    })
-    somarLinha({
-      destinatarioId: "socio-b",
-      destinatario: "Sócio B",
-      papel: "Sócio B",
-      origem,
-      valor: repasse.socioB,
+  }
+
+  const distribuicaoSobra = calcularDistribuicaoSobraFinanceira({
+    totalRecebido,
+    totalProfessores,
+  })
+  const eventosDaSobra = extrato.length
+  const origemSobra = "Resultado mensal após custos fixos"
+  for (const destinatario of [
+    {
+      id: "caixa-investimento",
+      nome: "Caixa/investimento",
+      papel: "Caixa/investimento" as const,
+      valor: distribuicaoSobra.caixaInvestimento,
+    },
+    {
+      id: "socio-a",
+      nome: "Sócio A",
+      papel: "Sócio A" as const,
+      valor: distribuicaoSobra.socioA,
+    },
+    {
+      id: "socio-b",
+      nome: "Sócio B",
+      papel: "Sócio B" as const,
+      valor: distribuicaoSobra.socioB,
+    },
+  ]) {
+    const chave = `${destinatario.papel}:${destinatario.id}:${origemSobra}`
+    linhas.set(chave, {
+      chave,
+      destinatarioId: destinatario.id,
+      destinatario: destinatario.nome,
+      papel: destinatario.papel,
+      origem: origemSobra,
+      valor: destinatario.valor,
+      eventos: eventosDaSobra,
     })
   }
 
@@ -345,7 +350,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     <div className="space-y-6">
       <CabecalhoPagina
         titulo="Repasses"
-        descricao="Divisão por professor, sócio A e sócio B nas mensalidades e plataformas."
+        descricao="Repasses dos professores, custos fixos e divisão mensal da sobra em três partes iguais."
       >
         <Button asChild variant="outline">
           <Link href="/gestao/financeiro">Voltar ao financeiro</Link>
@@ -367,11 +372,25 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Resumo rotulo="Recebido" valor={formatarBRL(totalRecebido)} />
         <Resumo rotulo="Professores" valor={formatarBRL(totalProfessores)} />
-        <Resumo rotulo="Sócio A" valor={formatarBRL(totalSocioA)} />
-        <Resumo rotulo="Sócio B" valor={formatarBRL(totalSocioB)} />
+        <Resumo
+          rotulo="Sobra após professores"
+          valor={formatarBRL(distribuicaoSobra.sobraAposProfessores)}
+        />
+        <Resumo rotulo="Custos fixos" valor={formatarBRL(distribuicaoSobra.custosFixos)} />
+        <Resumo
+          rotulo="Saldo após custos fixos"
+          valor={formatarBRL(distribuicaoSobra.saldoAposCustosFixos)}
+          tom={distribuicaoSobra.saldoAposCustosFixos < 0 ? "negativo" : "positivo"}
+        />
+        <Resumo
+          rotulo="Caixa/investimento"
+          valor={formatarBRL(distribuicaoSobra.caixaInvestimento)}
+        />
+        <Resumo rotulo="Sócio A" valor={formatarBRL(distribuicaoSobra.socioA)} />
+        <Resumo rotulo="Sócio B" valor={formatarBRL(distribuicaoSobra.socioB)} />
         <Resumo rotulo="Pendências" valor={formatarBRL(valorPendenteProfessor)} />
       </div>
 
@@ -519,8 +538,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   <th className="p-4 font-medium">Professores</th>
                   <th className="p-4 text-right font-medium">Recebido</th>
                   <th className="p-4 text-right font-medium">Professor</th>
-                  <th className="p-4 text-right font-medium">Sócio A</th>
-                  <th className="p-4 text-right font-medium">Sócio B</th>
+                  <th className="p-4 text-right font-medium">Sobra após professor</th>
                 </tr>
               </thead>
               <tbody>
@@ -555,17 +573,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     <td className="p-4 text-right tabular-nums" data-label="Professor">
                       {formatarBRL(linha.repasseProfessores)}
                     </td>
-                    <td className="p-4 text-right tabular-nums" data-label="Sócio A">
-                      {formatarBRL(linha.socioA)}
-                    </td>
-                    <td className="p-4 text-right tabular-nums" data-label="Sócio B">
-                      {formatarBRL(linha.socioB)}
+                    <td className="p-4 text-right tabular-nums" data-label="Sobra após professor">
+                      {formatarBRL(linha.sobraAposProfessores)}
                     </td>
                   </tr>
                 ))}
                 {extratoOrdenado.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="p-10 text-center text-muted-foreground">
+                    <td colSpan={10} className="p-10 text-center text-muted-foreground">
                       Nenhuma receita encontrada no mês selecionado.
                     </td>
                   </tr>
@@ -658,9 +673,10 @@ function itemModalidadeSnapshot(
 function ordemPapel(papel: LinhaRepasse["papel"]) {
   const ordem: Record<LinhaRepasse["papel"], number> = {
     Professor: 0,
-    "Sócio A": 1,
-    "Sócio B": 2,
-    Pendência: 3,
+    "Caixa/investimento": 1,
+    "Sócio A": 2,
+    "Sócio B": 3,
+    Pendência: 4,
   }
   return ordem[papel]
 }
@@ -708,12 +724,28 @@ function consolidarProfessores(linhas: LinhaRepasse[]): LinhaProfessor[] {
     .sort((a, b) => b.total - a.total || a.professorNome.localeCompare(b.professorNome))
 }
 
-function Resumo({ rotulo, valor }: { rotulo: string; valor: string }) {
+function Resumo({
+  rotulo,
+  valor,
+  tom = "padrao",
+}: {
+  rotulo: string
+  valor: string
+  tom?: "padrao" | "positivo" | "negativo"
+}) {
   return (
     <Card>
       <CardContent className="py-5">
         <p className="text-xs text-muted-foreground">{rotulo}</p>
-        <p className="mt-1 text-xl font-bold tabular-nums">{valor}</p>
+        <p
+          className={cn(
+            "mt-1 text-xl font-bold tabular-nums",
+            tom === "positivo" && "text-emerald-700",
+            tom === "negativo" && "text-destructive",
+          )}
+        >
+          {valor}
+        </p>
       </CardContent>
     </Card>
   )

@@ -141,7 +141,7 @@ export function FormConfiguracao({
             </label>
           </fieldset>
 
-          <fieldset className="grid gap-4 rounded-md border border-border p-4 md:col-span-2 md:grid-cols-3">
+          <fieldset className="grid gap-4 rounded-md border border-border p-4 md:col-span-2 md:grid-cols-2 lg:grid-cols-4">
             <legend className="px-1 text-sm font-medium text-muted-foreground">Financeiro</legend>
             <div className="space-y-1.5">
               <Label htmlFor="valorBaseModalidade">Valor base por modalidade</Label>
@@ -157,7 +157,8 @@ export function FormConfiguracao({
               />
             </div>
             <CampoSomenteLeitura rotulo="Professor" valor="60%" />
-            <CampoSomenteLeitura rotulo="Sócios" valor="20% + 20%" />
+            <CampoSomenteLeitura rotulo="Custos fixos mensais" valor="R$ 2.670,00" />
+            <CampoSomenteLeitura rotulo="Divisão após custos" valor="Caixa + Sócio A + Sócio B" />
           </fieldset>
 
           <fieldset className="space-y-3 rounded-md border border-border p-4 md:col-span-2">

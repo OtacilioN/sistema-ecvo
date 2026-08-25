@@ -139,9 +139,13 @@ aluno experimental.
 - **RF-052** Pagamentos avulsos (aula, diária, pacote, seminário, evento, exame, produto).
 - **RF-053** Wellhub/TotalPass podem combinar vínculo externo com plano mensal interno por modalidade.
 - **RF-053.1** Divisão de receita de mensalidade interna: valor base global por modalidade; professor recebe
-  até 60% do valor base cheio por modalidade; sócio A e sócio B dividem o excedente igualmente. Descontos
-  reduzem primeiro a parte dos sócios e, se a arrecadação não atingir o teto dos professores, reduzem
+  até 60% do valor base cheio por modalidade. Descontos reduzem primeiro a sobra e, se a arrecadação não
+  atingir o teto dos professores, reduzem
   proporcionalmente a parte dos professores.
+- **RF-053.2** Da sobra mensal após os professores, são abatidos primeiro R$ 2.670,00 de custos fixos
+  (aluguel, água, luz e internet). Um déficit é exibido como valor negativo em vermelho; saldo zero ou
+  positivo é exibido em verde. Somente o saldo positivo é dividido igualmente entre Caixa/investimento,
+  Sócio A e Sócio B.
 
 ### Wellhub e TotalPass
 - **RF-054** Cadastro do tipo de vínculo. **RF-055** Mesmo fluxo operacional de treino.
@@ -151,7 +155,7 @@ aluno experimental.
 - **RF-060** Conciliação com histórico interno. **RF-061** Status de conciliação.
 - **RF-062** Resolução manual de divergências (com log). **RF-063** Relatório de conciliação. **RF-064** Histórico de importações.
 - **RF-064.1** Divisão de repasse Wellhub/TotalPass: professor recebe 60% do valor repassado pela plataforma
-  no período; sócio A recebe 20%; sócio B recebe 20%.
+  no período; os 40% restantes integram a sobra mensal sujeita aos custos fixos e à divisão da RF-053.2.
 
 ### Relatórios
 - **RF-065..072** Alunos, agendamentos, check-ins, presença, horas, graduação, financeiro, conciliação.
@@ -171,12 +175,14 @@ várias graduações · RN-009 professor é responsável pela graduação · RN-
 automaticamente · RN-011 Wellhub/TotalPass conciliam por planilha no MVP · RN-012 plano mensal interno tem
 controle financeiro · RN-013 avulso tem pagamentos pontuais · RN-014 **não existe aluno experimental** ·
 RN-015 CPF tem prioridade na identificação · RN-016 check-in invalidado deve aparecer na conciliação ·
-RN-017 repasse de mensalidade interna usa cascata: professores até o teto por modalidade, depois sócios ·
-RN-018 repasse Wellhub/TotalPass divide o valor repassado diretamente em 60/20/20.
+RN-017 repasse de mensalidade interna usa cascata: professores até o teto por modalidade, depois sobra mensal ·
+RN-018 repasse Wellhub/TotalPass separa 60% para o professor e 40% para a sobra mensal.
 
 RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 como padrão inicial.
 RN-020 plano é um pacote comercial disponível para qualquer modalidade; as modalidades contratadas são
 definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno.
+RN-021 a sobra mensal paga primeiro R$ 2.670,00 de custos fixos; apenas o saldo positivo é dividido
+igualmente entre Caixa/investimento, Sócio A e Sócio B.
 
 ## 8. Requisitos não funcionais (RNF)
 

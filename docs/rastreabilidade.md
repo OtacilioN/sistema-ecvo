@@ -50,7 +50,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Mensalidades, status ajustável com auditoria, adimplência, lembretes para gestores e alerta automático ao aluno inadimplente (RF-048..051/RF-073..078/RF-079) | `Mensalidade`,`ConfiguracaoAcademia`,`LogAuditoria`,`Notificacao` | `financeiro.service.ts`, `src/app/api/tarefas/lembretes-financeiros/route.ts`, `gestao/financeiro`, `aluno/financeiro`, `checkin.service.ts`, `comparecimento.service.ts` |
 | Pagamentos avulsos (RF-052) | `Pagamento` | `financeiro.service.ts`, `gestao/financeiro`, `aluno/financeiro` |
 | Wellhub/TotalPass com plano mensal interno por modalidade (RF-053) | `Aluno.tipo`,`Aluno.planoId`,`AlunoPlanoModalidade` | `financeiro.service.ts`, `checkin.service.ts`, `comparecimento.service.ts`, `aluno/financeiro` |
-| Divisão de receita e repasse professor/sócios (RF-053.1/RF-064.1/RN-017/RN-018) | `ConfiguracaoAcademia.valorBaseModalidade`,`RegistroImportado.valorRepasse` | `calcularRepasseFinanceiro`, `conciliacao.service.ts`, `gestao/configuracoes`, `gestao/conciliacao` |
+| Divisão de receita, custos fixos e repasses (RF-053.1/RF-053.2/RF-064.1/RN-017/RN-018/RN-021) | `ConfiguracaoAcademia.valorBaseModalidade`,`RegistroImportado.valorRepasse` | `calcularRepasseFinanceiro`, `calcularDistribuicaoSobraFinanceira`, `conciliacao.service.ts`, `gestao/configuracoes`, `gestao/financeiro/repasses` |
 
 ## Conciliação (Fase 4) — ✅
 | Requisito | Entidade(s) | Arquivos |
