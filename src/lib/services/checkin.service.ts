@@ -589,7 +589,7 @@ export async function realizarCheckin(params: {
     return {
       ok: false,
       codigo: "FORA_DA_JANELA",
-      motivo: "Check-in liberado apenas de 30 minutos antes até o fim da aula.",
+      motivo: "Check-in liberado apenas de 30 minutos antes até 30 minutos após o fim da aula.",
     }
   }
   if (!aluno.modalidades.some((modalidade) => modalidade.id === aula.turma.modalidadeId)) {

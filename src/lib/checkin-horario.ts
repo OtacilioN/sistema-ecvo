@@ -1,4 +1,5 @@
 const MINUTO_MS = 60_000
+export const TOLERANCIA_PADRAO_CHECKIN_MINUTOS = 30
 
 export type AulaCandidataCheckinLivre = {
   id: string
@@ -16,11 +17,11 @@ export function podeRealizarCheckinNaJanela(params: {
   agora?: Date
   toleranciaMinutos?: number
 }): boolean {
-  const tolerancia = params.toleranciaMinutos ?? 30
+  const tolerancia = params.toleranciaMinutos ?? TOLERANCIA_PADRAO_CHECKIN_MINUTOS
   const agora = (params.agora ?? new Date()).getTime()
   const inicio = params.inicioAula.getTime()
   const fim = params.fimAula.getTime()
-  return agora >= inicio - tolerancia * MINUTO_MS && agora <= fim
+  return agora >= inicio - tolerancia * MINUTO_MS && agora <= fim + tolerancia * MINUTO_MS
 }
 
 function temVaga(aula: AulaCandidataCheckinLivre) {

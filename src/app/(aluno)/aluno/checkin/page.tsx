@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { exigirAluno } from "@/lib/auth/dal"
-import { selecionarAulaReferenciaCheckinLivre } from "@/lib/checkin-horario"
+import {
+  podeRealizarCheckinNaJanela,
+  selecionarAulaReferenciaCheckinLivre,
+  TOLERANCIA_PADRAO_CHECKIN_MINUTOS,
+} from "@/lib/checkin-horario"
 import { db } from "@/lib/db"
 import { montarCandidataCheckinLivre } from "@/lib/services/checkin.service"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
@@ -21,8 +25,6 @@ import { FormCheckinGlobal } from "./form-checkin-global"
 import { LeitorQRCodeAluno } from "./leitor-qrcode-aluno"
 
 export const dynamic = "force-dynamic"
-
-const JANELA_CHECKIN_MS = 30 * 60_000
 
 export default async function CheckinGlobalPage({
   searchParams,
@@ -47,7 +49,7 @@ export default async function CheckinGlobalPage({
     ? (aluno?.modalidades.map((modalidade) => modalidade.id) ?? [])
     : []
   const agora = new Date()
-  const proximoInicioLiberado = new Date(agora.getTime() + JANELA_CHECKIN_MS)
+  const fimMinimoLiberado = new Date(agora.getTime() - TOLERANCIA_PADRAO_CHECKIN_MINUTOS * 60_000)
   const inicioDia = inicioDoDiaAcademia(agora)
   const fimDia = fimExclusivoDoDiaAcademia(agora)
 
@@ -57,7 +59,7 @@ export default async function CheckinGlobalPage({
           cancelada: false,
           OR: [
             { inicio: { gte: inicioDia, lt: fimDia } },
-            { inicio: { lt: inicioDia }, fim: { gte: agora } },
+            { inicio: { lt: inicioDia }, fim: { gte: fimMinimoLiberado } },
           ],
           turma: {
             ativa: true,
@@ -114,7 +116,11 @@ export default async function CheckinGlobalPage({
     .filter((aula) =>
       aula.turma.modalidade.checkinSemRestricaoHorario
         ? referenciasLivres.has(aula.id)
-        : aula.inicio <= proximoInicioLiberado && aula.fim >= agora,
+        : podeRealizarCheckinNaJanela({
+            inicioAula: aula.inicio,
+            fimAula: aula.fim,
+            agora,
+          }),
     )
     .slice(0, 8)
 
@@ -166,7 +172,7 @@ export default async function CheckinGlobalPage({
               <p className="font-medium text-foreground">Nenhuma aula liberada agora.</p>
               <p className="mt-1">
                 Nas modalidades com horário livre, é necessário haver uma aula oficial no dia. Nas
-                demais, o check-in abre 30 minutos antes e fecha no fim da aula.
+                demais, o check-in abre 30 minutos antes e fecha 30 minutos após o fim da aula.
               </p>
             </div>
           </CardContent>

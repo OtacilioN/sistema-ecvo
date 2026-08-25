@@ -217,7 +217,7 @@ describe("podeRealizarCheckinNaJanela", () => {
   const inicioAula = new Date("2026-06-10T20:00:00Z")
   const fimAula = new Date("2026-06-10T21:00:00Z")
 
-  it("libera de 30 minutos antes até o fim da aula", () => {
+  it("libera de 30 minutos antes até 30 minutos após o fim da aula", () => {
     expect(
       podeRealizarCheckinNaJanela({
         inicioAula,
@@ -229,7 +229,7 @@ describe("podeRealizarCheckinNaJanela", () => {
       podeRealizarCheckinNaJanela({
         inicioAula,
         fimAula,
-        agora: new Date("2026-06-10T21:00:00Z"),
+        agora: new Date("2026-06-10T21:30:00Z"),
       }),
     ).toBe(true)
   })
@@ -246,7 +246,7 @@ describe("podeRealizarCheckinNaJanela", () => {
       podeRealizarCheckinNaJanela({
         inicioAula,
         fimAula,
-        agora: new Date("2026-06-10T21:00:01Z"),
+        agora: new Date("2026-06-10T21:30:01Z"),
       }),
     ).toBe(false)
   })

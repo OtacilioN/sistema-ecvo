@@ -94,7 +94,8 @@ aluno experimental.
 ### Check-in
 - **RF-019** Realização de check-in (botão, QR Code, geolocalização a até 300 m da academia, lançamento por gestor/professor).
 - **RF-020** Validação (aluno ativo; permissão; plano mensal interno adimplente se configurado; aula
-  existente; há agendamento se exigido; vaga disponível).
+  existente; há agendamento se exigido; vaga disponível). Na janela padrão, o check-in é permitido
+  de 30 minutos antes do início até 30 minutos após o término da aula.
 - **RF-020.1** A modalidade pode liberar check-in sem restrição de horário. Nesse modo, o sistema
   associa o registro a uma aula oficial do mesmo dia: prioriza agendamento confirmado, aula em andamento,
   próxima aula futura e, após o último horário, a última aula encerrada. O horário real do check-in é
