@@ -37,9 +37,10 @@ grade para o aluno, agendamento de aula, check-in, presença automática por che
 check-in, contador de horas (geral e por modalidade), perfil do aluno, graduações + registro pelo professor,
 financeiro de mensalistas, pagamentos avulsos, importação Wellhub/TotalPass + conciliação, relatórios básicos.
 
-Fora do MVP: integrações automáticas via API (Wellhub/TotalPass/Gympass), webhooks, conciliação financeira
-automática, reconhecimento facial, app mobile nativo, papéis separados (coordenador/financeiro/contador),
-aluno experimental.
+Fora do MVP: integrações automáticas via API de Wellhub/TotalPass/Gympass, conciliação financeira
+automática dessas plataformas, reconhecimento facial, app mobile nativo, papéis separados
+(coordenador/financeiro/contador), aluno experimental. A integração financeira com Asaas descrita em
+RF-053.2 e RF-053.3 é uma extensão posterior incorporada ao produto.
 
 ## 5. Permissões por papel (resumo)
 
@@ -141,6 +142,12 @@ aluno experimental.
   até 60% do valor base cheio por modalidade; sócio A e sócio B dividem o excedente igualmente. Descontos
   reduzem primeiro a parte dos sócios e, se a arrecadação não atingir o teto dos professores, reduzem
   proporcionalmente a parte dos professores.
+- **RF-053.2** Cada aluno com plano mensal pode usar cobrança PIX mensal pelo Asaas. Cada competência gera
+  uma cobrança dinâmica e um QR Code de uso único, sem alterar o valor histórico da mensalidade.
+- **RF-053.3** O gestor pode habilitar PIX Automático semestral. O sistema materializa exatamente seis
+  competências mensais pelo valor da mensalidade: o QR inicial paga a primeira e solicita a autorização;
+  após a autorização ativa, somente as cinco instruções futuras são enviadas ao Asaas na janela admitida
+  pelo provedor. Eventos autenticados e idempotentes conciliam pagamento, vencimento e autorização.
 
 ### Wellhub e TotalPass
 - **RF-054** Cadastro do tipo de vínculo. **RF-055** Mesmo fluxo operacional de treino.
@@ -176,6 +183,10 @@ RN-018 repasse Wellhub/TotalPass divide o valor repassado diretamente em 60/20/2
 RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 como padrão inicial.
 RN-020 plano é um pacote comercial disponível para qualquer modalidade; as modalidades contratadas são
 definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno.
+
+RN-021 o PIX Automático semestral possui exatamente seis ciclos; o pagamento imediato conta como ciclo 1
+e nenhuma sétima cobrança pode ser emitida. RN-022 somente confirmação financeira do Asaas pode baixar uma
+mensalidade automaticamente; gerar ou exibir QR Code não equivale a pagamento.
 
 ## 8. Requisitos não funcionais (RNF)
 

@@ -26,6 +26,8 @@ describe("migrarMensalidadesAbertasParaPlanoAluno", () => {
         where: {
           alunoId: "aluno-1",
           status: "EM_ABERTO",
+          contratoPixAutomaticoId: null,
+          cobrancaAsaas: { is: null },
         },
         data: {
           planoId: "plano-novo",
@@ -58,6 +60,8 @@ describe("migrarMensalidadesAbertasParaPlanoAluno", () => {
         where: {
           alunoId: "aluno-1",
           status: "EM_ABERTO",
+          contratoPixAutomaticoId: null,
+          cobrancaAsaas: { is: null },
         },
         data: {
           planoId: null,

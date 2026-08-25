@@ -170,7 +170,11 @@ export async function atualizarVencimentosMensalidadesAluno(
   if (params.diaVencimentoAnterior === params.diaVencimentoNovo) return 0
 
   const mensalidades = await cliente.mensalidade.findMany({
-    where: { alunoId: params.alunoId },
+    where: {
+      alunoId: params.alunoId,
+      contratoPixAutomaticoId: null,
+      cobrancaAsaas: { is: null },
+    },
     select: {
       id: true,
       competencia: true,

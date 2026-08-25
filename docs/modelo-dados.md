@@ -27,8 +27,9 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
 
 Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento (agendamento de aula) · Checkin ·
 TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · Graduacao · GraduacaoAluno ·
-Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · Importacao ·
-RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao · InscricaoPush.
+Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · ClienteAsaas ·
+ContratoPixAutomatico · CobrancaAsaas · EventoWebhookAsaas · Importacao · RegistroImportado ·
+LogAuditoria · ConfiguracaoAcademia · Notificacao · InscricaoPush.
 
 ## Diagrama (ER simplificado)
 
@@ -52,6 +53,11 @@ erDiagram
   Aluno ||--o{ GraduacaoAluno : ""
   Aluno ||--o{ Mensalidade : ""
   Aluno ||--o{ Pagamento : ""
+  Aluno ||--o| ClienteAsaas : "pagador"
+  Aluno ||--o{ ContratoPixAutomatico : "autoriza"
+  ContratoPixAutomatico ||--o{ Mensalidade : "seis ciclos"
+  ContratoPixAutomatico ||--o{ CobrancaAsaas : "materializa"
+  Mensalidade ||--o| CobrancaAsaas : "cobra"
 
   Professor }o--o{ Modalidade : "habilitado"
   Professor ||--o{ Turma : "ministra"
@@ -81,6 +87,13 @@ erDiagram
 - **Turma** modela tanto a grade recorrente (`diasSemana`/`horaInicio`/`horaFim`) quanto eventos únicos
 - **Aluno.diaVencimento** define o dia usado ao gerar mensalidades internas; `Mensalidade.vencimento`
   preserva a data histórica da cobrança gerada.
+- **ClienteAsaas** mantém somente o identificador remoto e se o pagador é o aluno ou seu responsável
+  financeiro. **ContratoPixAutomatico** preserva o histórico de cada semestre e liga exatamente seis
+  `Mensalidade`; um índice parcial do PostgreSQL impede dois ciclos abertos simultâneos para o mesmo aluno.
+  **CobrancaAsaas** é a intenção local idempotente antes da chamada remota.
+- O QR inicial do PIX Automático representa o ciclo 1. Os ciclos 2 a 6 são criados pelo job diário somente
+  com autorização ativa. `EventoWebhookAsaas.asaasEventId` impede processamento duplicado; o payload bruto,
+  documentos e segredos do Asaas não são guardados na auditoria.
 - **AlunoPlanoModalidade** define quais modalidades do aluno estão cobertas pelo plano mensal interno.
   O plano não restringe modalidades; a seleção acontece no vínculo aluno-plano.
   (`ehEvento = true`, sem dia da semana). **Aula** é a ocorrência datada concreta.

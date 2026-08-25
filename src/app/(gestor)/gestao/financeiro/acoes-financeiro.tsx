@@ -1,6 +1,6 @@
 "use client"
 
-import { CreditCard, FilePlus, LinkIcon, Pencil, Trash2, WalletCards } from "lucide-react"
+import { CreditCard, FilePlus, LinkIcon, Pencil, Repeat2, Trash2, WalletCards } from "lucide-react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
@@ -12,6 +12,7 @@ import {
   FormPagamentoAvulso,
   FormPlano,
   FormStatusMensalidade,
+  FormTipoCobrancaPix,
   FormVinculoPlano,
   type PlanoEdicao,
 } from "./forms-financeiro"
@@ -35,7 +36,7 @@ export function AcoesFinanceiro({
   planos: PlanoOpcao[]
   alunos: AlunoOpcao[]
 }) {
-  const [painel, setPainel] = useState<"pagamento" | "plano" | "vinculo" | null>(null)
+  const [painel, setPainel] = useState<"pagamento" | "pix" | "plano" | "vinculo" | null>(null)
   const fechar = () => setPainel(null)
 
   return (
@@ -48,6 +49,9 @@ export function AcoesFinanceiro({
       </Button>
       <Button variant="outline" onClick={() => setPainel("pagamento")}>
         <WalletCards className="size-4" /> Pagamento avulso
+      </Button>
+      <Button variant="outline" onClick={() => setPainel("pix")}>
+        <Repeat2 className="size-4" /> Cobrança PIX
       </Button>
       <Dialog
         aberto={painel === "plano"}
@@ -67,6 +71,16 @@ export function AcoesFinanceiro({
         descricao="Associa mensalidade interna sem trocar vínculo externo."
       >
         <FormVinculoPlano alunos={alunos} planos={planos} aoConcluir={fechar} />
+      </Dialog>
+
+      <Dialog
+        aberto={painel === "pix"}
+        aoFechar={fechar}
+        variante="centro"
+        titulo="Configurar cobrança PIX"
+        descricao="PIX mensal ou PIX Automático por seis mensalidades."
+      >
+        <FormTipoCobrancaPix alunos={alunos} aoConcluir={fechar} />
       </Dialog>
 
       <Dialog

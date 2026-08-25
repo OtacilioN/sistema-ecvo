@@ -1,7 +1,8 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { exigirPapel } from "@/lib/auth/dal"
+import { exigirAluno, exigirPapel } from "@/lib/auth/dal"
+import { configurarTipoCobrancaPix, gerarCobrancaPixMensal } from "@/lib/services/asaas.service"
 import {
   atualizarPlano,
   atualizarStatusMensalidade,
@@ -12,6 +13,7 @@ import {
   registrarPagamentoAvulso,
   vincularPlanoMensalista,
 } from "@/lib/services/financeiro.service"
+import { gerarCobrancaPixSchema, tipoCobrancaPixSchema } from "@/lib/validations/asaas"
 import {
   baixaMensalidadeAlunoSchema,
   baixarMensalidadeSchema,
@@ -201,6 +203,43 @@ export async function acaoPagamentoAvulso(
   revalidatePath("/gestao/financeiro")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")
+  if (!resultado.ok) return { erro: resultado.motivo }
+  return { ok: true }
+}
+
+export async function acaoConfigurarTipoCobrancaPix(
+  _: EstadoFinanceiro,
+  formData: FormData,
+): Promise<EstadoFinanceiro> {
+  const usuario = await exigirPapel("GESTOR")
+  const parsed = tipoCobrancaPixSchema.safeParse({
+    alunoId: formData.get("alunoId"),
+    tipoCobrancaPix: formData.get("tipoCobrancaPix"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await configurarTipoCobrancaPix({ ...parsed.data, autorId: usuario.id })
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/auditoria")
+  revalidatePath("/aluno/financeiro")
+  if (!resultado.ok) return { erro: resultado.motivo }
+  return { ok: true }
+}
+
+export async function acaoGerarCobrancaPixAluno(
+  _: EstadoFinanceiro,
+  formData: FormData,
+): Promise<EstadoFinanceiro> {
+  const { alunoId } = await exigirAluno()
+  const parsed = gerarCobrancaPixSchema.safeParse({ mensalidadeId: formData.get("mensalidadeId") })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await gerarCobrancaPixMensal({
+    alunoId,
+    mensalidadeId: parsed.data.mensalidadeId,
+  })
+  revalidatePath("/aluno/financeiro")
+  revalidatePath("/gestao/financeiro")
   if (!resultado.ok) return { erro: resultado.motivo }
   return { ok: true }
 }

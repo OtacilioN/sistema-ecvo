@@ -1,3 +1,4 @@
+import QRCode from "qrcode"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirAluno } from "@/lib/auth/dal"
@@ -5,6 +6,7 @@ import { db } from "@/lib/db"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
+import { PagamentoPix } from "./pagamento-pix"
 
 export const dynamic = "force-dynamic"
 
@@ -15,7 +17,12 @@ export default async function Page() {
     include: {
       plano: true,
       modalidadesPlano: { select: { modalidade: { select: { nome: true } } } },
-      mensalidades: { orderBy: { vencimento: "desc" }, take: 12 },
+      mensalidades: {
+        orderBy: { vencimento: "desc" },
+        take: 12,
+        include: { cobrancaAsaas: true },
+      },
+      contratosPixAutomatico: { orderBy: { criadoEm: "desc" }, take: 1 },
       pagamentos: { orderBy: { criadoEm: "desc" }, take: 12 },
     },
   })
@@ -26,6 +33,15 @@ export default async function Page() {
   const adimplente = temMensalidadeInterna ? mensalistaAdimplente(aluno.mensalidades) : true
   const tipoSomenteExterno =
     !temMensalidadeInterna && (aluno.tipo === "WELLHUB" || aluno.tipo === "TOTALPASS")
+  const mensalidadePendente = [...aluno.mensalidades]
+    .sort((a, b) => a.vencimento.getTime() - b.vencimento.getTime())
+    .find((mensalidade) => ["EM_ABERTO", "VENCIDA"].includes(statusMensalidadeEfetivo(mensalidade)))
+  const contratoPixAutomatico = aluno.contratosPixAutomatico[0]
+  const pixCopiaECola =
+    aluno.tipoCobrancaPix === "AUTOMATICO_SEMESTRAL"
+      ? contratoPixAutomatico?.pixCopiaECola
+      : mensalidadePendente?.cobrancaAsaas?.pixCopiaECola
+  const qrCodeDataUrl = pixCopiaECola ? await QRCode.toDataURL(pixCopiaECola, { margin: 1 }) : null
 
   return (
     <div className="space-y-6">
@@ -78,6 +94,42 @@ export default async function Page() {
               rotulo="Modalidades contratadas"
               valor={aluno.modalidadesPlano.map((item) => item.modalidade.nome).join(", ")}
             />
+          </CardContent>
+        </Card>
+      )}
+
+      {aluno.plano && mensalidadePendente && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {aluno.tipoCobrancaPix === "AUTOMATICO_SEMESTRAL"
+                ? "PIX Automático semestral"
+                : "Pagar mensalidade via PIX"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {aluno.tipoCobrancaPix === "AUTOMATICO_SEMESTRAL" ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  O primeiro pagamento autoriza seis mensalidades: esta cobrança inicial e cinco
+                  débitos mensais automáticos. Situação da autorização:{" "}
+                  <strong>{contratoPixAutomatico?.status ?? "PENDENTE"}</strong>.
+                </p>
+                <PagamentoPix pixCopiaECola={pixCopiaECola} qrCodeDataUrl={qrCodeDataUrl} />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Cobrança única para {mensalidadePendente.competencia}, no valor de{" "}
+                  {formatarBRL(Number(mensalidadePendente.valor))}.
+                </p>
+                <PagamentoPix
+                  mensalidadeId={mensalidadePendente.id}
+                  pixCopiaECola={pixCopiaECola}
+                  qrCodeDataUrl={qrCodeDataUrl}
+                />
+              </>
+            )}
           </CardContent>
         </Card>
       )}

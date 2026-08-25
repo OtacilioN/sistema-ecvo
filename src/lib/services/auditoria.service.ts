@@ -6,7 +6,7 @@ import { db } from "@/lib/db"
 // Aceita um TransactionClient para participar da mesma transação da operação auditada.
 
 type RegistrarLogParams = {
-  autorId: string
+  autorId?: string | null
   acao: TipoAcaoAudit
   entidade: string
   entidadeId: string
