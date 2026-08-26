@@ -327,7 +327,10 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
   const inicioAmanha = fromZonedTime(`${chaveAmanha}T00:00:00`, TIMEZONE)
 
   const aulas = await db.aula.findMany({
-    where: { inicio: { gte: inicioHoje, lt: inicioAmanha } },
+    where: {
+      inicio: { gte: inicioHoje, lt: inicioAmanha },
+      turma: { ativa: true, modalidade: { ativa: true } },
+    },
     orderBy: { inicio: "asc" },
     include: {
       professor: { select: { usuario: { select: { nome: true } } } },

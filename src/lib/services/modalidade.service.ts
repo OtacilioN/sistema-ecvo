@@ -15,9 +15,10 @@ type GraduacaoCatalogo = {
   remover?: boolean
 }
 
-export function listarModalidades(opts?: { apenasAtivas?: boolean }) {
+/** Lista somente modalidades ativas; telas administrativas devem pedir inativas explicitamente. */
+export function listarModalidades(opts?: { incluirInativas?: boolean }) {
   return db.modalidade.findMany({
-    where: opts?.apenasAtivas ? { ativa: true } : undefined,
+    where: opts?.incluirInativas ? undefined : { ativa: true },
     orderBy: { nome: "asc" },
     include: {
       graduacoes: { orderBy: [{ ordem: "asc" }, { nome: "asc" }] },

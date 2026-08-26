@@ -90,6 +90,10 @@ export function FormDadosAluno({
       cobranca.plataformaExterna ?? "",
     ]),
   )
+  const modalidadeIdsAtivos = new Set(modalidades.map((modalidade) => modalidade.id))
+  const modalidadeIdsInativos = aluno.modalidades.filter(
+    (modalidadeId) => !modalidadeIdsAtivos.has(modalidadeId),
+  )
   const [uploadPendente, setUploadPendente] = useState(false)
 
   useEffect(() => {
@@ -206,6 +210,16 @@ export function FormDadosAluno({
 
       <div className="space-y-1.5 sm:col-span-2">
         <Label>Modalidades</Label>
+        {modalidadeIdsInativos.map((modalidadeId) => (
+          <span key={modalidadeId}>
+            <input type="hidden" name="modalidadeIds" value={modalidadeId} />
+            <input
+              type="hidden"
+              name={`plataformaModalidade:${modalidadeId}`}
+              value={cobrancas.get(modalidadeId) ?? ""}
+            />
+          </span>
+        ))}
         <div className="grid gap-3">
           {modalidades.map((modalidade) => {
             const selecionada = modalidadeIds.has(modalidade.id)

@@ -15,7 +15,7 @@ export default async function AlunosPage() {
   const competenciaAtual = chaveCompetencia()
   const [alunos, modalidades, planos] = await Promise.all([
     listarAlunos({ competenciaMensalidade: competenciaAtual }),
-    listarModalidades({ apenasAtivas: true }),
+    listarModalidades(),
     db.plano.findMany({ orderBy: [{ ativo: "desc" }, { nome: "asc" }] }),
   ])
   const opcoesModalidades = modalidades.map((m) => ({ id: m.id, nome: m.nome }))

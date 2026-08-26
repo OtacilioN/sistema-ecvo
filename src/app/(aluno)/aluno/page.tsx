@@ -17,7 +17,10 @@ export default async function AlunoAgenda() {
   const [aluno, config] = await Promise.all([
     db.aluno.findUnique({
       where: { id: alunoId },
-      select: { status: true, modalidades: { select: { id: true } } },
+      select: {
+        status: true,
+        modalidades: { where: { ativa: true }, select: { id: true } },
+      },
     }),
     db.configuracaoAcademia.findUnique({
       where: { id: "default" },
@@ -33,7 +36,11 @@ export default async function AlunoAgenda() {
     where: {
       cancelada: false,
       fim: { gte: agora },
-      turma: { modalidadeId: { in: modalidadeIds } },
+      turma: {
+        ativa: true,
+        modalidadeId: { in: modalidadeIds },
+        modalidade: { ativa: true },
+      },
     },
     orderBy: { inicio: "asc" },
     take: 12,

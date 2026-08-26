@@ -41,7 +41,10 @@ export default async function CheckinGlobalPage({
     where: { id: alunoId },
     select: {
       status: true,
-      modalidades: { select: { id: true, checkinSemRestricaoHorario: true } },
+      modalidades: {
+        where: { ativa: true },
+        select: { id: true, checkinSemRestricaoHorario: true },
+      },
     },
   })
   const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))

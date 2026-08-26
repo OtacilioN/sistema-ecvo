@@ -10,10 +10,7 @@ export const dynamic = "force-dynamic"
 export default async function ProfessoresPage() {
   const usuario = await exigirGestao()
   const podeEditar = usuario.papel === "GESTOR"
-  const [professores, modalidades] = await Promise.all([
-    listarProfessores(),
-    listarModalidades({ apenasAtivas: true }),
-  ])
+  const [professores, modalidades] = await Promise.all([listarProfessores(), listarModalidades()])
   const opcoesModalidades = modalidades.map((m) => ({ id: m.id, nome: m.nome }))
 
   return (

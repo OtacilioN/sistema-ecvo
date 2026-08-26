@@ -191,6 +191,7 @@ export async function gerarLembretesAgendamentoAulasAmanha(
     where: {
       cancelada: false,
       inicio: { gte: inicio, lt: fim },
+      turma: { ativa: true, modalidade: { ativa: true } },
     },
     orderBy: { inicio: "asc" },
     select: {
@@ -293,6 +294,7 @@ export async function gerarLembretesAniversario(cliente: Cliente = db, params?: 
       include: {
         usuario: { select: { nome: true } },
         modalidades: {
+          where: { ativa: true },
           select: {
             professores: {
               where: { ativo: true, usuario: { ativo: true } },

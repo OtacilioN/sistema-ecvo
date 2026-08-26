@@ -4,6 +4,12 @@ import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { CampoBusca } from "@/components/ui/campo-busca"
 import { Card, CardContent } from "@/components/ui/card"
+import { Select } from "@/components/ui/select"
+import {
+  correspondeFiltroAtividade,
+  FILTRO_ATIVIDADE_PADRAO,
+  type FiltroAtividade,
+} from "@/lib/filtros/atividade"
 import { formatarMinutos } from "@/lib/utils/datas"
 import { AcoesModalidade, type ModalidadeLinha } from "./acoes-modalidade"
 
@@ -31,12 +37,15 @@ export function TabelaModalidades({
   podeEditar: boolean
 }) {
   const [busca, setBusca] = useState("")
+  const [filtroAtividade, setFiltroAtividade] = useState<FiltroAtividade>(FILTRO_ATIVIDADE_PADRAO)
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase()
-    if (!termo) return modalidades
-    return modalidades.filter((m) =>
-      [
+    return modalidades.filter((m) => {
+      if (!correspondeFiltroAtividade(m.ativa, filtroAtividade)) return false
+      if (!termo) return true
+
+      return [
         m.nome,
         m.descricao ?? "",
         m.ativa ? "ativa" : "inativa",
@@ -45,14 +54,25 @@ export function TabelaModalidades({
       ]
         .join(" ")
         .toLowerCase()
-        .includes(termo),
-    )
-  }, [modalidades, busca])
+        .includes(termo)
+    })
+  }, [modalidades, busca, filtroAtividade])
 
   return (
     <Card>
       <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-        <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Nome, professor, graduação…" />
+        <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_180px]">
+          <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Nome, professor, graduação…" />
+          <Select
+            aria-label="Filtrar modalidades por status"
+            value={filtroAtividade}
+            onChange={(evento) => setFiltroAtividade(evento.target.value as FiltroAtividade)}
+          >
+            <option value="ATIVAS">Somente ativas</option>
+            <option value="INATIVAS">Somente inativas</option>
+            <option value="TODAS">Todas</option>
+          </Select>
+        </div>
         <span className="text-sm text-muted-foreground">
           {filtradas.length} de {modalidades.length}
         </span>
@@ -156,7 +176,7 @@ export function TabelaModalidades({
                   >
                     {modalidades.length === 0
                       ? "Nenhuma modalidade cadastrada. Use “Nova modalidade” para começar."
-                      : "Nenhuma modalidade corresponde à busca."}
+                      : "Nenhuma modalidade corresponde aos filtros."}
                   </td>
                 </tr>
               )}

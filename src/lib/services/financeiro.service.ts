@@ -1302,6 +1302,7 @@ function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[
     {
       modalidades: {
         some: {
+          ativa: true,
           professores: { some: { id: professorId, ativo: true, usuario: { ativo: true } } },
         },
       },
@@ -1310,6 +1311,7 @@ function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[
       modalidadesPlano: {
         some: {
           modalidade: {
+            ativa: true,
             professores: { some: { id: professorId, ativo: true, usuario: { ativo: true } } },
           },
         },
@@ -1318,6 +1320,7 @@ function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[
     {
       modalidades: {
         some: {
+          ativa: true,
           turmas: { some: { professorId, ativa: true } },
         },
       },
@@ -1326,6 +1329,7 @@ function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[
       modalidadesPlano: {
         some: {
           modalidade: {
+            ativa: true,
             turmas: { some: { professorId, ativa: true } },
           },
         },
@@ -1351,6 +1355,7 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
     {
       modalidades: {
         some: {
+          ativa: true,
           alunos: { some: { id: alunoId } },
         },
       },
@@ -1358,6 +1363,7 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
     {
       modalidades: {
         some: {
+          ativa: true,
           alunosPlanos: { some: { alunoId } },
         },
       },
@@ -1366,7 +1372,7 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
       turmas: {
         some: {
           ativa: true,
-          modalidade: { alunos: { some: { id: alunoId } } },
+          modalidade: { ativa: true, alunos: { some: { id: alunoId } } },
         },
       },
     },
@@ -1374,7 +1380,7 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
       turmas: {
         some: {
           ativa: true,
-          modalidade: { alunosPlanos: { some: { alunoId } } },
+          modalidade: { ativa: true, alunosPlanos: { some: { alunoId } } },
         },
       },
     },

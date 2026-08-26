@@ -12,18 +12,12 @@ import {
   formatarDataHora,
   formatarMinutos,
   paraFusoAcademia,
-  rotuloDiaSemana,
   TIMEZONE,
 } from "@/lib/utils/datas"
-import { AcoesAula, AcoesTurma, BotaoAulaAvulsa, BotaoNovaTurma } from "./acoes-turma"
+import { AcoesAula, BotaoAulaAvulsa, BotaoNovaTurma } from "./acoes-turma"
+import { TabelaTurmas } from "./tabela-turmas"
 
 export const dynamic = "force-dynamic"
-
-function rotuloDiasSemana(diasSemana: number[], diaSemana: number | null): string {
-  const dias = diasSemana.length > 0 ? diasSemana : diaSemana === null ? [] : [diaSemana]
-  if (dias.length === 0) return "—"
-  return dias.map(rotuloDiaSemana).join(", ")
-}
 
 export default async function TurmasPage() {
   const usuario = await exigirGestao()
@@ -58,7 +52,7 @@ export default async function TurmasPage() {
         _count: { select: { comparecimentos: true, checkins: true } },
       },
     }),
-    listarModalidades({ apenasAtivas: true }),
+    listarModalidades(),
     listarProfessores(),
   ])
 
@@ -81,109 +75,29 @@ export default async function TurmasPage() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-muted-foreground">Grade recorrente</h2>
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="tabela-responsiva w-full text-sm">
-                <thead className="border-b border-border text-left text-muted-foreground">
-                  <tr>
-                    <th className="p-4 font-medium">Turma</th>
-                    <th className="p-4 font-medium">Modalidade</th>
-                    <th className="p-4 font-medium">Dia / horário</th>
-                    <th className="p-4 font-medium">Professor</th>
-                    <th className="p-4 text-center font-medium">Aulas</th>
-                    <th className="p-4 font-medium">Status</th>
-                    {podeEditar && (
-                      <th className="p-4 text-right font-medium">
-                        <span className="sr-only">Ações</span>
-                      </th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {turmas.map((t) => {
-                    const diasSemana = rotuloDiasSemana(t.diasSemana, t.diaSemana)
-                    return (
-                      <tr
-                        key={t.id}
-                        className="border-b border-border transition-colors last:border-0 hover:bg-muted/40"
-                      >
-                        <td className="p-4 font-medium" data-label="Turma">
-                          {t.nome ?? "—"}
-                          {t.local && (
-                            <span className="block text-xs font-normal text-muted-foreground">
-                              {t.local}
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-4" data-label="Modalidade">
-                          <Badge variant="outline">{t.modalidade.nome}</Badge>
-                        </td>
-                        <td className="p-4" data-label="Dia / horário">
-                          {diasSemana} · {t.horaInicio}–{t.horaFim}
-                          <span className="block text-xs text-muted-foreground">
-                            {formatarMinutos(t.duracaoMin)}
-                            {t.capacidade > 0 ? ` · ${t.capacidade} vagas` : " · sem limite"}
-                          </span>
-                        </td>
-                        <td className="p-4" data-label="Professor">
-                          {t.professor?.usuario.nome ?? "—"}
-                        </td>
-                        <td className="p-4 text-center tabular-nums" data-label="Aulas">
-                          {t._count.aulas}
-                        </td>
-                        <td className="p-4" data-label="Status">
-                          <Badge variant={t.ativa ? "success" : "secondary"}>
-                            {t.ativa ? "Ativa" : "Inativa"}
-                          </Badge>
-                        </td>
-                        {podeEditar && (
-                          <td className="p-4" data-label="Ações">
-                            <div className="flex justify-end">
-                              <AcoesTurma
-                                modalidades={modalidadesOpcao}
-                                professores={professoresOpcao}
-                                turma={{
-                                  id: t.id,
-                                  rotulo: `${t.modalidade.nome} · ${diasSemana} ${t.horaInicio ?? ""}`,
-                                  modalidadeId: t.modalidadeId,
-                                  nome: t.nome,
-                                  professorId: t.professorId,
-                                  diasSemana:
-                                    t.diasSemana.length > 0
-                                      ? t.diasSemana
-                                      : t.diaSemana === null
-                                        ? []
-                                        : [t.diaSemana],
-                                  horaInicio: t.horaInicio,
-                                  horaFim: t.horaFim,
-                                  capacidade: t.capacidade,
-                                  local: t.local,
-                                  nivel: t.nivel,
-                                  ativa: t.ativa,
-                                }}
-                              />
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    )
-                  })}
-                  {turmas.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={podeEditar ? 7 : 6}
-                        className="p-10 text-center text-muted-foreground"
-                      >
-                        Nenhuma turma cadastrada. Use “Nova turma” para começar.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+        <TabelaTurmas
+          podeEditar={podeEditar}
+          modalidades={modalidadesOpcao}
+          professores={professoresOpcao}
+          turmas={turmas.map((turma) => ({
+            id: turma.id,
+            modalidadeId: turma.modalidadeId,
+            modalidadeNome: turma.modalidade.nome,
+            nome: turma.nome,
+            professorId: turma.professorId,
+            professorNome: turma.professor?.usuario.nome ?? null,
+            diaSemana: turma.diaSemana,
+            diasSemana: turma.diasSemana,
+            horaInicio: turma.horaInicio,
+            horaFim: turma.horaFim,
+            duracaoMin: turma.duracaoMin,
+            capacidade: turma.capacidade,
+            local: turma.local,
+            nivel: turma.nivel,
+            ativa: turma.ativa,
+            aulas: turma._count.aulas,
+          }))}
+        />
       </section>
 
       <section className="mt-10 space-y-4 border-t border-border pt-8">

@@ -19,6 +19,7 @@ export default async function Page() {
     where: { id: alunoId },
     include: {
       modalidades: {
+        where: { ativa: true },
         orderBy: { nome: "asc" },
         include: { graduacoes: { orderBy: [{ ordem: "asc" }, { nome: "asc" }] } },
       },
