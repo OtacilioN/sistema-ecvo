@@ -99,6 +99,7 @@ enum StatusContratoPixAutomatico {
   CRIANDO
   PENDENTE_AUTORIZACAO
   ATIVO
+  CANCELANDO
   CONCLUIDO
   CANCELADO
   RECUSADO
@@ -110,11 +111,13 @@ enum TipoCobrancaAsaas {
   PIX_MENSAL
   PIX_AUTOMATICO_INICIAL
   PIX_AUTOMATICO_RECORRENTE
+  PIX_AUTOMATICO_FALLBACK
 }
 
 enum StatusCobrancaAsaas {
   CRIANDO
   PENDENTE
+  CANCELANDO
   RECEBIDA
   VENCIDA
   CANCELADA
@@ -296,20 +299,20 @@ model DocumentoAluno {
 }
 
 model AceiteTermoResponsabilidade {
-  id                  String   @id @default(cuid())
-  aluno               Aluno    @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  alunoId             String
-  termoVersao         String
-  nomeAluno           String
-  cpfAluno            String?
-  cidade              String
-  menorDeIdade        Boolean  @default(false)
-  declaracoesAceitas  Json
-  ip                  String?
-  userAgent           String?
-  metadados           Json?
-  aceitoEm            DateTime @default(now())
-  criadoEm            DateTime @default(now())
+  id                 String   @id @default(cuid())
+  aluno              Aluno    @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId            String
+  termoVersao        String
+  nomeAluno          String
+  cpfAluno           String?
+  cidade             String
+  menorDeIdade       Boolean  @default(false)
+  declaracoesAceitas Json
+  ip                 String?
+  userAgent          String?
+  metadados          Json?
+  aceitoEm           DateTime @default(now())
+  criadoEm           DateTime @default(now())
 
   @@unique([alunoId, termoVersao])
   @@index([termoVersao])
@@ -602,25 +605,27 @@ model AlunoPlanoModalidade {
 }
 
 model Mensalidade {
-  id             String            @id @default(cuid())
-  aluno          Aluno             @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  alunoId        String
-  plano          Plano?            @relation(fields: [planoId], references: [id], onDelete: SetNull)
-  planoId        String?
-  competencia    String // "2026-06"
-  valor          Decimal           @db.Decimal(10, 2)
-  vencimento     DateTime
-  status         StatusMensalidade @default(EM_ABERTO)
-  pagoEm         DateTime?
-  formaPagamento String?
-  observacao     String?
-  repasseSnapshot Json?
+  id                      String                 @id @default(cuid())
+  aluno                   Aluno                  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId                 String
+  plano                   Plano?                 @relation(fields: [planoId], references: [id], onDelete: SetNull)
+  planoId                 String?
+  competencia             String // "2026-06"
+  valor                   Decimal                @db.Decimal(10, 2)
+  vencimento              DateTime
+  status                  StatusMensalidade      @default(EM_ABERTO)
+  pagoEm                  DateTime?
+  formaPagamento          String?
+  observacao              String?
+  repasseSnapshot         Json?
   contratoPixAutomatico   ContratoPixAutomatico? @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
   contratoPixAutomaticoId String?
-  numeroCicloPix           Int?
-  cobrancaAsaas            CobrancaAsaas?
-  criadoEm       DateTime          @default(now())
-  atualizadoEm   DateTime          @updatedAt
+  numeroCicloPix          Int?
+  cobrancasAsaas          CobrancaAsaas[]        @relation("TentativasCobrancaAsaas")
+  cobrancaQuitacaoAsaas   CobrancaAsaas?         @relation("QuitacaoMensalidadeAsaas", fields: [cobrancaQuitacaoAsaasId], references: [id], onDelete: SetNull)
+  cobrancaQuitacaoAsaasId String?                @unique
+  criadoEm                DateTime               @default(now())
+  atualizadoEm            DateTime               @updatedAt
 
   @@unique([alunoId, competencia])
   @@unique([contratoPixAutomaticoId, numeroCicloPix])
@@ -629,23 +634,23 @@ model Mensalidade {
 }
 
 model ContratoPixAutomatico {
-  id                      String                     @id @default(cuid())
-  aluno                   Aluno                      @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  alunoId                 String
-  asaasAuthorizationId    String?                    @unique
-  asaasConciliationId     String?
-  status                  StatusContratoPixAutomatico @default(CRIANDO)
-  inicio                  DateTime
-  fim                     DateTime
-  valor                   Decimal                    @db.Decimal(10, 2)
-  totalCiclos             Int                        @default(6)
-  pixCopiaECola           String?
-  qrCodeExpiraEm          DateTime?
-  ultimoErro              String?
-  mensalidades            Mensalidade[]
-  cobrancas               CobrancaAsaas[]
-  criadoEm                DateTime                   @default(now())
-  atualizadoEm            DateTime                   @updatedAt
+  id                   String                      @id @default(cuid())
+  aluno                Aluno                       @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId              String
+  asaasAuthorizationId String?                     @unique
+  asaasConciliationId  String?                     @unique
+  status               StatusContratoPixAutomatico @default(CRIANDO)
+  inicio               DateTime
+  fim                  DateTime
+  valor                Decimal                     @db.Decimal(10, 2)
+  totalCiclos          Int                         @default(6)
+  pixCopiaECola        String?
+  qrCodeExpiraEm       DateTime?
+  ultimoErro           String?
+  mensalidades         Mensalidade[]
+  cobrancas            CobrancaAsaas[]
+  criadoEm             DateTime                    @default(now())
+  atualizadoEm         DateTime                    @updatedAt
 
   @@index([status])
   @@index([alunoId, criadoEm])
@@ -655,41 +660,50 @@ model ClienteAsaas {
   id              String           @id @default(cuid())
   aluno           Aluno            @relation(fields: [alunoId], references: [id], onDelete: Cascade)
   alunoId         String           @unique
-  asaasCustomerId String           @unique
+  asaasCustomerId String?          @unique
   tipoPagador     TipoPagadorAsaas
+  ultimoErro      String?
   criadoEm        DateTime         @default(now())
   atualizadoEm    DateTime         @updatedAt
 }
 
 model CobrancaAsaas {
-  id                      String               @id @default(cuid())
-  mensalidade             Mensalidade          @relation(fields: [mensalidadeId], references: [id], onDelete: Cascade)
-  mensalidadeId           String               @unique
-  contratoPixAutomatico   ContratoPixAutomatico? @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
-  contratoPixAutomaticoId String?
-  tipo                    TipoCobrancaAsaas
-  status                  StatusCobrancaAsaas  @default(CRIANDO)
-  asaasPaymentId          String?              @unique
-  externalReference       String               @unique
-  statusAsaas             String?
-  pixCopiaECola           String?
-  qrCodeExpiraEm          DateTime?
-  invoiceUrl              String?
-  ultimoEventoAsaas       String?
-  ultimoErro              String?
-  criadoEm                DateTime             @default(now())
-  atualizadoEm            DateTime             @updatedAt
+  id                       String                 @id @default(cuid())
+  mensalidade              Mensalidade            @relation("TentativasCobrancaAsaas", fields: [mensalidadeId], references: [id], onDelete: Cascade)
+  mensalidadeId            String
+  contratoPixAutomatico    ContratoPixAutomatico? @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
+  contratoPixAutomaticoId  String?
+  tipo                     TipoCobrancaAsaas
+  status                   StatusCobrancaAsaas    @default(CRIANDO)
+  geracao                  Int                    @default(1)
+  ativa                    Boolean                @default(true)
+  asaasPaymentId           String?                @unique
+  externalReference        String                 @unique
+  vencimentoAsaas          DateTime?
+  statusAsaas              String?
+  pixCopiaECola            String?
+  qrCodeExpiraEm           DateTime?
+  invoiceUrl               String?
+  ultimoEventoAsaas        String?
+  ultimoErro               String?
+  recebidaEmAsaas          DateTime?
+  estornoParcialPendenteEm DateTime?
+  criadoEm                 DateTime               @default(now())
+  atualizadoEm             DateTime               @updatedAt
+  mensalidadeQuitada       Mensalidade?           @relation("QuitacaoMensalidadeAsaas")
 
+  @@unique([mensalidadeId, geracao])
   @@index([contratoPixAutomaticoId])
   @@index([status])
+  @@index([mensalidadeId, ativa])
 }
 
 model EventoWebhookAsaas {
-  asaasEventId          String   @id
-  evento                String
-  asaasPaymentId        String?
-  asaasAuthorizationId  String?
-  processadoEm          DateTime @default(now())
+  asaasEventId         String   @id
+  evento               String
+  asaasPaymentId       String?
+  asaasAuthorizationId String?
+  processadoEm         DateTime @default(now())
 
   @@index([evento])
   @@index([processadoEm])

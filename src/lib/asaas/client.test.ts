@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from "vitest"
 import {
+  cancelarAutorizacaoPixAutomaticoAsaas,
   criarAutorizacaoPixAutomaticoAsaas,
   criarClienteAsaas,
   criarCobrancaAsaas,
+  excluirCobrancaAsaas,
   listarAutorizacoesPixAutomaticoAsaas,
   listarClientesAsaas,
   listarCobrancasAsaas,
+  obterAutorizacaoPixAutomaticoAsaas,
+  obterCobrancaAsaas,
   obterConfiguracaoAsaas,
   obterQrCodePixAsaas,
 } from "./client"
@@ -37,6 +41,7 @@ describe("obterConfiguracaoAsaas", () => {
       obterConfiguracaoAsaas({
         ASAAS_API_KEY: "$aact_prod_segredo",
         ASAAS_ENVIRONMENT: "production",
+        VERCEL_ENV: "production",
       }),
     ).toMatchObject({
       ambiente: "production",
@@ -55,9 +60,42 @@ describe("obterConfiguracaoAsaas", () => {
   })
 
   it("impede Sandbox no runtime de produção", () => {
-    expect(() => obterConfiguracaoAsaas({ ...envSandbox, NODE_ENV: "production" })).toThrow(
-      "o runtime de produção não pode usar o Sandbox",
-    )
+    expect(() =>
+      obterConfiguracaoAsaas({
+        ...envSandbox,
+        ASAAS_PRODUCTION_CONFIRMED: "ECVO_PRODUCTION",
+      }),
+    ).toThrow("o runtime de produção não pode usar o Sandbox")
+    expect(() =>
+      obterConfiguracaoAsaas({ ...envSandbox, NODE_ENV: "production", VERCEL_ENV: "production" }),
+    ).toThrow("o runtime de produção não pode usar o Sandbox")
+  })
+
+  it("permite Sandbox no Preview, mas nunca permite a conta real fora da Production da Vercel", () => {
+    expect(
+      obterConfiguracaoAsaas({
+        ...envSandbox,
+        NODE_ENV: "production",
+        VERCEL_ENV: "preview",
+      }),
+    ).toMatchObject({ ambiente: "sandbox" })
+
+    expect(() =>
+      obterConfiguracaoAsaas({
+        ASAAS_API_KEY: "$aact_prod_segredo",
+        ASAAS_ENVIRONMENT: "production",
+        NODE_ENV: "production",
+        VERCEL_ENV: "preview",
+      }),
+    ).toThrow("a conta real só pode ser usada em um deployment de produção confirmado")
+
+    expect(() =>
+      obterConfiguracaoAsaas({
+        ASAAS_API_KEY: "$aact_prod_segredo",
+        ASAAS_ENVIRONMENT: "production",
+        NODE_ENV: "production",
+      }),
+    ).toThrow("a conta real só pode ser usada em um deployment de produção confirmado")
   })
 
   it("recusa chave cujo prefixo não corresponde ao ambiente", () => {
@@ -168,6 +206,73 @@ describe("cobranças Pix", () => {
     expect(fetchMock.mock.calls[0][1]?.method).toBe("GET")
     expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined()
   })
+
+  it("repete brevemente quando o QR Code ainda não está disponível após criar a cobrança", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        respostaJson(
+          { errors: [{ code: "invalid_action", description: "Ainda indisponível" }] },
+          400,
+        ),
+      )
+      .mockResolvedValueOnce(
+        respostaJson({
+          encodedImage: "base64",
+          payload: "pix-copia-e-cola",
+          expirationDate: "2026-09-10 23:59:59",
+        }),
+      )
+    const wait = vi.fn(async () => undefined)
+
+    const qrCode = await obterQrCodePixAsaas("pay_1", {
+      env: envSandbox,
+      fetch: fetchMock,
+      wait,
+    })
+
+    expect(qrCode.payload).toBe("pix-copia-e-cola")
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(wait).toHaveBeenCalledOnce()
+    expect(wait).toHaveBeenCalledWith(500)
+  })
+
+  it("não repete erros que não representam consistência eventual do QR Code", async () => {
+    const fetchMock = mockFetchCom(
+      { errors: [{ code: "invalid_payment", description: "Cobrança inválida" }] },
+      400,
+    )
+    const wait = vi.fn(async () => undefined)
+
+    await expect(
+      obterQrCodePixAsaas("pay_1", { env: envSandbox, fetch: fetchMock, wait }),
+    ).rejects.toThrow("invalid_payment")
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(wait).not.toHaveBeenCalled()
+  })
+
+  it("consulta uma cobrança específica para confirmar webhooks", async () => {
+    const fetchMock = mockFetchCom({ id: "pay/id", object: "payment", status: "RECEIVED" })
+
+    await obterCobrancaAsaas("pay/id", { env: envSandbox, fetch: fetchMock })
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://api-sandbox.asaas.com/v3/payments/pay%2Fid",
+    )
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined()
+  })
+
+  it("exclui uma cobrança pendente sem enviar body", async () => {
+    const fetchMock = mockFetchCom({ deleted: true, id: "pay/id" })
+
+    await excluirCobrancaAsaas("pay/id", { env: envSandbox, fetch: fetchMock })
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://api-sandbox.asaas.com/v3/payments/pay%2Fid",
+    )
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("DELETE")
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined()
+  })
 })
 
 describe("Pix Automático", () => {
@@ -211,6 +316,35 @@ describe("Pix Automático", () => {
       "https://api-sandbox.asaas.com/v3/pix/automatic/authorizations",
     )
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(dados)
+  })
+
+  it("consulta uma autorização específica para confirmar webhooks", async () => {
+    const fetchMock = mockFetchCom({ id: "aut/id", status: "ACTIVE" })
+
+    await obterAutorizacaoPixAutomaticoAsaas("aut/id", {
+      env: envSandbox,
+      fetch: fetchMock,
+    })
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://api-sandbox.asaas.com/v3/pix/automatic/authorizations/aut%2Fid",
+    )
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined()
+  })
+
+  it("cancela uma autorização sem enviar body", async () => {
+    const fetchMock = mockFetchCom({ id: "aut/id", status: "CANCELLED" })
+
+    await cancelarAutorizacaoPixAutomaticoAsaas("aut/id", {
+      env: envSandbox,
+      fetch: fetchMock,
+    })
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://api-sandbox.asaas.com/v3/pix/automatic/authorizations/aut%2Fid",
+    )
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("DELETE")
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined()
   })
 })
 

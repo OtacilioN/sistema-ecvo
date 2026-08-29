@@ -1,9 +1,20 @@
 "use client"
 
-import { CreditCard, FilePlus, LinkIcon, Pencil, Repeat2, Trash2, WalletCards } from "lucide-react"
+import {
+  CreditCard,
+  FilePlus,
+  LinkIcon,
+  Pencil,
+  Repeat2,
+  Trash2,
+  WalletCards,
+  XCircle,
+} from "lucide-react"
 import { useState } from "react"
+import { acaoCancelarCobrancaAsaas } from "@/app/actions/financeiro"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
+import { DialogoConfirmacao } from "@/components/ui/dialogo-confirmacao"
 import { ItemMenu, MenuAcoes } from "@/components/ui/menu-acoes"
 import {
   FormBaixarMensalidade,
@@ -103,14 +114,21 @@ export function AcoesMensalidade({
   formaPagamento,
   observacao,
   quitada,
+  cobrancaAsaas,
 }: {
   mensalidadeId: string
   status: StatusMensalidade
   formaPagamento: string | null
   observacao: string | null
   quitada: boolean
+  cobrancaAsaas?: {
+    id: string
+    ativa: boolean
+    status: string
+    tipo: string
+  }
 }) {
-  const [painel, setPainel] = useState<"baixar" | "status" | null>(null)
+  const [painel, setPainel] = useState<"baixar" | "status" | "cancelarAsaas" | null>(null)
   const fechar = () => setPainel(null)
 
   return (
@@ -138,6 +156,20 @@ export function AcoesMensalidade({
             >
               Alterar status
             </ItemMenu>
+            {cobrancaAsaas?.ativa &&
+              cobrancaAsaas.tipo === "PIX_MENSAL" &&
+              cobrancaAsaas.status !== "RECEBIDA" && (
+                <ItemMenu
+                  icone={XCircle}
+                  variante="destructive"
+                  onClick={() => {
+                    fecharMenu()
+                    setPainel("cancelarAsaas")
+                  }}
+                >
+                  Cancelar cobrança Asaas
+                </ItemMenu>
+              )}
           </>
         )}
       </MenuAcoes>
@@ -151,6 +183,23 @@ export function AcoesMensalidade({
       >
         <FormBaixarMensalidade mensalidadeId={mensalidadeId} aoConcluir={fechar} />
       </Dialog>
+
+      {cobrancaAsaas && (
+        <DialogoConfirmacao
+          aberto={painel === "cancelarAsaas"}
+          aoFechar={fechar}
+          titulo="Cancelar cobrança Asaas"
+          descricao={
+            <p>
+              O sistema consultará o Asaas e só removerá uma cobrança ainda não recebida. Depois
+              disso, a baixa manual ficará disponível.
+            </p>
+          }
+          acao={acaoCancelarCobrancaAsaas}
+          campos={{ cobrancaId: cobrancaAsaas.id }}
+          rotuloConfirmar="Cancelar cobrança"
+        />
+      )}
 
       <Dialog
         aberto={painel === "status"}

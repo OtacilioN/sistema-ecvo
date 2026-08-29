@@ -144,10 +144,16 @@ RF-053.2 e RF-053.3 é uma extensão posterior incorporada ao produto.
   proporcionalmente a parte dos professores.
 - **RF-053.2** Cada aluno com plano mensal pode usar cobrança PIX mensal pelo Asaas. Cada competência gera
   uma cobrança dinâmica e um QR Code de uso único, sem alterar o valor histórico da mensalidade.
-- **RF-053.3** O gestor pode habilitar PIX Automático semestral. O sistema materializa exatamente seis
-  competências mensais pelo valor da mensalidade: o QR inicial paga a primeira e solicita a autorização;
-  após a autorização ativa, somente as cinco instruções futuras são enviadas ao Asaas na janela admitida
-  pelo provedor. Eventos autenticados e idempotentes conciliam pagamento, vencimento e autorização.
+- **RF-053.3** O gestor pode habilitar PIX Automático semestral para um aluno, e o próprio aluno pode
+  habilitá-lo para si. O sistema materializa exatamente seis competências mensais pelo valor da mensalidade:
+  o QR inicial paga a primeira e solicita a autorização; após a autorização ativa, somente as cinco
+  instruções futuras são enviadas ao Asaas na janela admitida pelo provedor. Eventos autenticados,
+  confirmados na API e idempotentes conciliam pagamento, vencimento, estorno e autorização. Se a janela
+  de uma instrução for perdida, o sistema emite uma única cobrança PIX de contingência para a mesma
+  competência, alerta aluno e gestores e mantém os ciclos seguintes automáticos.
+- **RF-053.4** O próprio aluno e o gestor podem cancelar o PIX Automático. Antes de liberar o modo mensal
+  ou uma baixa manual, o sistema consulta a conta Asaas, preserva cobranças recebidas, encerra a autorização
+  e remove somente cobranças pendentes, com estados transitórios e auditoria para tolerar concorrência.
 
 ### Wellhub e TotalPass
 - **RF-054** Cadastro do tipo de vínculo. **RF-055** Mesmo fluxo operacional de treino.
@@ -187,6 +193,10 @@ definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do alu
 RN-021 o PIX Automático semestral possui exatamente seis ciclos; o pagamento imediato conta como ciclo 1
 e nenhuma sétima cobrança pode ser emitida. RN-022 somente confirmação financeira do Asaas pode baixar uma
 mensalidade automaticamente; gerar ou exibir QR Code não equivale a pagamento.
+
+RN-023 uma cobrança Asaas em processamento ou recebida impede alteração manual incompatível da mensalidade.
+Estorno integral reabre a mensalidade; estorno parcial retira a mensalidade dos repasses e exige conciliação
+manual auditada. Tentativas remotas permanecem no histórico; somente uma pode estar ativa por mensalidade.
 
 ## 8. Requisitos não funcionais (RNF)
 

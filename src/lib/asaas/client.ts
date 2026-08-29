@@ -12,6 +12,7 @@ export type ConfiguracaoAsaas = {
 export type DependenciasAsaas = {
   env?: Record<string, string | undefined>
   fetch?: typeof globalThis.fetch
+  wait?: (milissegundos: number) => Promise<void>
 }
 
 export type ListaPaginadaAsaas<T> = {
@@ -63,6 +64,8 @@ export type StatusCobrancaAsaas =
   | "CONFIRMED"
   | "OVERDUE"
   | "REFUNDED"
+  | "PARTIALLY_REFUNDED"
+  | "DELETED"
   | "RECEIVED_IN_CASH"
   | "REFUND_REQUESTED"
   | "REFUND_IN_PROGRESS"
@@ -80,6 +83,7 @@ export type CobrancaAsaas = {
   subscription?: string | null
   billingType: TipoCobrancaAsaas
   value: number
+  refundedValue?: number | null
   netValue?: number
   status: StatusCobrancaAsaas
   dueDate: string
@@ -89,7 +93,13 @@ export type CobrancaAsaas = {
   invoiceUrl?: string
   deleted?: boolean
   pixTransaction?: string | null
+  conciliationIdentifier?: string | null
   pixAutomaticAuthorizationId?: string | null
+}
+
+export type ExclusaoCobrancaAsaas = {
+  deleted: boolean
+  id: string
 }
 
 export type DadosCriacaoCobrancaAsaas = {
@@ -187,7 +197,7 @@ export type FiltrosAutorizacoesPixAutomaticoAsaas = {
 
 type OpcoesRequisicao = {
   body?: unknown
-  method?: "GET" | "POST"
+  method?: "DELETE" | "GET" | "POST"
   query?: Record<string, boolean | number | string | undefined>
 }
 
@@ -213,9 +223,15 @@ export function obterConfiguracaoAsaas(
     throw erroConfiguracao("ASAAS_ENVIRONMENT deve ser sandbox ou production")
   }
 
-  const execucaoEmProducao = env.VERCEL_ENV === "production" || env.NODE_ENV === "production"
+  const execucaoNaVercel = Boolean(env.VERCEL_ENV)
+  const execucaoEmProducao = execucaoNaVercel
+    ? env.VERCEL_ENV === "production"
+    : env.ASAAS_PRODUCTION_CONFIRMED === "ECVO_PRODUCTION"
   if (execucaoEmProducao && ambienteInformado !== "production") {
     throw erroConfiguracao("o runtime de produção não pode usar o Sandbox")
+  }
+  if (!execucaoEmProducao && ambienteInformado === "production") {
+    throw erroConfiguracao("a conta real só pode ser usada em um deployment de produção confirmado")
   }
   if (ambienteInformado === "sandbox" && !apiKey.startsWith("$aact_hmlg_")) {
     throw erroConfiguracao("a chave informada não pertence ao Sandbox")
@@ -356,6 +372,14 @@ export function listarCobrancasAsaas(
   )
 }
 
+export function obterCobrancaAsaas(cobrancaId: string, dependencias: DependenciasAsaas = {}) {
+  return requisitarAsaas<CobrancaAsaas>(
+    `/payments/${encodeURIComponent(cobrancaId)}`,
+    {},
+    dependencias,
+  )
+}
+
 export function criarCobrancaAsaas(
   dados: DadosCriacaoCobrancaAsaas,
   dependencias: DependenciasAsaas = {},
@@ -363,12 +387,45 @@ export function criarCobrancaAsaas(
   return requisitarAsaas<CobrancaAsaas>("/payments", { body: dados, method: "POST" }, dependencias)
 }
 
-export function obterQrCodePixAsaas(cobrancaId: string, dependencias: DependenciasAsaas = {}) {
-  return requisitarAsaas<QrCodePixAsaas>(
-    `/payments/${encodeURIComponent(cobrancaId)}/pixQrCode`,
-    {},
+export function excluirCobrancaAsaas(cobrancaId: string, dependencias: DependenciasAsaas = {}) {
+  return requisitarAsaas<ExclusaoCobrancaAsaas>(
+    `/payments/${encodeURIComponent(cobrancaId)}`,
+    { method: "DELETE" },
     dependencias,
   )
+}
+
+function erroApiAsaasTemCodigo(erro: unknown, codigo: string) {
+  if (!erro || typeof erro !== "object" || Reflect.get(erro, "name") !== "ErroApiAsaas") {
+    return false
+  }
+  const codes = Reflect.get(erro, "codes")
+  return Array.isArray(codes) && codes.includes(codigo)
+}
+
+export async function obterQrCodePixAsaas(
+  cobrancaId: string,
+  dependencias: DependenciasAsaas = {},
+) {
+  const wait =
+    dependencias.wait ??
+    ((milissegundos) => new Promise((resolve) => setTimeout(resolve, milissegundos)))
+  const atrasos = [0, 500, 1_000, 2_000]
+
+  for (const atraso of atrasos) {
+    if (atraso > 0) await wait(atraso)
+    try {
+      return await requisitarAsaas<QrCodePixAsaas>(
+        `/payments/${encodeURIComponent(cobrancaId)}/pixQrCode`,
+        {},
+        dependencias,
+      )
+    } catch (erro) {
+      if (!erroApiAsaasTemCodigo(erro, "invalid_action") || atraso === atrasos.at(-1)) throw erro
+    }
+  }
+
+  throw new Error("Não foi possível obter o QR Code PIX do Asaas.")
 }
 
 export function listarAutorizacoesPixAutomaticoAsaas(
@@ -378,6 +435,28 @@ export function listarAutorizacoesPixAutomaticoAsaas(
   return requisitarAsaas<ListaPaginadaAsaas<AutorizacaoPixAutomaticoAsaas>>(
     "/pix/automatic/authorizations",
     { query: filtros },
+    dependencias,
+  )
+}
+
+export function obterAutorizacaoPixAutomaticoAsaas(
+  autorizacaoId: string,
+  dependencias: DependenciasAsaas = {},
+) {
+  return requisitarAsaas<AutorizacaoPixAutomaticoAsaas>(
+    `/pix/automatic/authorizations/${encodeURIComponent(autorizacaoId)}`,
+    {},
+    dependencias,
+  )
+}
+
+export function cancelarAutorizacaoPixAutomaticoAsaas(
+  autorizacaoId: string,
+  dependencias: DependenciasAsaas = {},
+) {
+  return requisitarAsaas<AutorizacaoPixAutomaticoAsaas>(
+    `/pix/automatic/authorizations/${encodeURIComponent(autorizacaoId)}`,
+    { method: "DELETE" },
     dependencias,
   )
 }

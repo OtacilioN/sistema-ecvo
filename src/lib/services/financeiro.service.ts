@@ -1,11 +1,11 @@
 import "server-only"
-import type {
-  Periodicidade,
-  Plataforma,
+import {
+  type Periodicidade,
+  type Plataforma,
   Prisma,
-  StatusMensalidade,
-  TipoAluno,
-  TipoPagamento,
+  type StatusMensalidade,
+  type TipoAluno,
+  type TipoPagamento,
 } from "@prisma/client"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
@@ -69,6 +69,23 @@ export type ResultadoRepasseFinanceiro = {
   socioA: number
   socioB: number
 }
+
+function cobrancaAsaasBloqueiaAlteracaoManual(
+  cobrancas: Array<{ ativa: boolean }> | null | undefined,
+): boolean {
+  return Boolean(cobrancas?.some((cobranca) => cobranca.ativa))
+}
+
+const ALTERACAO_MANUAL_BLOQUEADA = Symbol("ALTERACAO_MANUAL_BLOQUEADA")
+
+async function bloquearMensalidadeFinanceira(tx: Prisma.TransactionClient, mensalidadeId: string) {
+  await tx.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "Mensalidade" WHERE "id" = ${mensalidadeId} FOR UPDATE`,
+  )
+}
+
+const MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO =
+  "Há uma cobrança Asaas em processamento. Concilie ou cancele a cobrança no Asaas antes de alterar a mensalidade manualmente."
 
 export const CONFIGURACAO_REPASSE_PADRAO: ConfiguracaoRepasseFinanceiro = {
   valorBaseModalidade: 100,
@@ -173,7 +190,7 @@ export async function atualizarVencimentosMensalidadesAluno(
     where: {
       alunoId: params.alunoId,
       contratoPixAutomaticoId: null,
-      cobrancaAsaas: { is: null },
+      cobrancasAsaas: { none: { ativa: true } },
     },
     select: {
       id: true,
@@ -879,7 +896,10 @@ export async function baixarMensalidade(params: {
 }) {
   const mensalidade = await db.mensalidade.findUnique({
     where: { id: params.mensalidadeId },
-    include: { aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } } },
+    include: {
+      aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } },
+      cobrancasAsaas: { where: { ativa: true }, select: { ativa: true } },
+    },
   })
   if (!mensalidade) return { ok: false as const, motivo: "Mensalidade não encontrada." }
   if (mensalidade.status === "PAGA") {
@@ -893,16 +913,40 @@ export async function baixarMensalidade(params: {
   if (mensalidade.status === "ISENTA") {
     return { ok: false as const, motivo: "Mensalidade já está quitada." }
   }
+  if (cobrancaAsaasBloqueiaAlteracaoManual(mensalidade.cobrancasAsaas)) {
+    return { ok: false as const, motivo: MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO }
+  }
 
   const atualizada = await db.$transaction(async (tx) => {
-    const nova = await tx.mensalidade.update({
-      where: { id: params.mensalidadeId },
+    await bloquearMensalidadeFinanceira(tx, params.mensalidadeId)
+    const cobrancasAtivas = await tx.cobrancaAsaas.findMany({
+      where: { mensalidadeId: params.mensalidadeId, ativa: true },
+      select: { ativa: true },
+    })
+    if (cobrancaAsaasBloqueiaAlteracaoManual(cobrancasAtivas)) {
+      return ALTERACAO_MANUAL_BLOQUEADA
+    }
+    const alterada = await tx.mensalidade.updateMany({
+      where: {
+        id: params.mensalidadeId,
+        status: mensalidade.status,
+        atualizadoEm: mensalidade.atualizadoEm,
+      },
       data: {
         status: "PAGA",
         pagoEm: new Date(),
         formaPagamento: params.formaPagamento ?? null,
+        cobrancaQuitacaoAsaasId: null,
         observacao: params.observacao ?? mensalidade.observacao,
       },
+    })
+    if (alterada.count === 0) return null
+    await tx.cobrancaAsaas.updateMany({
+      where: { mensalidadeId: params.mensalidadeId, estornoParcialPendenteEm: { not: null } },
+      data: { estornoParcialPendenteEm: null },
+    })
+    const nova = await tx.mensalidade.findUniqueOrThrow({
+      where: { id: params.mensalidadeId },
     })
 
     await registrarLog(
@@ -942,6 +986,13 @@ export async function baixarMensalidade(params: {
     return nova
   })
 
+  if (atualizada === ALTERACAO_MANUAL_BLOQUEADA) {
+    return { ok: false as const, motivo: MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO }
+  }
+  if (!atualizada) {
+    return { ok: false as const, motivo: "A mensalidade foi alterada por outra operação." }
+  }
+
   return { ok: true as const, mensalidade: atualizada }
 }
 
@@ -976,20 +1027,47 @@ export async function atualizarStatusMensalidade(params: {
 }) {
   const mensalidade = await db.mensalidade.findUnique({
     where: { id: params.mensalidadeId },
-    include: { aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } } },
+    include: {
+      aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } },
+      cobrancasAsaas: { where: { ativa: true }, select: { ativa: true } },
+    },
   })
   if (!mensalidade) return { ok: false as const, motivo: "Mensalidade não encontrada." }
+  if (cobrancaAsaasBloqueiaAlteracaoManual(mensalidade.cobrancasAsaas)) {
+    return { ok: false as const, motivo: MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO }
+  }
 
   const atualizada = await db.$transaction(async (tx) => {
-    const nova = await tx.mensalidade.update({
-      where: { id: params.mensalidadeId },
+    await bloquearMensalidadeFinanceira(tx, params.mensalidadeId)
+    const cobrancasAtivas = await tx.cobrancaAsaas.findMany({
+      where: { mensalidadeId: params.mensalidadeId, ativa: true },
+      select: { ativa: true },
+    })
+    if (cobrancaAsaasBloqueiaAlteracaoManual(cobrancasAtivas)) {
+      return ALTERACAO_MANUAL_BLOQUEADA
+    }
+    const alterada = await tx.mensalidade.updateMany({
+      where: {
+        id: params.mensalidadeId,
+        status: mensalidade.status,
+        atualizadoEm: mensalidade.atualizadoEm,
+      },
       data: {
         status: params.status,
         pagoEm: params.status === "PAGA" ? (mensalidade.pagoEm ?? new Date()) : null,
         formaPagamento:
           params.status === "PAGA" ? (params.formaPagamento ?? mensalidade.formaPagamento) : null,
+        cobrancaQuitacaoAsaasId: null,
         observacao: params.observacao ?? mensalidade.observacao,
       },
+    })
+    if (alterada.count === 0) return null
+    await tx.cobrancaAsaas.updateMany({
+      where: { mensalidadeId: params.mensalidadeId, estornoParcialPendenteEm: { not: null } },
+      data: { estornoParcialPendenteEm: null },
+    })
+    const nova = await tx.mensalidade.findUniqueOrThrow({
+      where: { id: params.mensalidadeId },
     })
 
     await registrarLog(
@@ -1033,6 +1111,13 @@ export async function atualizarStatusMensalidade(params: {
 
     return nova
   })
+
+  if (atualizada === ALTERACAO_MANUAL_BLOQUEADA) {
+    return { ok: false as const, motivo: MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO }
+  }
+  if (!atualizada) {
+    return { ok: false as const, motivo: "A mensalidade foi alterada por outra operação." }
+  }
 
   return { ok: true as const, mensalidade: atualizada }
 }

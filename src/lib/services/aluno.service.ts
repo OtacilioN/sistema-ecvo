@@ -179,7 +179,7 @@ export async function migrarMensalidadesAbertasParaPlanoAluno(
       alunoId: params.alunoId,
       status: "EM_ABERTO",
       contratoPixAutomaticoId: null,
-      cobrancaAsaas: { is: null },
+      cobrancasAsaas: { none: { ativa: true } },
     },
     data,
   })
@@ -305,7 +305,9 @@ export async function atualizarAluno(
       diaVencimento: true,
       responsavel: true,
       contratosPixAutomatico: {
-        where: { status: { in: ["CRIANDO", "PENDENTE_AUTORIZACAO", "ATIVO"] } },
+        where: {
+          status: { in: ["CRIANDO", "PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO"] },
+        },
         select: { status: true },
         take: 1,
       },
@@ -557,7 +559,9 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       diaVencimento: true,
       responsavel: true,
       contratosPixAutomatico: {
-        where: { status: { in: ["CRIANDO", "PENDENTE_AUTORIZACAO", "ATIVO"] } },
+        where: {
+          status: { in: ["CRIANDO", "PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO"] },
+        },
         select: { status: true },
         take: 1,
       },

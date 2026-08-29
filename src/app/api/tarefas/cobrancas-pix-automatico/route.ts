@@ -1,3 +1,4 @@
+import { mensagemErroAsaasSegura, tokenWebhookValido } from "@/lib/asaas/seguranca"
 import {
   processarCobrancasPixAutomaticoPendentes,
   reconciliarPendenciasAsaas,
@@ -11,11 +12,31 @@ export async function GET(request: Request) {
   if (!segredo) {
     return Response.json({ erro: "CRON_SECRET não configurado." }, { status: 500 })
   }
-  if (request.headers.get("authorization") !== `Bearer ${segredo}`) {
+  if (!tokenWebhookValido(request.headers.get("authorization"), `Bearer ${segredo}`)) {
     return Response.json({ erro: "Não autorizado." }, { status: 401 })
   }
 
-  const reconciliacao = await reconciliarPendenciasAsaas()
-  const criacao = await processarCobrancasPixAutomaticoPendentes()
-  return Response.json({ reconciliacao, criacao })
+  let reconciliacao: Awaited<ReturnType<typeof reconciliarPendenciasAsaas>> | null = null
+  let criacao: Awaited<ReturnType<typeof processarCobrancasPixAutomaticoPendentes>> | null = null
+  const erros: Array<{ etapa: "RECONCILIACAO" | "CRIACAO"; motivo: string }> = []
+
+  try {
+    reconciliacao = await reconciliarPendenciasAsaas()
+    if (!reconciliacao.ok) {
+      erros.push({ etapa: "RECONCILIACAO", motivo: "Existem itens pendentes de conciliação." })
+    }
+  } catch (erro) {
+    erros.push({ etapa: "RECONCILIACAO", motivo: mensagemErroAsaasSegura(erro) })
+  }
+
+  try {
+    criacao = await processarCobrancasPixAutomaticoPendentes()
+    if (!criacao.ok) {
+      erros.push({ etapa: "CRIACAO", motivo: "Existem cobranças que não puderam ser criadas." })
+    }
+  } catch (erro) {
+    erros.push({ etapa: "CRIACAO", motivo: mensagemErroAsaasSegura(erro) })
+  }
+
+  return Response.json({ reconciliacao, criacao, erros }, { status: erros.length > 0 ? 500 : 200 })
 }

@@ -51,7 +51,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Pagamentos avulsos (RF-052) | `Pagamento` | `financeiro.service.ts`, `gestao/financeiro`, `aluno/financeiro` |
 | Wellhub/TotalPass com plano mensal interno por modalidade (RF-053) | `Aluno.tipo`,`Aluno.planoId`,`AlunoPlanoModalidade` | `financeiro.service.ts`, `checkin.service.ts`, `comparecimento.service.ts`, `aluno/financeiro` |
 | Divisão de receita e repasse professor/sócios (RF-053.1/RF-064.1/RN-017/RN-018) | `ConfiguracaoAcademia.valorBaseModalidade`,`RegistroImportado.valorRepasse` | `calcularRepasseFinanceiro`, `conciliacao.service.ts`, `gestao/configuracoes`, `gestao/conciliacao` |
-| PIX mensal e PIX Automático semestral via Asaas (RF-053.2/053.3/RN-021/022) | `Aluno.tipoCobrancaPix`,`ClienteAsaas`,`ContratoPixAutomatico`,`CobrancaAsaas`,`EventoWebhookAsaas` | `src/lib/asaas/*`, `src/lib/services/asaas.service.ts`, `src/app/actions/financeiro.ts`, `src/app/api/webhooks/asaas/route.ts`, `src/app/api/tarefas/cobrancas-pix-automatico/route.ts`, `gestao/financeiro`, `aluno/financeiro` |
+| PIX mensal, PIX Automático semestral e cancelamento conciliado via Asaas (RF-053.2..053.4/RN-021/022/023) | `Aluno.tipoCobrancaPix`,`ClienteAsaas`,`ContratoPixAutomatico`,`CobrancaAsaas`,`EventoWebhookAsaas` | `src/lib/asaas/*`, `src/lib/services/asaas.service.ts`, `src/app/actions/financeiro.ts`, `src/app/api/webhooks/asaas/route.ts`, `src/app/api/tarefas/cobrancas-pix-automatico/route.ts`, `gestao/financeiro`, `aluno/financeiro` |
 
 ## Conciliação (Fase 4) — ✅
 | Requisito | Entidade(s) | Arquivos |

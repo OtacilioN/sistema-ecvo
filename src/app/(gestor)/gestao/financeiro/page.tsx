@@ -81,7 +81,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       include: {
         aluno: { select: { usuario: { select: { nome: true } } } },
         plano: { select: { nome: true } },
-        cobrancaAsaas: { select: { tipo: true, status: true } },
+        cobrancasAsaas: {
+          orderBy: { geracao: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            tipo: true,
+            status: true,
+            ativa: true,
+            asaasPaymentId: true,
+            externalReference: true,
+            ultimoErro: true,
+            estornoParcialPendenteEm: true,
+          },
+        },
       },
     }),
     db.pagamento.findMany({
@@ -192,6 +205,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     const quitada = status === "PAGA" || status === "ISENTA"
                     const emAberto = status === "EM_ABERTO"
                     const vencida = status === "VENCIDA"
+                    const cobrancaAsaas = mensalidade.cobrancasAsaas[0]
                     return (
                       <tr
                         key={mensalidade.id}
@@ -224,8 +238,22 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                           </Badge>
                         </td>
                         <td className="p-4" data-label="Asaas">
-                          {mensalidade.cobrancaAsaas ? (
-                            <Badge variant="outline">{mensalidade.cobrancaAsaas.status}</Badge>
+                          {cobrancaAsaas ? (
+                            <div className="max-w-72 space-y-1">
+                              <Badge variant="outline">
+                                {cobrancaAsaas.estornoParcialPendenteEm
+                                  ? "ESTORNO PARCIAL PENDENTE"
+                                  : cobrancaAsaas.status}
+                              </Badge>
+                              {cobrancaAsaas.ultimoErro && (
+                                <p className="text-xs text-destructive">
+                                  {cobrancaAsaas.ultimoErro}
+                                </p>
+                              )}
+                              <p className="break-all text-xs text-muted-foreground">
+                                {cobrancaAsaas.asaasPaymentId ?? cobrancaAsaas.externalReference}
+                              </p>
+                            </div>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
@@ -245,6 +273,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                                 formaPagamento={mensalidade.formaPagamento}
                                 observacao={mensalidade.observacao}
                                 quitada={quitada}
+                                cobrancaAsaas={cobrancaAsaas}
                               />
                             </div>
                           </td>
