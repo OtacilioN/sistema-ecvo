@@ -22,12 +22,17 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
   janela padrão. O check-in continua vinculado a uma `Aula` oficial para preservar presença, horas,
   capacidade e duplicidade; `Checkin.realizadoEm` guarda o horário real e
   `associadoAutomaticamente` preserva que a aula foi escolhida pelo sistema.
+- **Solicitação pública de matrícula**: `SolicitacaoMatricula` guarda os dados fornecidos pelo candidato,
+  a modalidade pretendida e a referência privada do comprovante PIX. Nenhum `Usuario`/`Aluno` é criado
+  enquanto a solicitação estiver `PENDENTE`. A aprovação do gestor cria a conta, liga `Aluno.planoId`,
+  `Aluno.modalidades` e `AlunoPlanoModalidade`, gera a mensalidade inicial e registra auditoria na mesma
+  transação. O anexo só dá baixa na mensalidade quando o gestor o confirma explicitamente.
 
 ## Entidades
 
 Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento (agendamento de aula) · Checkin ·
 TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · Graduacao · GraduacaoAluno ·
-Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · Importacao ·
+Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · SolicitacaoMatricula · Importacao ·
 RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao · InscricaoPush.
 
 ## Diagrama (ER simplificado)

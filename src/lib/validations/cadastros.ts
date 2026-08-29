@@ -1,7 +1,7 @@
 import { z } from "zod"
 import { STATUS_ALUNO } from "@/lib/alunos/status"
 import { fotoPathnameDeUrl, pathnameFotoValido } from "@/lib/fotos"
-import { dataCivilParaDate } from "@/lib/utils/datas"
+import { dataCivilParaDate, fimExclusivoDoDiaAcademia } from "@/lib/utils/datas"
 import { cpfValido } from "@/lib/utils/formato"
 
 // Schemas de validação dos cadastros da Fase 1 (RF-001..012).
@@ -53,6 +53,16 @@ const dataCivilOpcional = z.preprocess((v) => {
   if (typeof v === "string") return dataCivilParaDate(v)
   return v
 }, z.date().optional())
+
+const dataPagamentoInicial = z
+  .preprocess((v) => {
+    if (typeof v === "string" && v.length > 0) return dataCivilParaDate(v)
+    return v
+  }, z.date("Informe a data do pagamento"))
+  .refine(
+    (data) => data.getTime() < fimExclusivoDoDiaAcademia(new Date()).getTime(),
+    "A data do pagamento não pode estar no futuro",
+  )
 
 const numeroInteiroOpcional = (min: number, max?: number) =>
   z
@@ -197,6 +207,13 @@ const cobrancaModalidadeSchema = z.object({
   plataformaExterna: z.enum(["WELLHUB", "TOTALPASS"]).nullable(),
 })
 
+const pagamentoInicialSchema = z.object({
+  competenciaEsperada: z.string().regex(/^\d{4}-\d{2}$/, "Competência inválida"),
+  pagoEm: dataPagamentoInicial,
+  formaPagamento: textoOpcional,
+  observacao: textoOpcional,
+})
+
 function validarCobrancasModalidades(
   dados: {
     planoId?: string | null
@@ -259,9 +276,19 @@ export const alunoSchema = z
     diaVencimento: diaVencimentoSchema,
     modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade"),
     cobrancasModalidades: z.array(cobrancaModalidadeSchema).default([]),
+    pagamentoInicial: pagamentoInicialSchema.optional(),
     responsavel: responsavelSchema.optional(),
   })
-  .superRefine(validarCobrancasModalidades)
+  .superRefine((dados, ctx) => {
+    validarCobrancasModalidades(dados, ctx)
+    if (dados.pagamentoInicial && !dados.planoId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["pagamentoInicial"],
+        message: "Vincule um plano para registrar a mensalidade inicial como paga.",
+      })
+    }
+  })
 export type AlunoInput = z.infer<typeof alunoSchema>
 
 export const dadosAlunoSchema = z

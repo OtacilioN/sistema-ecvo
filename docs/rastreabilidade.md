@@ -17,6 +17,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Requisito | Entidade(s) | Arquivos |
 | --- | --- | --- |
 | Cadastro aluno/professor/modalidade com foto e auditoria (RF-001/005/008/RF-079) | `Aluno`,`Professor`,`Modalidade`,`LogAuditoria` | `src/lib/services/{aluno,professor,modalidade}.service.ts`, `gestao/{alunos,professores,modalidades}` |
+| Autocadastro com modalidade, grade publicada, comprovante PIX privado e aprovação obrigatória com plano (RF-001.1/001.2/RF-020/RF-047/048/RF-079) | `SolicitacaoMatricula`,`Usuario`,`Aluno`,`AlunoPlanoModalidade`,`Mensalidade`,`LogAuditoria` | `src/lib/services/matricula.service.ts`, `src/lib/validations/matricula.ts`, `src/app/actions/matriculas.ts`, `src/app/(auth)/matricula`, `gestao/matriculas-pendentes`, `api/comprovantes-matricula/[id]`, `checkin.service.ts` |
 | Status e tipo do aluno com auditoria (RF-002/RF-054/RF-079) | `Aluno`,`LogAuditoria` | `src/lib/services/aluno.service.ts`, `src/app/actions/cadastros.ts`, `gestao/alunos` |
 | Status do professor com bloqueio de login e auditoria (RF-005/RF-079) | `Professor`,`Usuario`,`LogAuditoria` | `src/lib/services/professor.service.ts`, `src/app/actions/cadastros.ts`, `gestao/professores` |
 | Configuração de modalidade, status, professores habilitados, regras próprias de treino e catálogo de graduações (RF-009/RF-040) | `Modalidade`,`Professor`,`Graduacao` | `src/lib/services/{modalidade,configuracao,graduacao}.service.ts`, `src/app/actions/cadastros.ts`, `gestao/modalidades` |

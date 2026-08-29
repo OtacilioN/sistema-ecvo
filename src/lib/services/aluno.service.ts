@@ -4,7 +4,10 @@ import type { ObservacaoTecnicaHistorico } from "@/lib/aula-monitoramento"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
-import { atualizarVencimentosMensalidadesAluno } from "@/lib/services/financeiro.service"
+import {
+  atualizarVencimentosMensalidadesAluno,
+  registrarMensalidadeInicialPaga,
+} from "@/lib/services/financeiro.service"
 import { excluirFotosInternasAntigas } from "@/lib/storage/blob-fotos"
 import { TERMO_RESPONSABILIDADE_VERSAO } from "@/lib/termo-responsabilidade"
 import { formatarDataHora } from "@/lib/utils/datas"
@@ -186,7 +189,18 @@ export async function migrarMensalidadesAbertasParaPlanoAluno(
 }
 
 export async function criarAluno(
-  params: { nome: string; email: string; senha: string; autorId: string } & DadosAluno,
+  params: {
+    nome: string
+    email: string
+    senha: string
+    autorId: string
+    pagamentoInicial?: {
+      competenciaEsperada: string
+      pagoEm: Date
+      formaPagamento?: string | null
+      observacao?: string | null
+    }
+  } & DadosAluno,
 ) {
   const senhaHash = await gerarHashSenha(params.senha)
   const vinculosCobranca = vinculosCobrancaModalidade({
@@ -272,6 +286,17 @@ export async function criarAluno(
       },
       tx,
     )
+
+    if (params.pagamentoInicial && usuario.aluno) {
+      const pagamento = await registrarMensalidadeInicialPaga(tx, {
+        alunoId: usuario.aluno.id,
+        autorId: params.autorId,
+        ...params.pagamentoInicial,
+      })
+      if (!pagamento.ok) {
+        throw new Error(`Pagamento inicial: ${pagamento.motivo}`)
+      }
+    }
 
     return usuario
   })

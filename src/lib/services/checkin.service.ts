@@ -39,6 +39,8 @@ export { podeRealizarCheckinNaJanela } from "@/lib/checkin-horario"
 export type ContextoCheckin = {
   statusAluno: StatusAluno
   tipoAluno: TipoAluno
+  possuiPlanoPagamento: boolean
+  modalidadeCobertaPeloPlano: boolean
   aulaCancelada: boolean
   jaTemCheckinValido: boolean
   temComparecimento: boolean
@@ -67,6 +69,16 @@ export function avaliarCheckin(ctx: ContextoCheckin): AvaliacaoCheckin {
 
   if (alunoSemMatriculaAtiva(ctx.statusAluno)) {
     return { ok: false, motivo: "Aluno sem matrícula ativa." }
+  }
+
+  if (
+    ctx.tipoAluno === "MENSALISTA" &&
+    (!ctx.possuiPlanoPagamento || !ctx.modalidadeCobertaPeloPlano)
+  ) {
+    return {
+      ok: false,
+      motivo: "Matrícula pendente de aprovação e vínculo de plano.",
+    }
   }
 
   if (!ctx.termoResponsabilidadeAceito) {
@@ -525,9 +537,10 @@ export async function realizarCheckin(params: {
       select: {
         status: true,
         tipo: true,
+        planoId: true,
         usuario: { select: { nome: true } },
         modalidades: { select: { id: true } },
-        modalidadesPlano: { select: { modalidadeId: true } },
+        modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
       },
     }),
     db.aula.findUnique({
@@ -608,9 +621,11 @@ export async function realizarCheckin(params: {
 
   const regras = resolverRegrasTreino(config, aula.turma.modalidade)
   const termoAceito = await termoResponsabilidadeAtualAceito(params.alunoId)
-  const mensalidadeInternaNaModalidade = aluno.modalidadesPlano.some(
-    (modalidade) => modalidade.modalidadeId === aula.turma.modalidadeId,
+  const modalidadeCobertaPeloPlano = aluno.modalidadesPlano.some(
+    (modalidade) =>
+      modalidade.modalidadeId === aula.turma.modalidadeId && !modalidade.plataformaExterna,
   )
+  const mensalidadeInternaNaModalidade = modalidadeCobertaPeloPlano
   const emDia = mensalidadeInternaNaModalidade ? await mensalidadeEmDia(params.alunoId) : true
   const inadimplente =
     aluno.status === "INADIMPLENTE" || (Boolean(mensalidadeInternaNaModalidade) && !emDia)
@@ -621,6 +636,8 @@ export async function realizarCheckin(params: {
   const avaliacao = avaliarCheckin({
     statusAluno: aluno.status,
     tipoAluno: aluno.tipo,
+    possuiPlanoPagamento: Boolean(aluno.planoId),
+    modalidadeCobertaPeloPlano,
     aulaCancelada: aula.cancelada,
     jaTemCheckinValido: false, // já garantido acima (early-return se VALIDO)
     temComparecimento:

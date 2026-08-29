@@ -13,6 +13,7 @@ import {
   mensalidadeBloqueiaTreino,
   mensalistaAdimplente,
   modalidadesMensalidadeInterna,
+  registrarMensalidadeInicialPaga,
   sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
   vencerMensalidadesAtrasadas,
@@ -84,6 +85,142 @@ describe("mensalidadeBloqueiaTreino", () => {
         new Date("2026-06-11T12:00:00Z"),
       ),
     ).toBe(true)
+  })
+})
+
+describe("registrarMensalidadeInicialPaga", () => {
+  it("gera e baixa a competência atual na mesma transação", async () => {
+    const logs: Array<Record<string, unknown>> = []
+    const notificacoes: Array<Record<string, unknown>> = []
+    const mensalidadeAberta = {
+      id: "mensalidade-1",
+      alunoId: "aluno-1",
+      planoId: "plano-1",
+      competencia: "2026-08",
+      valor: 250,
+      vencimento: new Date("2026-08-10T12:00:00Z"),
+      status: "EM_ABERTO",
+      pagoEm: null,
+      formaPagamento: null,
+      observacao: null,
+      repasseSnapshot: null,
+    }
+    let buscasMensalidade = 0
+    let mensalidadePersistida = mensalidadeAberta
+    const cliente = {
+      aluno: {
+        findUnique: async () => ({
+          id: "aluno-1",
+          usuarioId: "usuario-1",
+          diaVencimento: 10,
+          plano: { id: "plano-1", valor: 250 },
+          modalidadesPlano: [
+            {
+              plataformaExterna: null,
+              modalidade: {
+                id: "modalidade-1",
+                nome: "Jiu-Jitsu",
+                turmas: [
+                  {
+                    professorId: "professor-1",
+                    professor: { usuario: { nome: "Professor ECVO" } },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        updateMany: async () => ({ count: 0 }),
+      },
+      configuracaoAcademia: {
+        findUnique: async (params: { select: Record<string, boolean> }) =>
+          "valorBaseModalidade" in params.select
+            ? { valorBaseModalidade: 100 }
+            : { notificarFinanceiro: true },
+      },
+      mensalidade: {
+        findUnique: async () => {
+          buscasMensalidade += 1
+          if (buscasMensalidade === 1) return null
+          return {
+            ...mensalidadePersistida,
+            aluno: { usuarioId: "usuario-1", usuario: { nome: "Aluno ECVO" } },
+          }
+        },
+        create: async (params: { data: Record<string, unknown> }) => {
+          mensalidadePersistida = { ...mensalidadeAberta, ...params.data } as never
+          return mensalidadePersistida
+        },
+        update: async (params: { data: Record<string, unknown> }) => {
+          mensalidadePersistida = { ...mensalidadePersistida, ...params.data } as never
+          return mensalidadePersistida
+        },
+        findFirst: async () => null,
+      },
+      logAuditoria: {
+        create: async (params: { data: Record<string, unknown> }) => {
+          logs.push(params.data)
+          return params.data
+        },
+      },
+      notificacao: {
+        create: async (params: { data: Record<string, unknown> }) => {
+          notificacoes.push(params.data)
+          return { id: `notificacao-${notificacoes.length}`, ...params.data }
+        },
+      },
+    } as never
+
+    const resultado = await registrarMensalidadeInicialPaga(cliente, {
+      alunoId: "aluno-1",
+      competenciaEsperada: "2026-08",
+      pagoEm: new Date("2026-08-27T12:00:00Z"),
+      formaPagamento: "Pix",
+      observacao: "Pago na matrícula",
+      autorId: "gestor-1",
+      agora: new Date("2026-08-27T15:00:00Z"),
+    })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      mensalidade: {
+        competencia: "2026-08",
+        status: "PAGA",
+        pagoEm: new Date("2026-08-27T12:00:00Z"),
+        formaPagamento: "Pix",
+        observacao: "Pago na matrícula",
+      },
+    })
+    expect(logs).toHaveLength(2)
+    expect(resultado.ok && resultado.mensalidade.repasseSnapshot).toEqual([
+      {
+        modalidadeId: "modalidade-1",
+        modalidadeNome: "Jiu-Jitsu",
+        professorId: "professor-1",
+        professorNome: "Professor ECVO",
+        plataformaExterna: null,
+        valorBase: 100,
+      },
+    ])
+    expect(notificacoes).toEqual([
+      expect.objectContaining({ titulo: "Mensalidade gerada" }),
+      expect.objectContaining({ titulo: "Mensalidade atualizada" }),
+    ])
+  })
+
+  it("rejeita se a competência exibida ficou desatualizada", async () => {
+    const resultado = await registrarMensalidadeInicialPaga({} as never, {
+      alunoId: "aluno-1",
+      competenciaEsperada: "2026-07",
+      pagoEm: new Date("2026-08-27T12:00:00Z"),
+      autorId: "gestor-1",
+      agora: new Date("2026-08-27T15:00:00Z"),
+    })
+
+    expect(resultado).toEqual({
+      ok: false,
+      motivo: "A competência mudou. Atualize a página e informe o pagamento novamente.",
+    })
   })
 })
 

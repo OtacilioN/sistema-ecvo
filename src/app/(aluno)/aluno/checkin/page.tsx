@@ -41,22 +41,41 @@ export default async function CheckinGlobalPage({
     where: { id: alunoId },
     select: {
       status: true,
+      tipo: true,
+      planoId: true,
       modalidades: {
         where: { ativa: true },
         select: { id: true, checkinSemRestricaoHorario: true },
       },
+      modalidadesPlano: {
+        select: { modalidadeId: true, plataformaExterna: true },
+      },
     },
   })
   const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))
-  const modalidadeIds = alunoOperacional
-    ? (aluno?.modalidades.map((modalidade) => modalidade.id) ?? [])
+  const modalidadesInternas = new Set(
+    aluno?.modalidadesPlano
+      .filter((modalidade) => !modalidade.plataformaExterna)
+      .map((modalidade) => modalidade.modalidadeId) ?? [],
+  )
+  const matriculaLiberada = Boolean(
+    alunoOperacional &&
+      aluno &&
+      (aluno.tipo !== "MENSALISTA" || (aluno.planoId && modalidadesInternas.size > 0)),
+  )
+  const modalidadeIds = matriculaLiberada
+    ? (aluno?.modalidades
+        .filter(
+          (modalidade) => aluno.tipo !== "MENSALISTA" || modalidadesInternas.has(modalidade.id),
+        )
+        .map((modalidade) => modalidade.id) ?? [])
     : []
   const agora = new Date()
   const fimMinimoLiberado = new Date(agora.getTime() - TOLERANCIA_PADRAO_CHECKIN_MINUTOS * 60_000)
   const inicioDia = inicioDoDiaAcademia(agora)
   const fimDia = fimExclusivoDoDiaAcademia(agora)
 
-  const aulasCandidatas = alunoOperacional
+  const aulasCandidatas = matriculaLiberada
     ? await db.aula.findMany({
         where: {
           cancelada: false,
@@ -153,21 +172,23 @@ export default async function CheckinGlobalPage({
         </Card>
       )}
 
-      {!tokenAtual && <LeitorQRCodeAluno />}
+      {matriculaLiberada && !tokenAtual && <LeitorQRCodeAluno />}
 
-      {!alunoOperacional && (
+      {!matriculaLiberada && (
         <Card>
           <CardContent className="flex gap-3 py-6 text-sm text-muted-foreground">
             <AlertTriangle className="mt-0.5 size-5 shrink-0" />
             <div>
-              <p className="font-medium text-foreground">Matrícula trancada.</p>
-              <p className="mt-1">Procure a gestão para retomar os treinos.</p>
+              <p className="font-medium text-foreground">Check-in ainda não liberado.</p>
+              <p className="mt-1">
+                Sua matrícula precisa estar ativa e vinculada a um plano de pagamento.
+              </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {alunoOperacional && aulas.length === 0 && (
+      {matriculaLiberada && aulas.length === 0 && (
         <Card>
           <CardContent className="flex gap-3 py-6 text-sm text-muted-foreground">
             <Clock className="mt-0.5 size-5 shrink-0" />

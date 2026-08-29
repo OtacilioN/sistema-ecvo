@@ -1,0 +1,295 @@
+"use client"
+
+import { CalendarDays, Check, FileImage, LockKeyhole, MapPin, Upload } from "lucide-react"
+import { useActionState, useMemo, useState } from "react"
+import { acaoSolicitarMatricula } from "@/app/actions/matriculas"
+import { Badge } from "@/components/ui/badge"
+import { BotaoEnviar } from "@/components/ui/botao-enviar"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { rotuloDiaSemana } from "@/lib/utils/datas"
+
+type Modalidade = Awaited<
+  ReturnType<typeof import("@/lib/services/matricula.service").listarOpcoesPublicasMatricula>
+>[number]
+
+export function FormMatricula({ modalidades }: { modalidades: Modalidade[] }) {
+  const [estado, acao] = useActionState(acaoSolicitarMatricula, undefined)
+  const [modalidadeId, setModalidadeId] = useState("")
+  const [arquivo, setArquivo] = useState<File | null>(null)
+  const modalidade = useMemo(
+    () => modalidades.find((item) => item.id === modalidadeId),
+    [modalidadeId, modalidades],
+  )
+
+  return (
+    <form action={acao} className="grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
+      <div className="space-y-8 p-5 sm:p-8">
+        <Secao
+          numero="02"
+          titulo="Seus dados"
+          descricao="Informações para criar seu acesso após a aprovação."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo
+              id="nome"
+              rotulo="Nome completo"
+              autoComplete="name"
+              required
+              className="sm:col-span-2"
+            />
+            <Campo
+              id="cpf"
+              rotulo="CPF"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="000.000.000-00"
+            />
+            <Campo id="dataNascimento" rotulo="Data de nascimento" type="date" />
+            <Campo id="telefone" rotulo="Telefone / WhatsApp" type="tel" autoComplete="tel" />
+            <Campo id="contatoEmergencia" rotulo="Contato de emergência" type="tel" />
+            <Campo
+              id="endereco"
+              rotulo="Endereço"
+              autoComplete="street-address"
+              className="sm:col-span-2"
+            />
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="restricoesMedicas">Restrições médicas ou cuidados importantes</Label>
+              <Textarea
+                id="restricoesMedicas"
+                name="restricoesMedicas"
+                rows={3}
+                placeholder="Opcional. Informe somente o que for relevante para a prática segura."
+              />
+            </div>
+          </div>
+        </Secao>
+
+        <Secao
+          numero="03"
+          titulo="Seu acesso"
+          descricao="Você usará estes dados depois que a matrícula for aprovada."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Campo
+              id="email"
+              rotulo="E-mail"
+              type="email"
+              autoComplete="email"
+              required
+              className="sm:col-span-2"
+            />
+            <Campo
+              id="senha"
+              rotulo="Senha"
+              type="password"
+              autoComplete="new-password"
+              minLength={6}
+              required
+            />
+            <Campo
+              id="confirmarSenha"
+              rotulo="Confirmar senha"
+              type="password"
+              autoComplete="new-password"
+              minLength={6}
+              required
+            />
+          </div>
+        </Secao>
+
+        <Secao
+          numero="04"
+          titulo="Comprovante PIX"
+          descricao="Opcional. O anexo será conferido pelo gestor na análise."
+        >
+          <label className="group flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-border bg-muted/25 p-4 transition-colors hover:border-primary/60 hover:bg-primary/5">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-card text-primary shadow-sm">
+              {arquivo ? <FileImage className="size-5" /> : <Upload className="size-5" />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">
+                {arquivo?.name ?? "Selecionar comprovante"}
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                {arquivo
+                  ? `${(arquivo.size / 1024 / 1024).toFixed(2)} MB`
+                  : "JPG, PNG, WebP ou PDF · até 3 MB"}
+              </span>
+            </span>
+            {arquivo && <Check className="size-5 shrink-0 text-success" />}
+            <Input
+              type="file"
+              name="comprovante"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              className="sr-only"
+              onChange={(evento) => setArquivo(evento.currentTarget.files?.[0] ?? null)}
+            />
+          </label>
+        </Secao>
+
+        <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
+          <input
+            type="checkbox"
+            name="aceiteDados"
+            required
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span className="text-muted-foreground">
+            Confirmo que os dados são verdadeiros e autorizo seu uso para análise e efetivação da
+            matrícula.
+          </span>
+        </label>
+
+        {estado?.erro && (
+          <p
+            className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"
+            role="alert"
+          >
+            {estado.erro}
+          </p>
+        )}
+
+        <BotaoEnviar size="lg" className="w-full sm:w-auto">
+          Enviar matrícula para análise
+        </BotaoEnviar>
+      </div>
+
+      <aside className="order-first border-b border-border bg-muted/25 p-5 sm:p-8 lg:order-none lg:border-b-0 lg:border-l">
+        <div className="sticky top-6 space-y-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              Etapa 1
+            </p>
+            <h2 className="mt-2 text-xl font-bold tracking-tight">Escolha sua modalidade</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              A grade muda automaticamente conforme sua escolha.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="modalidadeId">Modalidade</Label>
+            <Select
+              id="modalidadeId"
+              name="modalidadeId"
+              value={modalidadeId}
+              onChange={(evento) => setModalidadeId(evento.currentTarget.value)}
+              required
+            >
+              <option value="">Selecione uma modalidade</option>
+              {modalidades.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.nome}
+                </option>
+              ))}
+            </Select>
+          </div>
+
+          {!modalidade && (
+            <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center">
+              <CalendarDays className="mx-auto size-6 text-muted-foreground" />
+              <p className="mt-3 text-sm text-muted-foreground">
+                Selecione uma modalidade para ver os horários disponíveis.
+              </p>
+            </div>
+          )}
+
+          {modalidade && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold">Horários disponíveis</p>
+                <Badge variant="outline">{modalidade.turmas.length} opções</Badge>
+              </div>
+              {modalidade.turmas.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
+                  Nenhum horário publicado no momento. Você ainda pode enviar a matrícula; a equipe
+                  entrará em contato.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {modalidade.turmas.map((turma) => (
+                    <div
+                      key={turma.id}
+                      className="rounded-lg border border-border bg-card p-4 shadow-sm"
+                    >
+                      <p className="font-medium">{rotuloDias(turma.diasSemana, turma.diaSemana)}</p>
+                      <p className="mt-1 text-lg font-bold tabular-nums">
+                        {turma.horaInicio}–{turma.horaFim}
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {turma.nivel && <Badge variant="secondary">{turma.nivel}</Badge>}
+                        {turma.local && (
+                          <span className="inline-flex items-center gap-1">
+                            <MapPin className="size-3" /> {turma.local}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex gap-3 border-t border-border pt-5 text-xs text-muted-foreground">
+            <LockKeyhole className="mt-0.5 size-4 shrink-0" />
+            <p>
+              O check-in só é liberado depois da aprovação e do vínculo de um plano pelo gestor.
+            </p>
+          </div>
+        </div>
+      </aside>
+    </form>
+  )
+}
+
+function Secao({
+  numero,
+  titulo,
+  descricao,
+  children,
+}: {
+  numero: string
+  titulo: string
+  descricao: string
+  children: React.ReactNode
+}) {
+  return (
+    <fieldset className="space-y-4">
+      <legend className="mb-4 flex items-start gap-3">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground text-[11px] font-bold text-background">
+          {numero}
+        </span>
+        <span>
+          <span className="block font-semibold">{titulo}</span>
+          <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+            {descricao}
+          </span>
+        </span>
+      </legend>
+      {children}
+    </fieldset>
+  )
+}
+
+function Campo({
+  id,
+  rotulo,
+  className,
+  ...props
+}: React.ComponentProps<typeof Input> & { id: string; rotulo: string }) {
+  return (
+    <div className={`space-y-1.5 ${className ?? ""}`}>
+      <Label htmlFor={id}>{rotulo}</Label>
+      <Input id={id} name={id} {...props} />
+    </div>
+  )
+}
+
+function rotuloDias(diasSemana: number[], diaSemana: number | null) {
+  const dias = diasSemana.length > 0 ? diasSemana : diaSemana === null ? [] : [diaSemana]
+  return dias.length > 0 ? dias.map(rotuloDiaSemana).join(" · ") : "Consulte a equipe"
+}

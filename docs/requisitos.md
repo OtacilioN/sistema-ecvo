@@ -59,6 +59,13 @@ aluno experimental.
 - **RF-001** Cadastro de aluno (nome, CPF, nascimento, telefone, e-mail, endereço, foto, tipo, status,
   modalidades, data de início, contato de emergência, observações admin/técnicas, restrições médicas,
   identificador externo).
+- **RF-001.1** O candidato pode solicitar a própria matrícula em rota pública, informando seus dados,
+  escolhendo uma modalidade e consultando a grade recorrente ativa publicada para ela. Pode anexar um
+  comprovante PIX em imagem ou PDF. A solicitação não cria uma conta de aluno antes da análise.
+- **RF-001.2** O gestor visualiza as matrículas pendentes e aprova cada solicitação em uma única operação,
+  obrigatoriamente vinculando modalidade, plano de pagamento e dia de vencimento. A aprovação cria o aluno,
+  gera a mensalidade inicial e libera a matrícula para o fluxo de treino; confirmar o comprovante como
+  pagamento é uma decisão explícita e separada do simples anexo.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,
@@ -93,7 +100,8 @@ aluno experimental.
 
 ### Check-in
 - **RF-019** Realização de check-in (botão, QR Code, geolocalização a até 300 m da academia, lançamento por gestor/professor).
-- **RF-020** Validação (aluno ativo; permissão; plano mensal interno adimplente se configurado; aula
+- **RF-020** Validação (aluno ativo; mensalista com plano vinculado e modalidade coberta pelo plano;
+  permissão; plano mensal interno adimplente se configurado; aula
   existente; há agendamento se exigido; vaga disponível). Na janela padrão, o check-in é permitido
   de 30 minutos antes do início até 30 minutos após o término da aula.
 - **RF-020.1** A modalidade pode liberar check-in sem restrição de horário. Nesse modo, o sistema

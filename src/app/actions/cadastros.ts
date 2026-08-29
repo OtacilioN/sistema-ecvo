@@ -373,17 +373,35 @@ export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise
     diaVencimento: formData.get("diaVencimento"),
     modalidadeIds: formData.getAll("modalidadeIds"),
     cobrancasModalidades: cobrancasModalidadesDoFormData(formData),
+    pagamentoInicial:
+      formData.get("mensalidadeInicialPaga") === "on"
+        ? {
+            competenciaEsperada: formData.get("pagamentoInicialCompetenciaEsperada"),
+            pagoEm: formData.get("pagamentoInicialPagoEm"),
+            formaPagamento: formData.get("pagamentoInicialFormaPagamento"),
+            observacao: formData.get("pagamentoInicialObservacao"),
+          }
+        : undefined,
     responsavel: responsavel ?? undefined,
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+  if (parsed.data.pagamentoInicial && usuario.papel !== "GESTOR") {
+    return { erro: "Somente gestores podem registrar pagamentos de mensalidade." }
+  }
 
   try {
     await criarAluno({ ...parsed.data, autorId: usuario.id })
-  } catch {
+  } catch (erro) {
+    if (erro instanceof Error && erro.message.startsWith("Pagamento inicial:")) {
+      return { erro: erro.message }
+    }
     return { erro: "Não foi possível criar (e-mail/CPF já cadastrado?)." }
   }
   revalidatePath("/gestao/alunos")
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/financeiro/repasses")
   revalidatePath("/gestao/auditoria")
+  revalidatePath("/aluno/financeiro")
   return { ok: true }
 }
 

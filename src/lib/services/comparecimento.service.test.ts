@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   bloqueiaComparecimentoPorFinanceiro,
+  podeAgendarModalidade,
   podeCancelarComparecimento,
   podeMarcarComparecimento,
   podeMarcarNoShow,
@@ -9,6 +10,51 @@ import {
 } from "./comparecimento.service"
 
 const inicioAula = new Date("2026-06-10T19:00:00Z")
+
+describe("podeAgendarModalidade", () => {
+  it("bloqueia modalidade sem vínculo com o aluno", () => {
+    expect(
+      podeAgendarModalidade({
+        tipoAluno: "MENSALISTA",
+        possuiPlanoPagamento: true,
+        modalidadeVinculada: false,
+        modalidadeCobertaPeloPlano: true,
+      }),
+    ).toBe(false)
+  })
+
+  it("exige plano e cobertura interna para mensalista", () => {
+    expect(
+      podeAgendarModalidade({
+        tipoAluno: "MENSALISTA",
+        possuiPlanoPagamento: false,
+        modalidadeVinculada: true,
+        modalidadeCobertaPeloPlano: true,
+      }),
+    ).toBe(false)
+    expect(
+      podeAgendarModalidade({
+        tipoAluno: "MENSALISTA",
+        possuiPlanoPagamento: true,
+        modalidadeVinculada: true,
+        modalidadeCobertaPeloPlano: false,
+      }),
+    ).toBe(false)
+  })
+
+  it("não exige plano interno de Wellhub, TotalPass ou avulso", () => {
+    for (const tipoAluno of ["WELLHUB", "TOTALPASS", "AVULSO"] as const) {
+      expect(
+        podeAgendarModalidade({
+          tipoAluno,
+          possuiPlanoPagamento: false,
+          modalidadeVinculada: true,
+          modalidadeCobertaPeloPlano: false,
+        }),
+      ).toBe(true)
+    }
+  })
+})
 
 describe("podeMarcarComparecimento", () => {
   it("permite dentro da janela de 24h", () => {

@@ -13,6 +13,8 @@ import {
 const base: ContextoCheckin = {
   statusAluno: "ATIVO",
   tipoAluno: "MENSALISTA",
+  possuiPlanoPagamento: true,
+  modalidadeCobertaPeloPlano: true,
   aulaCancelada: false,
   jaTemCheckinValido: false,
   temComparecimento: true,
@@ -42,6 +44,31 @@ describe("avaliarCheckin", () => {
 
   it.each(["CANCELADO", "TRANCADO"] as const)("bloqueia aluno %s", (statusAluno) => {
     expect(avaliarCheckin({ ...base, statusAluno })).toMatchObject({ ok: false })
+  })
+
+  it("bloqueia mensalista sem aprovação completa e vínculo de plano", () => {
+    expect(avaliarCheckin({ ...base, possuiPlanoPagamento: false })).toEqual({
+      ok: false,
+      motivo: "Matrícula pendente de aprovação e vínculo de plano.",
+    })
+    expect(avaliarCheckin({ ...base, modalidadeCobertaPeloPlano: false })).toEqual({
+      ok: false,
+      motivo: "Matrícula pendente de aprovação e vínculo de plano.",
+    })
+  })
+
+  it("não exige plano interno de aluno Wellhub, TotalPass ou avulso", () => {
+    for (const tipoAluno of ["WELLHUB", "TOTALPASS", "AVULSO"] as const) {
+      expect(
+        avaliarCheckin({
+          ...base,
+          tipoAluno,
+          possuiPlanoPagamento: false,
+          modalidadeCobertaPeloPlano: false,
+          mensalidadeInternaNaModalidade: false,
+        }),
+      ).toEqual({ ok: true })
+    }
   })
 
   it("bloqueia inadimplente só quando a política é BLOQUEAR_CHECKIN", () => {

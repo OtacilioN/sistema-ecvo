@@ -19,7 +19,7 @@ const PAPEIS_POR_PREFIXO: Record<string, string[]> = {
   "/aluno": ["ALUNO"],
 }
 
-const ROTAS_PUBLICAS = ["/login"]
+const ROTAS_PUBLICAS = ["/login", "/matricula"]
 const ROTAS_PWA = ["/manifest.webmanifest", "/offline", "/sw.js"]
 
 export async function proxy(req: NextRequest) {
@@ -28,7 +28,9 @@ export async function proxy(req: NextRequest) {
 
   const token = req.cookies.get(COOKIE_SESSAO)?.value
   const sessao = await descriptografar(token)
-  const ehPublica = ROTAS_PUBLICAS.some((r) => pathname.startsWith(r))
+  const ehPublica = ROTAS_PUBLICAS.some(
+    (rota) => pathname === rota || pathname.startsWith(`${rota}/`),
+  )
 
   // Não autenticado tentando acessar rota protegida → login.
   if (!sessao) {
