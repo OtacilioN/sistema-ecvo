@@ -85,6 +85,47 @@ enum StatusMensalidade {
   ISENTA
 }
 
+enum TipoCobrancaPix {
+  MENSAL
+  AUTOMATICO_SEMESTRAL
+}
+
+enum TipoPagadorAsaas {
+  ALUNO
+  RESPONSAVEL
+}
+
+enum StatusContratoPixAutomatico {
+  CRIANDO
+  PENDENTE_AUTORIZACAO
+  ATIVO
+  CANCELANDO
+  CONCLUIDO
+  CANCELADO
+  RECUSADO
+  EXPIRADO
+  ERRO
+}
+
+enum TipoCobrancaAsaas {
+  PIX_MENSAL
+  PIX_AUTOMATICO_INICIAL
+  PIX_AUTOMATICO_RECORRENTE
+  PIX_AUTOMATICO_FALLBACK
+}
+
+enum StatusCobrancaAsaas {
+  CRIANDO
+  PENDENTE
+  CANCELANDO
+  RECEBIDA
+  VENCIDA
+  CANCELADA
+  RECUSADA
+  ESTORNADA
+  ERRO
+}
+
 enum StatusSolicitacaoMatricula {
   PENDENTE
   APROVADA
@@ -242,6 +283,9 @@ model Aluno {
   planoId                       String?
   diaVencimento                 Int                            @default(10)
   modalidadesPlano              AlunoPlanoModalidade[]
+  tipoCobrancaPix               TipoCobrancaPix                @default(MENSAL)
+  clienteAsaas                  ClienteAsaas?
+  contratosPixAutomatico        ContratoPixAutomatico[]
   solicitacaoMatricula          SolicitacaoMatricula?
 
   criadoEm     DateTime @default(now())
@@ -607,24 +651,108 @@ model AlunoPlanoModalidade {
 }
 
 model Mensalidade {
-  id              String            @id @default(cuid())
-  aluno           Aluno             @relation(fields: [alunoId], references: [id], onDelete: Cascade)
-  alunoId         String
-  plano           Plano?            @relation(fields: [planoId], references: [id], onDelete: SetNull)
-  planoId         String?
-  competencia     String // "2026-06"
-  valor           Decimal           @db.Decimal(10, 2)
-  vencimento      DateTime
-  status          StatusMensalidade @default(EM_ABERTO)
-  pagoEm          DateTime?
-  formaPagamento  String?
-  observacao      String?
-  repasseSnapshot Json?
-  criadoEm        DateTime          @default(now())
-  atualizadoEm    DateTime          @updatedAt
+  id                      String                 @id @default(cuid())
+  aluno                   Aluno                  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId                 String
+  plano                   Plano?                 @relation(fields: [planoId], references: [id], onDelete: SetNull)
+  planoId                 String?
+  competencia             String // "2026-06"
+  valor                   Decimal                @db.Decimal(10, 2)
+  vencimento              DateTime
+  status                  StatusMensalidade      @default(EM_ABERTO)
+  pagoEm                  DateTime?
+  formaPagamento          String?
+  observacao              String?
+  repasseSnapshot         Json?
+  contratoPixAutomatico   ContratoPixAutomatico? @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
+  contratoPixAutomaticoId String?
+  numeroCicloPix          Int?
+  cobrancasAsaas          CobrancaAsaas[]        @relation("TentativasCobrancaAsaas")
+  cobrancaQuitacaoAsaas   CobrancaAsaas?         @relation("QuitacaoMensalidadeAsaas", fields: [cobrancaQuitacaoAsaasId], references: [id], onDelete: SetNull)
+  cobrancaQuitacaoAsaasId String?                @unique
+  criadoEm                DateTime               @default(now())
+  atualizadoEm            DateTime               @updatedAt
 
   @@unique([alunoId, competencia])
+  @@unique([contratoPixAutomaticoId, numeroCicloPix])
   @@index([status])
+  @@index([contratoPixAutomaticoId])
+}
+
+model ContratoPixAutomatico {
+  id                   String                      @id @default(cuid())
+  aluno                Aluno                       @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId              String
+  asaasAuthorizationId String?                     @unique
+  asaasConciliationId  String?                     @unique
+  status               StatusContratoPixAutomatico @default(CRIANDO)
+  inicio               DateTime
+  fim                  DateTime
+  valor                Decimal                     @db.Decimal(10, 2)
+  totalCiclos          Int                         @default(6)
+  pixCopiaECola        String?
+  qrCodeExpiraEm       DateTime?
+  ultimoErro           String?
+  mensalidades         Mensalidade[]
+  cobrancas            CobrancaAsaas[]
+  criadoEm             DateTime                    @default(now())
+  atualizadoEm         DateTime                    @updatedAt
+
+  @@index([status])
+  @@index([alunoId, criadoEm])
+}
+
+model ClienteAsaas {
+  id              String           @id @default(cuid())
+  aluno           Aluno            @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId         String           @unique
+  asaasCustomerId String?          @unique
+  tipoPagador     TipoPagadorAsaas
+  ultimoErro      String?
+  criadoEm        DateTime         @default(now())
+  atualizadoEm    DateTime         @updatedAt
+}
+
+model CobrancaAsaas {
+  id                       String                 @id @default(cuid())
+  mensalidade              Mensalidade            @relation("TentativasCobrancaAsaas", fields: [mensalidadeId], references: [id], onDelete: Cascade)
+  mensalidadeId            String
+  contratoPixAutomatico    ContratoPixAutomatico? @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
+  contratoPixAutomaticoId  String?
+  tipo                     TipoCobrancaAsaas
+  status                   StatusCobrancaAsaas    @default(CRIANDO)
+  geracao                  Int                    @default(1)
+  ativa                    Boolean                @default(true)
+  asaasPaymentId           String?                @unique
+  externalReference        String                 @unique
+  vencimentoAsaas          DateTime?
+  statusAsaas              String?
+  pixCopiaECola            String?
+  qrCodeExpiraEm           DateTime?
+  invoiceUrl               String?
+  ultimoEventoAsaas        String?
+  ultimoErro               String?
+  recebidaEmAsaas          DateTime?
+  estornoParcialPendenteEm DateTime?
+  criadoEm                 DateTime               @default(now())
+  atualizadoEm             DateTime               @updatedAt
+  mensalidadeQuitada       Mensalidade?           @relation("QuitacaoMensalidadeAsaas")
+
+  @@unique([mensalidadeId, geracao])
+  @@index([contratoPixAutomaticoId])
+  @@index([status])
+  @@index([mensalidadeId, ativa])
+}
+
+model EventoWebhookAsaas {
+  asaasEventId         String   @id
+  evento               String
+  asaasPaymentId       String?
+  asaasAuthorizationId String?
+  processadoEm         DateTime @default(now())
+
+  @@index([evento])
+  @@index([processadoEm])
 }
 
 model Pagamento {

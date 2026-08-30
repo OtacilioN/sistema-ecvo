@@ -1,12 +1,13 @@
 "use client"
 
-import { FilePlus, LinkIcon, Save, Trash2, WalletCards } from "lucide-react"
+import { FilePlus, LinkIcon, Repeat2, Save, Trash2, WalletCards } from "lucide-react"
 import type * as React from "react"
 import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import {
   acaoAtualizarPlano,
   acaoAtualizarStatusMensalidade,
   acaoBaixarMensalidade,
+  acaoConfigurarTipoCobrancaPix,
   acaoCriarPlano,
   acaoDarBaixaMensalidadeAluno,
   acaoExcluirPlano,
@@ -307,6 +308,46 @@ export function FormVinculoPlano({
       <div className="flex justify-end">
         <BotaoEnviar>
           <LinkIcon className="size-4" /> Vincular plano
+        </BotaoEnviar>
+      </div>
+    </form>
+  )
+}
+
+export function FormTipoCobrancaPix({
+  alunos,
+  aoConcluir,
+}: {
+  alunos: AlunoOpcao[]
+  aoConcluir?: () => void
+}) {
+  const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(
+    acaoConfigurarTipoCobrancaPix,
+    undefined,
+  )
+
+  useEffect(() => {
+    if (estado?.ok) aoConcluir?.()
+  }, [estado?.ok, aoConcluir])
+
+  return (
+    <form action={acao} className="space-y-4">
+      <SelectCampo id="alunoId" rotulo="Aluno" opcoes={alunos} />
+      <div className="space-y-1.5">
+        <Label htmlFor="tipoCobrancaPix">Tipo de cobrança</Label>
+        <Select id="tipoCobrancaPix" name="tipoCobrancaPix" defaultValue="MENSAL">
+          <option value="MENSAL">PIX mensal — um QR Code por mensalidade</option>
+          <option value="AUTOMATICO_SEMESTRAL">PIX Automático — seis mensalidades mensais</option>
+        </Select>
+      </div>
+      <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+        No PIX Automático, o primeiro QR Code paga a mensalidade 1 de 6 e autoriza os cinco débitos
+        mensais seguintes. O aluno precisa concluir essa autorização no aplicativo do banco.
+      </div>
+      <Erro estado={estado} />
+      <div className="flex justify-end">
+        <BotaoEnviar>
+          <Repeat2 className="size-4" /> Configurar cobrança
         </BotaoEnviar>
       </div>
     </form>

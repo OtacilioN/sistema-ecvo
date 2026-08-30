@@ -1,3 +1,4 @@
+import QRCode from "qrcode"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirAluno } from "@/lib/auth/dal"
@@ -5,6 +6,7 @@ import { db } from "@/lib/db"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
+import { CancelarPixAutomatico, PagamentoPix } from "./pagamento-pix"
 
 export const dynamic = "force-dynamic"
 
@@ -15,7 +17,12 @@ export default async function Page() {
     include: {
       plano: true,
       modalidadesPlano: { select: { modalidade: { select: { nome: true } } } },
-      mensalidades: { orderBy: { vencimento: "desc" }, take: 12 },
+      mensalidades: {
+        orderBy: { vencimento: "desc" },
+        take: 12,
+        include: { cobrancasAsaas: { orderBy: { geracao: "desc" }, take: 1 } },
+      },
+      contratosPixAutomatico: { orderBy: { criadoEm: "desc" }, take: 1 },
       pagamentos: { orderBy: { criadoEm: "desc" }, take: 12 },
     },
   })
@@ -26,6 +33,61 @@ export default async function Page() {
   const adimplente = temMensalidadeInterna ? mensalistaAdimplente(aluno.mensalidades) : true
   const tipoSomenteExterno =
     !temMensalidadeInterna && (aluno.tipo === "WELLHUB" || aluno.tipo === "TOTALPASS")
+  const mensalidadePendente = [...aluno.mensalidades]
+    .sort((a, b) => a.vencimento.getTime() - b.vencimento.getTime())
+    .find((mensalidade) => ["EM_ABERTO", "VENCIDA"].includes(statusMensalidadeEfetivo(mensalidade)))
+  const contratoPixAutomatico = aluno.contratosPixAutomatico[0]
+  const agora = new Date()
+  const contratoCriandoExpirado = Boolean(
+    contratoPixAutomatico?.status === "CRIANDO" &&
+      agora.getTime() - contratoPixAutomatico.atualizadoEm.getTime() >= 2 * 60 * 1_000,
+  )
+  const contratoAutomaticoEmAndamento = Boolean(
+    contratoPixAutomatico &&
+      ((contratoPixAutomatico.status === "CRIANDO" && !contratoCriandoExpirado) ||
+        ["PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO"].includes(contratoPixAutomatico.status)),
+  )
+  const qrAutomaticoValido = Boolean(
+    contratoPixAutomatico?.status === "PENDENTE_AUTORIZACAO" &&
+      contratoPixAutomatico.pixCopiaECola &&
+      contratoPixAutomatico.qrCodeExpiraEm &&
+      contratoPixAutomatico.qrCodeExpiraEm > agora,
+  )
+  const cobrancaMensal = mensalidadePendente?.cobrancasAsaas[0]
+  const fallbackAutomatico = Boolean(
+    contratoPixAutomatico?.status === "ATIVO" &&
+      cobrancaMensal &&
+      ["PIX_AUTOMATICO_RECORRENTE", "PIX_AUTOMATICO_FALLBACK"].includes(cobrancaMensal.tipo) &&
+      cobrancaMensal.asaasPaymentId &&
+      (["RECUSADA", "CANCELADA", "VENCIDA"].includes(cobrancaMensal.status) ||
+        cobrancaMensal.pixCopiaECola),
+  )
+  const qrFallbackAutomaticoValido = Boolean(
+    fallbackAutomatico &&
+      cobrancaMensal?.pixCopiaECola &&
+      cobrancaMensal.qrCodeExpiraEm &&
+      cobrancaMensal.qrCodeExpiraEm > agora,
+  )
+  const qrMensalValido = Boolean(
+    !contratoAutomaticoEmAndamento &&
+      cobrancaMensal?.tipo === "PIX_MENSAL" &&
+      cobrancaMensal.ativa &&
+      ["PENDENTE", "VENCIDA"].includes(cobrancaMensal.status) &&
+      cobrancaMensal.pixCopiaECola &&
+      cobrancaMensal.qrCodeExpiraEm &&
+      cobrancaMensal.qrCodeExpiraEm > agora,
+  )
+  const pixCopiaECola = qrAutomaticoValido
+    ? contratoPixAutomatico?.pixCopiaECola
+    : qrFallbackAutomaticoValido
+      ? cobrancaMensal?.pixCopiaECola
+      : qrMensalValido
+        ? cobrancaMensal?.pixCopiaECola
+        : null
+  const qrCodeDataUrl = pixCopiaECola ? await QRCode.toDataURL(pixCopiaECola, { margin: 1 }) : null
+  const cobrancaMensalBloqueiaTroca = Boolean(
+    cobrancaMensal && cobrancaMensal.tipo === "PIX_MENSAL" && cobrancaMensal.ativa,
+  )
 
   return (
     <div className="space-y-6">
@@ -78,6 +140,85 @@ export default async function Page() {
               rotulo="Modalidades contratadas"
               valor={aluno.modalidadesPlano.map((item) => item.modalidade.nome).join(", ")}
             />
+          </CardContent>
+        </Card>
+      )}
+
+      {aluno.plano && mensalidadePendente && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {contratoAutomaticoEmAndamento
+                ? "PIX Automático semestral"
+                : "Pagar mensalidade via PIX"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {contratoAutomaticoEmAndamento ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  {fallbackAutomatico
+                    ? `A cobrança automática de ${mensalidadePendente.competencia} não foi concluída. Pague a mesma cobrança via PIX; os próximos ciclos continuam cadastrados.`
+                    : contratoPixAutomatico?.status === "ATIVO"
+                      ? "PIX recorrente autorizado. As próximas cinco mensalidades serão cobradas automaticamente nas datas previstas."
+                      : "O primeiro pagamento autoriza seis mensalidades: esta cobrança inicial e cinco débitos mensais automáticos."}{" "}
+                  Situação da autorização:{" "}
+                  <strong>{contratoPixAutomatico?.status ?? "CRIANDO"}</strong>.
+                </p>
+                {contratoPixAutomatico?.status === "PENDENTE_AUTORIZACAO" &&
+                  !qrAutomaticoValido && (
+                    <>
+                      <p className="text-sm text-destructive">
+                        O QR Code de autorização expirou. Verifique o estado no Asaas e cadastre
+                        novamente para gerar uma nova autorização.
+                      </p>
+                      <PagamentoPix permitirPixRecorrente />
+                    </>
+                  )}
+                {qrAutomaticoValido && (
+                  <PagamentoPix pixCopiaECola={pixCopiaECola} qrCodeDataUrl={qrCodeDataUrl} />
+                )}
+                {contratoPixAutomatico?.status === "CRIANDO" && (
+                  <p className="text-sm text-muted-foreground">
+                    O cadastro está sendo processado. Aguarde alguns instantes antes de tentar
+                    novamente.
+                  </p>
+                )}
+                {contratoPixAutomatico?.status === "CANCELANDO" && (
+                  <p className="text-sm text-muted-foreground">
+                    O cancelamento está sendo conciliado com o Asaas. Aguarde antes de fazer uma
+                    nova escolha de pagamento.
+                  </p>
+                )}
+                {fallbackAutomatico && (
+                  <PagamentoPix
+                    mensalidadeId={mensalidadePendente.id}
+                    pixCopiaECola={pixCopiaECola}
+                    qrCodeDataUrl={qrCodeDataUrl}
+                    rotuloAcao="Pagar mensalidade"
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  {contratoCriandoExpirado
+                    ? "A tentativa anterior de cadastrar o PIX recorrente foi interrompida. Tente novamente para retomar o cadastro."
+                    : `Escolha pagar somente a mensalidade ${mensalidadePendente.competencia}, no valor de ${formatarBRL(Number(mensalidadePendente.valor))}, ou cadastrar o PIX recorrente para seis mensalidades. O primeiro PIX paga esta mensalidade e autoriza cinco cobranças mensais seguintes no aplicativo do banco.`}
+                </p>
+                <PagamentoPix
+                  mensalidadeId={contratoCriandoExpirado ? undefined : mensalidadePendente.id}
+                  pixCopiaECola={pixCopiaECola}
+                  qrCodeDataUrl={qrCodeDataUrl}
+                  permitirPixRecorrente={!cobrancaMensalBloqueiaTroca}
+                  rotuloAcao={cobrancaMensal?.ativa ? "Atualizar QR Code PIX" : "Pagar mensalidade"}
+                />
+              </>
+            )}
+            {contratoPixAutomatico &&
+              ["PENDENTE_AUTORIZACAO", "ATIVO", "ERRO"].includes(contratoPixAutomatico.status) && (
+                <CancelarPixAutomatico />
+              )}
           </CardContent>
         </Card>
       )}

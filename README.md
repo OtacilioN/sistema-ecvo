@@ -69,8 +69,10 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
 ## Deploy na Vercel
 
 1. Conecte o repositório à Vercel e adicione a integração **Neon** (cria um banco por preview deploy).
-2. Defina as variáveis de ambiente: `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET`, `CRON_SECRET`.
-   Produção não deve depender do `.env` local.
+2. Defina as variáveis de ambiente: `DATABASE_URL`, `DIRECT_URL`, `SESSION_SECRET`, `CRON_SECRET`,
+   `ASAAS_ENVIRONMENT`, `ASAAS_API_KEY`, `ASAAS_WEBHOOK_TOKEN`, `ASAAS_USER_AGENT` e
+   `ASAAS_TIMEOUT_MS`; `ASAAS_PIX_KEY` é opcional. Produção não deve depender do `.env` local.
+   Use Asaas Production somente no escopo Production; Preview e Development usam Sandbox.
 3. O `build` roda `prisma generate`; aplique migrations com `prisma migrate deploy`
    (via Build Command `npm run db:deploy && npm run build` ou um passo de CI).
 4. O Vercel Cron chama `/api/tarefas/gerar-aulas-futuras` diariamente às 06:00 UTC
@@ -82,8 +84,10 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
    (19:30 GMT-3), mirando as aulas do dia seguinte. O lembrete de treino para alunos
    já agendados é disparado por browsers de gestores abertos a cada 15 minutos, mirando
    aulas 60-75 minutos à frente; como fallback, `/api/tarefas/lembretes-treino` roda
-   diariamente às 19:30 UTC (16:30 GMT-3) mirando as próximas seis horas.
+   diariamente às 19:30 UTC (16:30 GMT-3) mirando as próximas seis horas. A reconciliação e a criação
+   dos ciclos 2 a 6 do PIX Automático rodam em `/api/tarefas/cobrancas-pix-automatico` às 12:00 UTC.
 5. `main` → produção; cada PR → preview com banco isolado.
+6. Antes de habilitar pagamentos reais, conclua [`docs/checklist-producao-asaas.md`](./docs/checklist-producao-asaas.md).
 
 ## Documentação
 

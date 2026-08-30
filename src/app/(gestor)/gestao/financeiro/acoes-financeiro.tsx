@@ -1,9 +1,20 @@
 "use client"
 
-import { CreditCard, FilePlus, LinkIcon, Pencil, Trash2, WalletCards } from "lucide-react"
+import {
+  CreditCard,
+  FilePlus,
+  LinkIcon,
+  Pencil,
+  Repeat2,
+  Trash2,
+  WalletCards,
+  XCircle,
+} from "lucide-react"
 import { useState } from "react"
+import { acaoCancelarCobrancaAsaas } from "@/app/actions/financeiro"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
+import { DialogoConfirmacao } from "@/components/ui/dialogo-confirmacao"
 import { ItemMenu, MenuAcoes } from "@/components/ui/menu-acoes"
 import {
   FormBaixarMensalidade,
@@ -12,6 +23,7 @@ import {
   FormPagamentoAvulso,
   FormPlano,
   FormStatusMensalidade,
+  FormTipoCobrancaPix,
   FormVinculoPlano,
   type PlanoEdicao,
 } from "./forms-financeiro"
@@ -35,7 +47,7 @@ export function AcoesFinanceiro({
   planos: PlanoOpcao[]
   alunos: AlunoOpcao[]
 }) {
-  const [painel, setPainel] = useState<"pagamento" | "plano" | "vinculo" | null>(null)
+  const [painel, setPainel] = useState<"pagamento" | "pix" | "plano" | "vinculo" | null>(null)
   const fechar = () => setPainel(null)
 
   return (
@@ -48,6 +60,9 @@ export function AcoesFinanceiro({
       </Button>
       <Button variant="outline" onClick={() => setPainel("pagamento")}>
         <WalletCards className="size-4" /> Pagamento avulso
+      </Button>
+      <Button variant="outline" onClick={() => setPainel("pix")}>
+        <Repeat2 className="size-4" /> Cobrança PIX
       </Button>
       <Dialog
         aberto={painel === "plano"}
@@ -70,6 +85,16 @@ export function AcoesFinanceiro({
       </Dialog>
 
       <Dialog
+        aberto={painel === "pix"}
+        aoFechar={fechar}
+        variante="centro"
+        titulo="Configurar cobrança PIX"
+        descricao="PIX mensal ou PIX Automático por seis mensalidades."
+      >
+        <FormTipoCobrancaPix alunos={alunos} aoConcluir={fechar} />
+      </Dialog>
+
+      <Dialog
         aberto={painel === "pagamento"}
         aoFechar={fechar}
         variante="lateral"
@@ -89,14 +114,21 @@ export function AcoesMensalidade({
   formaPagamento,
   observacao,
   quitada,
+  cobrancaAsaas,
 }: {
   mensalidadeId: string
   status: StatusMensalidade
   formaPagamento: string | null
   observacao: string | null
   quitada: boolean
+  cobrancaAsaas?: {
+    id: string
+    ativa: boolean
+    status: string
+    tipo: string
+  }
 }) {
-  const [painel, setPainel] = useState<"baixar" | "status" | null>(null)
+  const [painel, setPainel] = useState<"baixar" | "status" | "cancelarAsaas" | null>(null)
   const fechar = () => setPainel(null)
 
   return (
@@ -124,6 +156,20 @@ export function AcoesMensalidade({
             >
               Alterar status
             </ItemMenu>
+            {cobrancaAsaas?.ativa &&
+              cobrancaAsaas.tipo === "PIX_MENSAL" &&
+              cobrancaAsaas.status !== "RECEBIDA" && (
+                <ItemMenu
+                  icone={XCircle}
+                  variante="destructive"
+                  onClick={() => {
+                    fecharMenu()
+                    setPainel("cancelarAsaas")
+                  }}
+                >
+                  Cancelar cobrança Asaas
+                </ItemMenu>
+              )}
           </>
         )}
       </MenuAcoes>
@@ -137,6 +183,23 @@ export function AcoesMensalidade({
       >
         <FormBaixarMensalidade mensalidadeId={mensalidadeId} aoConcluir={fechar} />
       </Dialog>
+
+      {cobrancaAsaas && (
+        <DialogoConfirmacao
+          aberto={painel === "cancelarAsaas"}
+          aoFechar={fechar}
+          titulo="Cancelar cobrança Asaas"
+          descricao={
+            <p>
+              O sistema consultará o Asaas e só removerá uma cobrança ainda não recebida. Depois
+              disso, a baixa manual ficará disponível.
+            </p>
+          }
+          acao={acaoCancelarCobrancaAsaas}
+          campos={{ cobrancaId: cobrancaAsaas.id }}
+          rotuloConfirmar="Cancelar cobrança"
+        />
+      )}
 
       <Dialog
         aberto={painel === "status"}

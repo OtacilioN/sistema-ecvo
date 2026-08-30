@@ -37,9 +37,10 @@ grade para o aluno, agendamento de aula, check-in, presença automática por che
 check-in, contador de horas (geral e por modalidade), perfil do aluno, graduações + registro pelo professor,
 financeiro de mensalistas, pagamentos avulsos, importação Wellhub/TotalPass + conciliação, relatórios básicos.
 
-Fora do MVP: integrações automáticas via API (Wellhub/TotalPass/Gympass), webhooks, conciliação financeira
-automática, reconhecimento facial, app mobile nativo, papéis separados (coordenador/financeiro/contador),
-aluno experimental.
+Fora do MVP: integrações automáticas via API de Wellhub/TotalPass/Gympass, conciliação financeira
+automática dessas plataformas, reconhecimento facial, app mobile nativo, papéis separados
+(coordenador/financeiro/contador), aluno experimental. A integração financeira com Asaas descrita em
+RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 
 ## 5. Permissões por papel (resumo)
 
@@ -150,6 +151,18 @@ aluno experimental.
   até 60% do valor base cheio por modalidade. Descontos reduzem primeiro a sobra e, se a arrecadação não
   atingir o teto dos professores, reduzem
   proporcionalmente a parte dos professores.
+- **RF-053.3** Cada aluno com plano mensal pode usar cobrança PIX mensal pelo Asaas. Cada competência gera
+  uma cobrança dinâmica e um QR Code de uso único, sem alterar o valor histórico da mensalidade.
+- **RF-053.4** O gestor pode habilitar PIX Automático semestral para um aluno, e o próprio aluno pode
+  habilitá-lo para si. O sistema materializa exatamente seis competências mensais pelo valor da mensalidade:
+  o QR inicial paga a primeira e solicita a autorização; após a autorização ativa, somente as cinco
+  instruções futuras são enviadas ao Asaas na janela admitida pelo provedor. Eventos autenticados,
+  confirmados na API e idempotentes conciliam pagamento, vencimento, estorno e autorização. Se a janela
+  de uma instrução for perdida, o sistema emite uma única cobrança PIX de contingência para a mesma
+  competência, alerta aluno e gestores e mantém os ciclos seguintes automáticos.
+- **RF-053.5** O próprio aluno e o gestor podem cancelar o PIX Automático. Antes de liberar o modo mensal
+  ou uma baixa manual, o sistema consulta a conta Asaas, preserva cobranças recebidas, encerra a autorização
+  e remove somente cobranças pendentes, com estados transitórios e auditoria para tolerar concorrência.
 - **RF-053.2** Da sobra mensal após os professores, são abatidos primeiro R$ 2.670,00 de custos fixos
   (aluguel, água, luz e internet). Um déficit é exibido como valor negativo em vermelho; saldo zero ou
   positivo é exibido em verde. Somente o saldo positivo é dividido igualmente entre Caixa/investimento,
@@ -191,6 +204,14 @@ RN-020 plano é um pacote comercial disponível para qualquer modalidade; as mod
 definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno.
 RN-021 a sobra mensal paga primeiro R$ 2.670,00 de custos fixos; apenas o saldo positivo é dividido
 igualmente entre Caixa/investimento, Sócio A e Sócio B.
+
+RN-022 o PIX Automático semestral possui exatamente seis ciclos; o pagamento imediato conta como ciclo 1
+e nenhuma sétima cobrança pode ser emitida. RN-023 somente confirmação financeira do Asaas pode baixar uma
+mensalidade automaticamente; gerar ou exibir QR Code não equivale a pagamento.
+
+RN-024 uma cobrança Asaas em processamento ou recebida impede alteração manual incompatível da mensalidade.
+Estorno integral reabre a mensalidade; estorno parcial retira a mensalidade dos repasses e exige conciliação
+manual auditada. Tentativas remotas permanecem no histórico; somente uma pode estar ativa por mensalidade.
 
 ## 8. Requisitos não funcionais (RNF)
 

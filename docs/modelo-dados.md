@@ -32,7 +32,8 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
 
 Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento (agendamento de aula) · Checkin ·
 TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · Graduacao · GraduacaoAluno ·
-Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · SolicitacaoMatricula · Importacao ·
+Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · ClienteAsaas ·
+ContratoPixAutomatico · CobrancaAsaas · EventoWebhookAsaas · SolicitacaoMatricula · Importacao ·
 RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao · InscricaoPush.
 
 ## Diagrama (ER simplificado)
@@ -57,6 +58,11 @@ erDiagram
   Aluno ||--o{ GraduacaoAluno : ""
   Aluno ||--o{ Mensalidade : ""
   Aluno ||--o{ Pagamento : ""
+  Aluno ||--o| ClienteAsaas : "pagador"
+  Aluno ||--o{ ContratoPixAutomatico : "autoriza"
+  ContratoPixAutomatico ||--o{ Mensalidade : "seis ciclos"
+  ContratoPixAutomatico ||--o{ CobrancaAsaas : "materializa"
+  Mensalidade ||--o{ CobrancaAsaas : "tentativas"
 
   Professor }o--o{ Modalidade : "habilitado"
   Professor ||--o{ Turma : "ministra"
@@ -86,6 +92,24 @@ erDiagram
 - **Turma** modela tanto a grade recorrente (`diasSemana`/`horaInicio`/`horaFim`) quanto eventos únicos
 - **Aluno.diaVencimento** define o dia usado ao gerar mensalidades internas; `Mensalidade.vencimento`
   preserva a data histórica da cobrança gerada.
+- **ClienteAsaas** reserva localmente o aluno antes da criação remota; enquanto a operação está em curso,
+  o identificador remoto pode ser nulo e falhas sanitizadas ficam em `ultimoErro`. Depois, mantém somente o
+  identificador remoto e se o pagador é o aluno ou seu responsável financeiro. **ContratoPixAutomatico**
+  preserva o histórico de cada semestre e liga exatamente seis
+  `Mensalidade`; um índice parcial do PostgreSQL impede dois ciclos abertos simultâneos para o mesmo aluno.
+  `ContratoPixAutomatico.asaasConciliationId` é único e liga com segurança o QR imediato ao pagamento
+  inicial retornado pelo Asaas, mesmo quando a data do pagamento difere do vencimento da competência.
+  **CobrancaAsaas** é uma geração de intenção local antes da chamada remota. O histórico é 1:N por
+  mensalidade, com índice parcial permitindo somente uma geração ativa; IDs remotos antigos não são
+  sobrescritos e continuam aptos a receber webhooks tardios. `Mensalidade.cobrancaQuitacaoAsaasId` registra
+  exatamente qual tentativa Asaas quitou a competência e só essa tentativa pode reabri-la em um estorno.
+  `CobrancaAsaas.recebidaEmAsaas` preserva a data canônica de cada recebimento e permite transferir a
+  quitação corretamente quando um pagamento duplicado sobrevivente substitui uma tentativa estornada.
+  `PIX_AUTOMATICO_FALLBACK` identifica a contingência convencional de um ciclo cuja janela automática foi
+  perdida.
+- O QR inicial do PIX Automático representa o ciclo 1. Os ciclos 2 a 6 são criados pelo job diário somente
+  com autorização ativa. `EventoWebhookAsaas.asaasEventId` impede processamento duplicado; o payload bruto,
+  documentos e segredos do Asaas não são guardados na auditoria.
 - **AlunoPlanoModalidade** define quais modalidades do aluno estão cobertas pelo plano mensal interno.
   O plano não restringe modalidades; a seleção acontece no vínculo aluno-plano.
   (`ehEvento = true`, sem dia da semana). **Aula** é a ocorrência datada concreta.

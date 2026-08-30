@@ -82,6 +82,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       include: {
         aluno: { select: { usuario: { select: { nome: true } } } },
         plano: { select: { nome: true } },
+        cobrancasAsaas: {
+          orderBy: { geracao: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            tipo: true,
+            status: true,
+            ativa: true,
+            asaasPaymentId: true,
+            externalReference: true,
+            ultimoErro: true,
+            estornoParcialPendenteEm: true,
+          },
+        },
       },
     }),
     db.pagamento.findMany({
@@ -116,7 +130,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     id: aluno.id,
     nome: aluno.usuario.nome,
     detalhe: aluno.plano
-      ? `${aluno.tipo} · ${aluno.plano.nome} · venc. dia ${aluno.diaVencimento}`
+      ? `${aluno.tipo} · ${aluno.plano.nome} · venc. dia ${aluno.diaVencimento} · ${aluno.tipoCobrancaPix === "MENSAL" ? "PIX mensal" : "PIX Automático"}`
       : `${aluno.tipo} · venc. dia ${aluno.diaVencimento}`,
     modalidades: aluno.modalidades.map((modalidade) => ({
       id: modalidade.id,
@@ -178,6 +192,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     <th className="p-4 font-medium">Vencimento</th>
                     <th className="p-4 font-medium">Valor</th>
                     <th className="p-4 font-medium">Status</th>
+                    <th className="p-4 font-medium">Asaas</th>
                     {podeEditar && (
                       <th className="p-4 text-right font-medium md:sticky md:right-0 md:z-20 md:bg-card md:pl-6">
                         <span className="sr-only">Ações</span>
@@ -191,6 +206,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     const quitada = status === "PAGA" || status === "ISENTA"
                     const emAberto = status === "EM_ABERTO"
                     const vencida = status === "VENCIDA"
+                    const cobrancaAsaas = mensalidade.cobrancasAsaas[0]
                     return (
                       <tr
                         key={mensalidade.id}
@@ -222,6 +238,27 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                             {rotulosStatusMensalidade[status]}
                           </Badge>
                         </td>
+                        <td className="p-4" data-label="Asaas">
+                          {cobrancaAsaas ? (
+                            <div className="max-w-72 space-y-1">
+                              <Badge variant="outline">
+                                {cobrancaAsaas.estornoParcialPendenteEm
+                                  ? "ESTORNO PARCIAL PENDENTE"
+                                  : cobrancaAsaas.status}
+                              </Badge>
+                              {cobrancaAsaas.ultimoErro && (
+                                <p className="text-xs text-destructive">
+                                  {cobrancaAsaas.ultimoErro}
+                                </p>
+                              )}
+                              <p className="break-all text-xs text-muted-foreground">
+                                {cobrancaAsaas.asaasPaymentId ?? cobrancaAsaas.externalReference}
+                              </p>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
                         {podeEditar && (
                           <td
                             className={cn(
@@ -237,6 +274,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                                 formaPagamento={mensalidade.formaPagamento}
                                 observacao={mensalidade.observacao}
                                 quitada={quitada}
+                                cobrancaAsaas={cobrancaAsaas}
                               />
                             </div>
                           </td>
@@ -247,7 +285,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   {mensalidades.length === 0 && (
                     <tr>
                       <td
-                        colSpan={podeEditar ? 5 : 4}
+                        colSpan={podeEditar ? 6 : 5}
                         className="p-10 text-center text-muted-foreground"
                       >
                         Nenhuma mensalidade registrada.

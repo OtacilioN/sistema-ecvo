@@ -104,10 +104,12 @@ describe("registrarMensalidadeInicialPaga", () => {
       formaPagamento: null,
       observacao: null,
       repasseSnapshot: null,
+      atualizadoEm: new Date("2026-08-27T14:00:00Z"),
     }
     let buscasMensalidade = 0
     let mensalidadePersistida = mensalidadeAberta
     const cliente = {
+      $queryRaw: async () => [{ id: "mensalidade-1" }],
       aluno: {
         findUnique: async () => ({
           id: "aluno-1",
@@ -155,7 +157,16 @@ describe("registrarMensalidadeInicialPaga", () => {
           mensalidadePersistida = { ...mensalidadePersistida, ...params.data } as never
           return mensalidadePersistida
         },
+        updateMany: async (params: { data: Record<string, unknown> }) => {
+          mensalidadePersistida = { ...mensalidadePersistida, ...params.data } as never
+          return { count: 1 }
+        },
+        findUniqueOrThrow: async () => mensalidadePersistida,
         findFirst: async () => null,
+      },
+      cobrancaAsaas: {
+        findMany: async () => [],
+        updateMany: async () => ({ count: 0 }),
       },
       logAuditoria: {
         create: async (params: { data: Record<string, unknown> }) => {

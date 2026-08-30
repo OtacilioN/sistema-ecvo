@@ -181,6 +181,8 @@ export async function migrarMensalidadesAbertasParaPlanoAluno(
     where: {
       alunoId: params.alunoId,
       status: "EM_ABERTO",
+      contratoPixAutomaticoId: null,
+      cobrancasAsaas: { none: { ativa: true } },
     },
     data,
   })
@@ -327,6 +329,13 @@ export async function atualizarAluno(
       plano: { select: { nome: true } },
       diaVencimento: true,
       responsavel: true,
+      contratosPixAutomatico: {
+        where: {
+          status: { in: ["CRIANDO", "PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO"] },
+        },
+        select: { status: true },
+        take: 1,
+      },
       usuario: { select: { nome: true, email: true, fotoUrl: true } },
       modalidades: { select: { id: true, nome: true } },
       modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
@@ -574,10 +583,23 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       plano: { select: { nome: true } },
       diaVencimento: true,
       responsavel: true,
+      contratosPixAutomatico: {
+        where: {
+          status: { in: ["CRIANDO", "PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO"] },
+        },
+        select: { status: true },
+        take: 1,
+      },
       modalidades: { select: { id: true, nome: true } },
     },
   })
   if (!aluno) return { ok: false as const, motivo: "Aluno não encontrado." }
+  if (aluno.contratosPixAutomatico.length > 0) {
+    return {
+      ok: false as const,
+      motivo: "Cancele ou conclua o ciclo de PIX Automático antes de excluir o aluno.",
+    }
+  }
 
   await db.$transaction(async (tx) => {
     await tx.usuario.delete({ where: { id: aluno.usuario.id } })
