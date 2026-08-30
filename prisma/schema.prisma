@@ -132,6 +132,12 @@ enum StatusSolicitacaoMatricula {
   REJEITADA
 }
 
+enum TipoPagamentoMatricula {
+  MENSALISTA
+  WELLHUB
+  TOTALPASS
+}
+
 enum TipoPagamento {
   AULA_UNICA
   DIARIA
@@ -618,6 +624,8 @@ model SolicitacaoMatricula {
   contatoEmergencia       String?
   restricoesMedicas       String?
   tokenAcompanhamento     String                     @unique @default(cuid())
+  tipoPagamento           TipoPagamentoMatricula     @default(MENSALISTA)
+  beneficioAtivoDeclarado Boolean                    @default(false)
   modalidade              Modalidade                 @relation(fields: [modalidadeId], references: [id])
   modalidadeId            String
   plano                   Plano?                     @relation("PlanoSolicitacaoMatricula", fields: [planoId], references: [id], onDelete: Restrict)
@@ -641,6 +649,7 @@ model SolicitacaoMatricula {
   @@index([status, criadoEm])
   @@index([modalidadeId])
   @@index([planoId])
+  @@index([tipoPagamento, status])
   @@index([analisadoPorId])
 }
 

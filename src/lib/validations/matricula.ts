@@ -22,6 +22,8 @@ const dataCivilOpcional = z.preprocess((valor) => {
   return typeof valor === "string" ? dataCivilParaDate(valor) : valor
 }, z.date().nullable())
 
+const declaracaoCheckbox = z.preprocess((valor) => valor === true || valor === "on", z.boolean())
+
 export const solicitacaoMatriculaSchema = z
   .object({
     nome: z.string().trim().min(2, "Informe seu nome completo").max(120),
@@ -38,11 +40,39 @@ export const solicitacaoMatriculaSchema = z
     contatoEmergencia: textoOpcional(120),
     restricoesMedicas: textoOpcional(1000),
     modalidadeId: z.string().min(1, "Selecione uma modalidade"),
+    tipoPagamento: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS"]),
+    beneficioAtivoDeclarado: declaracaoCheckbox,
     aceiteDados: z.literal("on", { error: "Confirme o envio dos dados para análise" }),
   })
-  .refine((dados) => dados.senha === dados.confirmarSenha, {
-    message: "As senhas não conferem",
-    path: ["confirmarSenha"],
+  .superRefine((dados, ctx) => {
+    if (dados.senha !== dados.confirmarSenha) {
+      ctx.addIssue({
+        code: "custom",
+        message: "As senhas não conferem",
+        path: ["confirmarSenha"],
+      })
+    }
+    if (dados.tipoPagamento === "WELLHUB" && !dados.beneficioAtivoDeclarado) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Declare que seu Wellhub está ativo a partir do plano Basic",
+        path: ["beneficioAtivoDeclarado"],
+      })
+    }
+    if (dados.tipoPagamento === "TOTALPASS" && !dados.beneficioAtivoDeclarado) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Declare que seu TotalPass está ativo a partir do plano TP1+",
+        path: ["beneficioAtivoDeclarado"],
+      })
+    }
+    if (dados.tipoPagamento === "MENSALISTA" && dados.beneficioAtivoDeclarado) {
+      ctx.addIssue({
+        code: "custom",
+        message: "A declaração de benefício não se aplica à matrícula mensalista",
+        path: ["beneficioAtivoDeclarado"],
+      })
+    }
   })
 
 export type SolicitacaoMatriculaInput = z.infer<typeof solicitacaoMatriculaSchema>
@@ -53,7 +83,8 @@ export const aprovacaoMatriculaSchema = z.object({
     .number()
     .int()
     .min(1, "Informe um dia entre 1 e 28")
-    .max(28, "Informe um dia entre 1 e 28"),
+    .max(28, "Informe um dia entre 1 e 28")
+    .optional(),
 })
 
 export type AprovacaoMatriculaInput = z.infer<typeof aprovacaoMatriculaSchema>

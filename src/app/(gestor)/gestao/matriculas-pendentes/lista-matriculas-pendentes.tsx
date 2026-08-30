@@ -1,6 +1,6 @@
 "use client"
 
-import { CalendarClock, FileCheck2, Mail, Phone, UserRoundCheck } from "lucide-react"
+import { BadgeCheck, CalendarClock, FileCheck2, Mail, Phone, UserRoundCheck } from "lucide-react"
 import { useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { CampoBusca } from "@/components/ui/campo-busca"
@@ -18,6 +18,8 @@ export type SolicitacaoPendente = {
   endereco: string | null
   contatoEmergencia: string | null
   restricoesMedicas: string | null
+  tipoPagamento: "MENSALISTA" | "WELLHUB" | "TOTALPASS"
+  beneficioAtivoDeclarado: boolean
   comprovantePagamentoUrl: string | null
   comprovanteContentType: string | null
   comprovanteNomeOriginal: string | null
@@ -42,7 +44,7 @@ export function ListaMatriculasPendentes({
     const termo = busca.trim().toLowerCase()
     if (!termo) return solicitacoes
     return solicitacoes.filter((item) =>
-      [item.nome, item.email, item.telefone, item.cpf, item.modalidade.nome]
+      [item.nome, item.email, item.telefone, item.cpf, item.modalidade.nome, item.tipoPagamento]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -90,6 +92,7 @@ export function ListaMatriculasPendentes({
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="truncate font-semibold">{item.nome}</h2>
                     <Badge variant="warning">Aguardando análise</Badge>
+                    <Badge variant="outline">{rotuloTipo(item.tipoPagamento)}</Badge>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
@@ -108,10 +111,16 @@ export function ListaMatriculasPendentes({
                     <CalendarClock className="size-3.5" /> Enviada em{" "}
                     {formatarDataHora(new Date(item.criadoEm))}
                   </p>
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <FileCheck2 className="size-3.5" />{" "}
-                    {item.comprovantePagamentoUrl ? "Comprovante anexado" : "Sem comprovante"}
-                  </p>
+                  {item.tipoPagamento === "MENSALISTA" ? (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <FileCheck2 className="size-3.5" />{" "}
+                      {item.comprovantePagamentoUrl ? "Comprovante anexado" : "Sem comprovante"}
+                    </p>
+                  ) : (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <BadgeCheck className="size-3.5" /> Benefício ativo declarado
+                    </p>
+                  )}
                 </div>
                 <AcoesMatricula solicitacao={item} />
               </article>
@@ -121,4 +130,10 @@ export function ListaMatriculasPendentes({
       </CardContent>
     </Card>
   )
+}
+
+function rotuloTipo(tipo: SolicitacaoPendente["tipoPagamento"]) {
+  if (tipo === "WELLHUB") return "Wellhub"
+  if (tipo === "TOTALPASS") return "TotalPass"
+  return "Mensalista"
 }

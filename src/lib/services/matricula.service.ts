@@ -50,6 +50,12 @@ export function listarOpcoesPublicasMatricula() {
 export async function solicitarMatricula(
   params: SolicitacaoMatriculaInput & { comprovante?: DadosComprovante | null },
 ) {
+  if (params.tipoPagamento !== "MENSALISTA" && params.comprovante) {
+    return {
+      ok: false as const,
+      motivo: "Matrículas Wellhub e TotalPass não recebem comprovante de pagamento.",
+    }
+  }
   const existente = await db.usuario.findUnique({
     where: { email: params.email },
     select: { id: true },
@@ -67,11 +73,14 @@ export async function solicitarMatricula(
         select: { id: true, nome: true },
       })
       if (!modalidade) throw new ErroMatricula("A modalidade selecionada não está disponível.")
-      const plano = await tx.plano.findFirst({
-        where: { padrao: true, ativo: true, periodicidade: "MENSAL" },
-        select: { id: true, nome: true, valor: true },
-      })
-      if (!plano) {
+      const plano =
+        params.tipoPagamento === "MENSALISTA"
+          ? await tx.plano.findFirst({
+              where: { padrao: true, ativo: true, periodicidade: "MENSAL" },
+              select: { id: true, nome: true, valor: true },
+            })
+          : null
+      if (params.tipoPagamento === "MENSALISTA" && !plano) {
         throw new ErroMatricula("O plano padrão de matrícula não está configurado.")
       }
 
@@ -86,8 +95,10 @@ export async function solicitarMatricula(
           endereco: params.endereco,
           contatoEmergencia: params.contatoEmergencia,
           restricoesMedicas: params.restricoesMedicas,
+          tipoPagamento: params.tipoPagamento,
+          beneficioAtivoDeclarado: params.beneficioAtivoDeclarado,
           modalidadeId: modalidade.id,
-          planoId: plano.id,
+          planoId: plano?.id ?? null,
           comprovantePagamentoUrl: params.comprovante?.url ?? null,
           comprovanteContentType: params.comprovante?.contentType ?? null,
           comprovanteNomeOriginal: params.comprovante?.nomeOriginal ?? null,
@@ -103,10 +114,12 @@ export async function solicitarMatricula(
           valorNovo: {
             modalidadeId: modalidade.id,
             modalidadeNome: modalidade.nome,
+            tipoPagamento: params.tipoPagamento,
+            beneficioAtivoDeclarado: params.beneficioAtivoDeclarado,
             comprovanteInformado: Boolean(params.comprovante),
-            planoId: plano.id,
-            planoNome: plano.nome,
-            valorPlano: Number(plano.valor),
+            planoId: plano?.id ?? null,
+            planoNome: plano?.nome ?? null,
+            valorPlano: plano ? Number(plano.valor) : null,
           },
         },
         tx,
@@ -130,7 +143,16 @@ export async function solicitarMatricula(
 
 export function listarMatriculasPendentes() {
   return db.solicitacaoMatricula.findMany({
-    where: { status: "PENDENTE", cobrancasAsaas: { some: { status: "RECEBIDA" } } },
+    where: {
+      status: "PENDENTE",
+      OR: [
+        {
+          tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] },
+          beneficioAtivoDeclarado: true,
+        },
+        { tipoPagamento: "MENSALISTA", cobrancasAsaas: { some: { status: "RECEBIDA" } } },
+      ],
+    },
     orderBy: { criadoEm: "asc" },
     select: {
       id: true,
@@ -142,6 +164,8 @@ export function listarMatriculasPendentes() {
       endereco: true,
       contatoEmergencia: true,
       restricoesMedicas: true,
+      tipoPagamento: true,
+      beneficioAtivoDeclarado: true,
       comprovantePagamentoUrl: true,
       comprovanteContentType: true,
       comprovanteNomeOriginal: true,
@@ -183,9 +207,7 @@ export async function aprovarMatricula(
           modalidade: { select: { id: true, nome: true, ativa: true } },
           plano: true,
           cobrancasAsaas: {
-            where: { status: "RECEBIDA" },
             orderBy: { recebidaEmAsaas: "desc" },
-            take: 1,
           },
         },
       })
@@ -198,17 +220,46 @@ export async function aprovarMatricula(
       if (!solicitacao.modalidade.ativa) {
         return { ok: false as const, motivo: "A modalidade solicitada está inativa." }
       }
+      const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
+      const plataformaExterna =
+        solicitacao.tipoPagamento === "WELLHUB"
+          ? "WELLHUB"
+          : solicitacao.tipoPagamento === "TOTALPASS"
+            ? "TOTALPASS"
+            : null
       const plano = solicitacao.plano
-      const cobrancaMatricula = solicitacao.cobrancasAsaas[0]
-      if (
-        !plano ||
-        !cobrancaMatricula?.recebidaEmAsaas ||
-        !cobrancaMatricula.asaasPaymentId ||
-        !cobrancaMatricula.asaasCustomerId
-      ) {
-        return {
-          ok: false as const,
-          motivo: "A primeira mensalidade ainda não foi confirmada pelo Asaas.",
+      const cobrancaMatricula = solicitacao.cobrancasAsaas.find(
+        (cobranca) => cobranca.status === "RECEBIDA",
+      )
+      if (mensalista) {
+        if (!plano) {
+          return { ok: false as const, motivo: "O plano da solicitação não está disponível." }
+        }
+        if (!params.diaVencimento) {
+          return { ok: false as const, motivo: "Informe o dia de vencimento." }
+        }
+        if (
+          !cobrancaMatricula?.recebidaEmAsaas ||
+          !cobrancaMatricula.asaasPaymentId ||
+          !cobrancaMatricula.asaasCustomerId
+        ) {
+          return {
+            ok: false as const,
+            motivo: "A primeira mensalidade ainda não foi confirmada pelo Asaas.",
+          }
+        }
+      } else {
+        if (!solicitacao.beneficioAtivoDeclarado) {
+          return {
+            ok: false as const,
+            motivo: "A declaração de benefício ativo não foi confirmada.",
+          }
+        }
+        if (plano || solicitacao.cobrancasAsaas.length > 0) {
+          return {
+            ok: false as const,
+            motivo: "A solicitação externa possui uma configuração financeira inconsistente.",
+          }
         }
       }
 
@@ -229,7 +280,7 @@ export async function aprovarMatricula(
           papel: "ALUNO",
           aluno: {
             create: {
-              tipo: "MENSALISTA",
+              tipo: solicitacao.tipoPagamento,
               status: "ATIVO",
               cpf: solicitacao.cpf,
               telefone: solicitacao.telefone,
@@ -238,13 +289,13 @@ export async function aprovarMatricula(
               dataInicio: agora,
               contatoEmergencia: solicitacao.contatoEmergencia,
               restricoesMedicas: solicitacao.restricoesMedicas,
-              planoId: plano.id,
-              diaVencimento: params.diaVencimento,
+              planoId: plano?.id ?? null,
+              ...(mensalista ? { diaVencimento: params.diaVencimento } : {}),
               modalidades: { connect: { id: solicitacao.modalidade.id } },
               modalidadesPlano: {
                 create: {
                   modalidadeId: solicitacao.modalidade.id,
-                  plataformaExterna: null,
+                  plataformaExterna,
                 },
               },
             },
@@ -254,55 +305,57 @@ export async function aprovarMatricula(
       })
       if (!usuario.aluno) throw new ErroMatricula("Não foi possível criar o aluno.")
 
-      const mensalidade = await registrarMensalidadeInicialPagaAsaas(tx, {
-        alunoId: usuario.aluno.id,
-        competencia: cobrancaMatricula.competencia,
-        valor: cobrancaMatricula.valor,
-        pagoEm: cobrancaMatricula.recebidaEmAsaas,
-        autorId: params.autorId,
-        agora,
-      })
-      if (!mensalidade.ok) throw new ErroMatricula(mensalidade.motivo)
-
-      await tx.clienteAsaas.create({
-        data: {
+      if (mensalista && plano && cobrancaMatricula) {
+        const mensalidade = await registrarMensalidadeInicialPagaAsaas(tx, {
           alunoId: usuario.aluno.id,
-          asaasCustomerId: cobrancaMatricula.asaasCustomerId,
-          tipoPagador: "ALUNO",
-        },
-      })
-      const cobrancaCanonica = await tx.cobrancaAsaas.create({
-        data: {
-          mensalidadeId: mensalidade.mensalidade.id,
-          tipo: "PIX_MENSAL",
-          status: "RECEBIDA",
-          ativa: true,
-          asaasPaymentId: cobrancaMatricula.asaasPaymentId,
-          externalReference: cobrancaMatricula.externalReference,
-          vencimentoAsaas: cobrancaMatricula.vencimentoAsaas,
-          statusAsaas: cobrancaMatricula.statusAsaas,
-          pixCopiaECola: cobrancaMatricula.pixCopiaECola,
-          qrCodeExpiraEm: cobrancaMatricula.qrCodeExpiraEm,
-          invoiceUrl: cobrancaMatricula.invoiceUrl,
-          ultimoEventoAsaas: cobrancaMatricula.ultimoEventoAsaas,
-          recebidaEmAsaas: cobrancaMatricula.recebidaEmAsaas,
-        },
-      })
-      await tx.mensalidade.update({
-        where: { id: mensalidade.mensalidade.id },
-        data: { cobrancaQuitacaoAsaasId: cobrancaCanonica.id },
-      })
-      await tx.cobrancaMatriculaAsaas.update({
-        where: { id: cobrancaMatricula.id },
-        data: { mensalidadeId: mensalidade.mensalidade.id, ativa: false },
-      })
+          competencia: cobrancaMatricula.competencia,
+          valor: cobrancaMatricula.valor,
+          pagoEm: cobrancaMatricula.recebidaEmAsaas!,
+          autorId: params.autorId,
+          agora,
+        })
+        if (!mensalidade.ok) throw new ErroMatricula(mensalidade.motivo)
+
+        await tx.clienteAsaas.create({
+          data: {
+            alunoId: usuario.aluno.id,
+            asaasCustomerId: cobrancaMatricula.asaasCustomerId!,
+            tipoPagador: "ALUNO",
+          },
+        })
+        const cobrancaCanonica = await tx.cobrancaAsaas.create({
+          data: {
+            mensalidadeId: mensalidade.mensalidade.id,
+            tipo: "PIX_MENSAL",
+            status: "RECEBIDA",
+            ativa: true,
+            asaasPaymentId: cobrancaMatricula.asaasPaymentId!,
+            externalReference: cobrancaMatricula.externalReference,
+            vencimentoAsaas: cobrancaMatricula.vencimentoAsaas,
+            statusAsaas: cobrancaMatricula.statusAsaas,
+            pixCopiaECola: cobrancaMatricula.pixCopiaECola,
+            qrCodeExpiraEm: cobrancaMatricula.qrCodeExpiraEm,
+            invoiceUrl: cobrancaMatricula.invoiceUrl,
+            ultimoEventoAsaas: cobrancaMatricula.ultimoEventoAsaas,
+            recebidaEmAsaas: cobrancaMatricula.recebidaEmAsaas,
+          },
+        })
+        await tx.mensalidade.update({
+          where: { id: mensalidade.mensalidade.id },
+          data: { cobrancaQuitacaoAsaasId: cobrancaCanonica.id },
+        })
+        await tx.cobrancaMatriculaAsaas.update({
+          where: { id: cobrancaMatricula.id },
+          data: { mensalidadeId: mensalidade.mensalidade.id, ativa: false },
+        })
+      }
 
       await tx.solicitacaoMatricula.update({
         where: { id: solicitacao.id },
         data: {
           status: "APROVADA",
           alunoId: usuario.aluno.id,
-          planoAprovadoId: plano.id,
+          planoAprovadoId: plano?.id ?? null,
           analisadoPorId: params.autorId,
           analisadoEm: agora,
           senhaHash: null,
@@ -318,10 +371,11 @@ export async function aprovarMatricula(
           valorNovo: {
             origem: "SOLICITACAO_MATRICULA",
             usuarioId: usuario.id,
-            tipo: "MENSALISTA",
+            tipo: solicitacao.tipoPagamento,
             status: "ATIVO",
-            planoId: plano.id,
+            planoId: plano?.id ?? null,
             modalidadeIds: [solicitacao.modalidade.id],
+            plataformaExterna,
           },
         },
         tx,
@@ -336,11 +390,15 @@ export async function aprovarMatricula(
           valorNovo: {
             status: "APROVADA",
             alunoId: usuario.aluno.id,
-            planoId: plano.id,
+            tipoPagamento: solicitacao.tipoPagamento,
+            beneficioAtivoDeclarado: solicitacao.beneficioAtivoDeclarado,
+            planoId: plano?.id ?? null,
             modalidadeId: solicitacao.modalidade.id,
-            diaVencimento: params.diaVencimento,
-            pagamentoAsaasConfirmado: true,
-            asaasPaymentId: cobrancaMatricula.asaasPaymentId,
+            diaVencimento: mensalista ? params.diaVencimento : null,
+            pagamentoAsaasConfirmado: mensalista,
+            pagamentoDispensado: !mensalista,
+            origemFinanceira: mensalista ? "ECVO" : solicitacao.tipoPagamento,
+            asaasPaymentId: cobrancaMatricula?.asaasPaymentId ?? null,
             comprovanteInformado: Boolean(solicitacao.comprovantePagamentoUrl),
           },
         },

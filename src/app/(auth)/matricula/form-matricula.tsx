@@ -1,6 +1,14 @@
 "use client"
 
-import { CalendarDays, Check, FileImage, LockKeyhole, MapPin, Upload } from "lucide-react"
+import {
+  BadgeCheck,
+  CalendarDays,
+  Check,
+  FileImage,
+  LockKeyhole,
+  MapPin,
+  Upload,
+} from "lucide-react"
 import { useActionState, useMemo, useState } from "react"
 import { acaoSolicitarMatricula } from "@/app/actions/matriculas"
 import { Badge } from "@/components/ui/badge"
@@ -11,6 +19,7 @@ import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { rotuloDiaSemana } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
+import type { TipoPagamentoMatriculaPublica } from "./page"
 
 type Modalidade = Awaited<
   ReturnType<typeof import("@/lib/services/matricula.service").listarOpcoesPublicasMatricula>
@@ -19,9 +28,11 @@ type Modalidade = Awaited<
 export function FormMatricula({
   modalidades,
   planoPadrao,
+  tipoPagamento,
 }: {
   modalidades: Modalidade[]
-  planoPadrao: { nome: string; valor: number }
+  planoPadrao: { nome: string; valor: number } | null
+  tipoPagamento: TipoPagamentoMatriculaPublica
 }) {
   const [estado, acao] = useActionState(acaoSolicitarMatricula, undefined)
   const [modalidadeId, setModalidadeId] = useState("")
@@ -30,9 +41,13 @@ export function FormMatricula({
     () => modalidades.find((item) => item.id === modalidadeId),
     [modalidadeId, modalidades],
   )
+  const parceiro = tipoPagamento === "WELLHUB" ? "Wellhub" : "TotalPass"
+  const planoMinimo = tipoPagamento === "WELLHUB" ? "Basic" : "TP1+"
+  const matriculaExterna = tipoPagamento !== "MENSALISTA"
 
   return (
     <form action={acao} className="grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
+      <input type="hidden" name="tipoPagamento" value={tipoPagamento} />
       <div className="space-y-8 p-5 sm:p-8">
         <Secao
           numero="02"
@@ -109,49 +124,78 @@ export function FormMatricula({
           </div>
         </Secao>
 
-        <Secao
-          numero="04"
-          titulo="Comprovante PIX"
-          descricao="Opcional. O pagamento será confirmado pelo Asaas; o anexo fica como evidência adicional."
-        >
-          <label className="group flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-border bg-muted/25 p-4 transition-colors hover:border-primary/60 hover:bg-primary/5">
-            <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-card text-primary shadow-sm">
-              {arquivo ? <FileImage className="size-5" /> : <Upload className="size-5" />}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium">
-                {arquivo?.name ?? "Selecionar comprovante"}
+        {tipoPagamento === "MENSALISTA" && (
+          <Secao
+            numero="04"
+            titulo="Comprovante PIX"
+            descricao="Opcional. O pagamento será confirmado pelo Asaas; o anexo fica como evidência adicional."
+          >
+            <label className="group flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-border bg-muted/25 p-4 transition-colors hover:border-primary/60 hover:bg-primary/5">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-card text-primary shadow-sm">
+                {arquivo ? <FileImage className="size-5" /> : <Upload className="size-5" />}
               </span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                {arquivo
-                  ? `${(arquivo.size / 1024 / 1024).toFixed(2)} MB`
-                  : "JPG, PNG, WebP ou PDF · até 3 MB"}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">
+                  {arquivo?.name ?? "Selecionar comprovante"}
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {arquivo
+                    ? `${(arquivo.size / 1024 / 1024).toFixed(2)} MB`
+                    : "JPG, PNG, WebP ou PDF · até 3 MB"}
+                </span>
               </span>
-            </span>
-            {arquivo && <Check className="size-5 shrink-0 text-success" />}
-            <Input
-              type="file"
-              name="comprovante"
-              accept="image/jpeg,image/png,image/webp,application/pdf"
-              className="sr-only"
-              onChange={(evento) => setArquivo(evento.currentTarget.files?.[0] ?? null)}
-            />
-          </label>
-        </Secao>
+              {arquivo && <Check className="size-5 shrink-0 text-success" />}
+              <Input
+                type="file"
+                name="comprovante"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="sr-only"
+                onChange={(evento) => setArquivo(evento.currentTarget.files?.[0] ?? null)}
+              />
+            </label>
+          </Secao>
+        )}
 
-        <Secao
-          numero="05"
-          titulo="Primeira mensalidade"
-          descricao="Ao enviar os dados, você receberá o QR Code PIX para concluir a solicitação."
-        >
-          <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
-            <p className="font-medium">{planoPadrao.nome}</p>
-            <p className="mt-1 text-2xl font-bold text-primary">
-              {formatarBRL(planoPadrao.valor)}
-              <span className="text-sm font-normal text-muted-foreground"> / mês</span>
-            </p>
-          </div>
-        </Secao>
+        {tipoPagamento === "MENSALISTA" && planoPadrao && (
+          <Secao
+            numero="05"
+            titulo="Primeira mensalidade"
+            descricao="Ao enviar os dados, você receberá o QR Code PIX para concluir a solicitação."
+          >
+            <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
+              <p className="font-medium">{planoPadrao.nome}</p>
+              <p className="mt-1 text-2xl font-bold text-primary">
+                {formatarBRL(planoPadrao.valor)}
+                <span className="text-sm font-normal text-muted-foreground"> / mês</span>
+              </p>
+            </div>
+          </Secao>
+        )}
+
+        {matriculaExterna && (
+          <Secao
+            numero="04"
+            titulo={`Confirmação ${parceiro}`}
+            descricao="Esta declaração é obrigatória para enviar a solicitação."
+          >
+            <label className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
+              <input
+                type="checkbox"
+                name="beneficioAtivoDeclarado"
+                required
+                className="mt-0.5 size-4 accent-primary"
+              />
+              <span>
+                <span className="block font-medium">
+                  Declaro ter o {parceiro} ativo a partir do plano {planoMinimo}.
+                </span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  Não haverá pagamento de matrícula ou mensalidade à ECVO neste fluxo.
+                </span>
+              </span>
+            </label>
+          </Secao>
+        )}
 
         <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
           <input
@@ -176,7 +220,7 @@ export function FormMatricula({
         )}
 
         <BotaoEnviar size="lg" className="w-full sm:w-auto">
-          Continuar para o pagamento PIX
+          {matriculaExterna ? `Enviar matrícula ${parceiro}` : "Continuar para o pagamento PIX"}
         </BotaoEnviar>
       </div>
 
@@ -184,7 +228,7 @@ export function FormMatricula({
         <div className="sticky top-6 space-y-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-              Etapa 1
+              {matriculaExterna ? `Acesso por ${parceiro}` : "Plano mensalista"}
             </p>
             <h2 className="mt-2 text-xl font-bold tracking-tight">Escolha sua modalidade</h2>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -257,9 +301,15 @@ export function FormMatricula({
           )}
 
           <div className="flex gap-3 border-t border-border pt-5 text-xs text-muted-foreground">
-            <LockKeyhole className="mt-0.5 size-4 shrink-0" />
+            {matriculaExterna ? (
+              <BadgeCheck className="mt-0.5 size-4 shrink-0" />
+            ) : (
+              <LockKeyhole className="mt-0.5 size-4 shrink-0" />
+            )}
             <p>
-              O check-in só é liberado depois da aprovação e do vínculo de um plano pelo gestor.
+              {matriculaExterna
+                ? `O check-in será liberado após a análise da matrícula ${parceiro}.`
+                : "O check-in só é liberado depois da aprovação e do vínculo do plano."}
             </p>
           </div>
         </div>

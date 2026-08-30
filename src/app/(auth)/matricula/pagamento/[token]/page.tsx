@@ -20,7 +20,7 @@ export default async function PagamentoMatriculaPage({
 }) {
   const { token } = await params
   const solicitacao = await obterPagamentoMatriculaPublico(token)
-  if (!solicitacao?.plano) notFound()
+  if (!solicitacao?.plano || solicitacao.tipoPagamento !== "MENSALISTA") notFound()
   const cobranca = solicitacao.cobrancasAsaas[0] ?? null
   const pagamentoConfirmado = cobranca?.status === "RECEBIDA"
   const qrCodeDataUrl = cobranca?.pixCopiaECola

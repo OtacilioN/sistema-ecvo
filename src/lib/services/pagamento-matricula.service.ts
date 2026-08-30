@@ -75,6 +75,7 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
     select: {
       id: true,
       tokenAcompanhamento: true,
+      tipoPagamento: true,
       status: true,
       criadoEm: true,
       plano: { select: { nome: true, valor: true, periodicidade: true } },
@@ -104,6 +105,9 @@ async function reservarCobranca(tokenAcompanhamento: string) {
     })
     if (solicitacao?.status !== "PENDENTE") {
       return { ok: false as const, motivo: "Esta solicitação não aceita uma nova cobrança." }
+    }
+    if (solicitacao.tipoPagamento !== "MENSALISTA") {
+      return { ok: false as const, motivo: "Esta modalidade de matrícula não possui cobrança." }
     }
     if (!solicitacao.plano) {
       return { ok: false as const, motivo: "A solicitação não possui um plano vinculado." }

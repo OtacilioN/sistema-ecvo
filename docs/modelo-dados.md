@@ -23,11 +23,13 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
   capacidade e duplicidade; `Checkin.realizadoEm` guarda o horário real e
   `associadoAutomaticamente` preserva que a aula foi escolhida pelo sistema.
 - **Solicitação pública de matrícula**: `SolicitacaoMatricula` guarda os dados fornecidos pelo candidato,
-  a modalidade pretendida, o plano padrão aplicado e a referência privada do comprovante PIX opcional.
-  `CobrancaMatriculaAsaas` preserva competência, valor, cliente, cobrança e QR antes de existir um aluno.
-  Nenhum `Usuario`/`Aluno` é criado enquanto a solicitação estiver `PENDENTE`. Somente `PAYMENT_RECEIVED`
-  a torna visível para aprovação. A aprovação cria a conta, liga plano/modalidade, registra a mensalidade
-  paga e materializa a cobrança canônica na mesma transação; o anexo nunca gera baixa.
+  a modalidade pretendida, `tipoPagamento` (mensalista, Wellhub ou TotalPass) e a declaração obrigatória
+  de benefício ativo nos fluxos externos. Para mensalistas, também guarda o plano padrão aplicado e a
+  referência privada do comprovante PIX opcional. `CobrancaMatriculaAsaas` preserva competência, valor,
+  cliente, cobrança e QR antes de existir um aluno mensalista. Nenhum `Usuario`/`Aluno` é criado enquanto
+  a solicitação estiver `PENDENTE`. Mensalistas só ficam visíveis para aprovação após `PAYMENT_RECEIVED`;
+  Wellhub/TotalPass entram na fila sem cobrança. A aprovação externa liga a modalidade por
+  `AlunoPlanoModalidade.plataformaExterna`, sem criar plano, mensalidade ou registros Asaas.
 
 ## Entidades
 

@@ -61,14 +61,20 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   modalidades, data de início, contato de emergência, observações admin/técnicas, restrições médicas,
   identificador externo).
 - **RF-001.1** O candidato pode solicitar a própria matrícula em rota pública, informando seus dados,
-  escolhendo uma modalidade e consultando a grade recorrente ativa publicada para ela. Pode anexar um
-  comprovante PIX opcional em imagem ou PDF. O sistema aplica o plano padrão, emite a cobrança PIX da
-  primeira mensalidade no Asaas e só coloca a solicitação na fila administrativa após `PAYMENT_RECEIVED`.
-  A solicitação não cria uma conta de aluno antes da análise.
+  escolhendo antes do cadastro entre mensalista, Wellhub ou TotalPass, selecionando uma modalidade e
+  consultando a grade recorrente ativa publicada para ela. Os atalhos públicos usam
+  `?tipoPagamento=mensalista`, `wellhub` ou `totalpass`. No fluxo mensalista, pode anexar um comprovante
+  PIX opcional em imagem ou PDF; o sistema aplica o plano padrão, emite a cobrança PIX da primeira
+  mensalidade no Asaas e só coloca a solicitação na fila administrativa após `PAYMENT_RECEIVED`. Wellhub
+  exige declaração de benefício ativo a partir do plano Basic e TotalPass a partir do TP1+; esses fluxos
+  não geram pagamento de matrícula, mensalidade, plano interno ou cobrança Asaas. A solicitação não cria
+  uma conta de aluno antes da análise.
 - **RF-001.2** O gestor visualiza as matrículas pendentes e aprova cada solicitação em uma única operação,
-  confirmando o dia de vencimento. A aprovação usa o plano e o valor preservados na cobrança, cria o aluno,
-  registra a mensalidade inicial paga pelo Asaas e libera a matrícula para o fluxo de treino. O comprovante
-  anexado é evidência privada opcional e nunca substitui nem duplica a confirmação integrada.
+  confirmando o dia de vencimento apenas para mensalistas. A aprovação mensalista usa o plano e o valor
+  preservados na cobrança, cria o aluno e registra a mensalidade inicial paga pelo Asaas. A aprovação
+  Wellhub/TotalPass cria o aluno com o tipo e o vínculo externo da modalidade correspondentes, sem efeitos
+  financeiros internos. O comprovante anexado é evidência privada opcional do fluxo mensalista e nunca
+  substitui nem duplica a confirmação integrada.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,

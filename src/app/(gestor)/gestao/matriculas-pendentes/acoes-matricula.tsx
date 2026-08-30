@@ -13,6 +13,7 @@ import type { SolicitacaoPendente } from "./lista-matriculas-pendentes"
 
 export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPendente }) {
   const [aberto, setAberto] = useState(false)
+  const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
   return (
     <>
       <Button type="button" onClick={() => setAberto(true)} className="w-full lg:w-auto">
@@ -23,7 +24,11 @@ export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPenden
         aoFechar={() => setAberto(false)}
         variante="lateral"
         titulo="Aprovar matrícula"
-        descricao="Confira os dados e conclua a aprovação do pagamento já confirmado."
+        descricao={
+          mensalista
+            ? "Confira os dados e conclua a aprovação do pagamento já confirmado."
+            : "Confira os dados e a declaração do benefício antes de liberar o acesso."
+        }
       >
         <FormAprovacao solicitacao={solicitacao} aoConcluir={() => setAberto(false)} />
       </Dialog>
@@ -39,6 +44,9 @@ function FormAprovacao({
   aoConcluir: () => void
 }) {
   const [estado, acao] = useActionState(acaoAprovarMatricula, undefined)
+  const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
+  const parceiro = solicitacao.tipoPagamento === "WELLHUB" ? "Wellhub" : "TotalPass"
+  const planoMinimo = solicitacao.tipoPagamento === "WELLHUB" ? "Basic" : "TP1+"
 
   useEffect(() => {
     if (estado?.ok) aoConcluir()
@@ -55,70 +63,91 @@ function FormAprovacao({
         </div>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <Dado rotulo="Modalidade" valor={solicitacao.modalidade.nome} />
+          <Dado rotulo="Tipo de matrícula" valor={mensalista ? "Mensalista" : parceiro} />
           <Dado rotulo="CPF" valor={solicitacao.cpf ? formatarCPF(solicitacao.cpf) : null} />
           <Dado rotulo="Telefone" valor={solicitacao.telefone} />
           <Dado rotulo="Endereço" valor={solicitacao.endereco} />
           <Dado rotulo="Emergência" valor={solicitacao.contatoEmergencia} />
           <Dado rotulo="Restrições médicas" valor={solicitacao.restricoesMedicas} />
         </dl>
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Plano e vencimento</h3>
-        <div className="rounded-lg border border-success/30 bg-success/5 p-4">
-          <p className="font-medium">{solicitacao.plano?.nome ?? "Plano não localizado"}</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {solicitacao.plano
-              ? formatarBRL(solicitacao.cobrancasAsaas[0]?.valor ?? solicitacao.plano.valor)
-              : "—"}
-            {" · pagamento confirmado pelo Asaas"}
+        {!mensalista && (
+          <p className="flex items-start gap-2 rounded-md border border-success/30 bg-success/5 p-3 text-sm">
+            <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />O candidato declarou ter
+            o {parceiro} ativo a partir do plano {planoMinimo}.
           </p>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor={`vencimento-${solicitacao.id}`}>Dia de vencimento</Label>
-          <Input
-            id={`vencimento-${solicitacao.id}`}
-            name="diaVencimento"
-            type="number"
-            min={1}
-            max={28}
-            defaultValue={10}
-            required
-          />
-        </div>
+        )}
       </section>
 
-      <section className="space-y-3 rounded-lg border border-border p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-semibold">Comprovante PIX</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              O anexo não dá baixa automaticamente.
+      {mensalista && (
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold">Plano e vencimento</h3>
+          <div className="rounded-lg border border-success/30 bg-success/5 p-4">
+            <p className="font-medium">{solicitacao.plano?.nome ?? "Plano não localizado"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {solicitacao.plano
+                ? formatarBRL(solicitacao.cobrancasAsaas[0]?.valor ?? solicitacao.plano.valor)
+                : "—"}
+              {" · pagamento confirmado pelo Asaas"}
             </p>
           </div>
-          {solicitacao.comprovantePagamentoUrl ? (
-            <Button asChild variant="outline" size="sm">
-              <a
-                href={`/api/comprovantes-matricula/${solicitacao.id}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink className="size-4" /> Ver
-              </a>
-            </Button>
-          ) : (
-            <span className="text-xs text-muted-foreground">Não anexado</span>
-          )}
-        </div>
-      </section>
+          <div className="space-y-1.5">
+            <Label htmlFor={`vencimento-${solicitacao.id}`}>Dia de vencimento</Label>
+            <Input
+              id={`vencimento-${solicitacao.id}`}
+              name="diaVencimento"
+              type="number"
+              min={1}
+              max={28}
+              defaultValue={10}
+              required
+            />
+          </div>
+        </section>
+      )}
+
+      {mensalista && (
+        <section className="space-y-3 rounded-lg border border-border p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Comprovante PIX</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                O anexo não dá baixa automaticamente.
+              </p>
+            </div>
+            {solicitacao.comprovantePagamentoUrl ? (
+              <Button asChild variant="outline" size="sm">
+                <a
+                  href={`/api/comprovantes-matricula/${solicitacao.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink className="size-4" /> Ver
+                </a>
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">Não anexado</span>
+            )}
+          </div>
+        </section>
+      )}
 
       <div className="rounded-lg border border-primary/25 bg-primary/5 p-4 text-sm">
         <p className="flex items-center gap-2 font-medium">
           <ShieldCheck className="size-4 text-primary" /> O que acontece ao aprovar
         </p>
         <p className="mt-2 text-muted-foreground">
-          A conta do aluno será criada, a modalidade e o plano padrão serão vinculados e a primeira
-          mensalidade ficará registrada como paga pelo Asaas. O comprovante opcional não gera baixa.
+          {mensalista ? (
+            <>
+              A conta do aluno será criada, a modalidade e o plano padrão serão vinculados e a
+              primeira mensalidade ficará registrada como paga pelo Asaas. O comprovante opcional
+              não gera baixa.
+            </>
+          ) : (
+            <>
+              A conta será criada como aluno {parceiro}, com a modalidade vinculada à plataforma.
+              Nenhuma matrícula, mensalidade ou cobrança interna será gerada.
+            </>
+          )}
         </p>
       </div>
 

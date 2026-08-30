@@ -22,8 +22,8 @@ export default function MatriculaEnviadaPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Matrícula enviada</h1>
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              Recebemos seus dados. A equipe vai conferir a solicitação, o comprovante quando
-              anexado e vincular um plano antes de criar seu acesso.
+              Recebemos seus dados. A equipe vai conferir a solicitação e a forma de matrícula
+              escolhida antes de criar seu acesso.
             </p>
           </div>
           <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-4 text-left text-sm">

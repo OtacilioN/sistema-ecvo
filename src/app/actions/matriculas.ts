@@ -37,11 +37,14 @@ export async function acaoSolicitarMatricula(
     contatoEmergencia: formData.get("contatoEmergencia"),
     restricoesMedicas: formData.get("restricoesMedicas"),
     modalidadeId: formData.get("modalidadeId"),
+    tipoPagamento: formData.get("tipoPagamento"),
+    beneficioAtivoDeclarado: formData.get("beneficioAtivoDeclarado"),
     aceiteDados: formData.get("aceiteDados"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
-  const valorArquivo = formData.get("comprovante")
+  const valorArquivo =
+    parsed.data.tipoPagamento === "MENSALISTA" ? formData.get("comprovante") : null
   const arquivo = valorArquivo instanceof File && valorArquivo.size > 0 ? valorArquivo : null
   const arquivoValido = validarComprovanteMatricula(arquivo)
   if (!arquivoValido.ok) return { erro: arquivoValido.motivo }
@@ -76,8 +79,11 @@ export async function acaoSolicitarMatricula(
     return { erro: resultado.motivo }
   }
 
-  await gerarCobrancaMatriculaAsaas(resultado.solicitacao.tokenAcompanhamento)
-  redirect(`/matricula/pagamento/${resultado.solicitacao.tokenAcompanhamento}`)
+  if (parsed.data.tipoPagamento === "MENSALISTA") {
+    await gerarCobrancaMatriculaAsaas(resultado.solicitacao.tokenAcompanhamento)
+    redirect(`/matricula/pagamento/${resultado.solicitacao.tokenAcompanhamento}`)
+  }
+  redirect(`/matricula/enviada?tipoPagamento=${parsed.data.tipoPagamento.toLowerCase()}`)
 }
 
 export async function acaoGerarPagamentoMatricula(formData: FormData) {
@@ -94,7 +100,7 @@ export async function acaoAprovarMatricula(
   const gestor = await exigirPapel("GESTOR")
   const parsed = aprovacaoMatriculaSchema.safeParse({
     solicitacaoId: formData.get("solicitacaoId"),
-    diaVencimento: formData.get("diaVencimento"),
+    diaVencimento: formData.get("diaVencimento") ?? undefined,
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 

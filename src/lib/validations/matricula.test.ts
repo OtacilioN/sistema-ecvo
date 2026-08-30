@@ -17,6 +17,8 @@ const solicitacaoValida = {
   contatoEmergencia: "",
   restricoesMedicas: "",
   modalidadeId: "modalidade-1",
+  tipoPagamento: "MENSALISTA",
+  beneficioAtivoDeclarado: null,
   aceiteDados: "on",
 }
 
@@ -37,6 +39,45 @@ describe("solicitacaoMatriculaSchema", () => {
       }).success,
     ).toBe(false)
   })
+
+  it.each([
+    ["WELLHUB", "Wellhub"],
+    ["TOTALPASS", "TotalPass"],
+  ] as const)("exige a declaração de benefício ativo para %s", (tipoPagamento, rotulo) => {
+    const semDeclaracao = solicitacaoMatriculaSchema.safeParse({
+      ...solicitacaoValida,
+      tipoPagamento,
+    })
+    expect(semDeclaracao.success).toBe(false)
+    if (!semDeclaracao.success) {
+      expect(semDeclaracao.error.issues[0]?.message).toContain(rotulo)
+    }
+
+    const comDeclaracao = solicitacaoMatriculaSchema.safeParse({
+      ...solicitacaoValida,
+      tipoPagamento,
+      beneficioAtivoDeclarado: "on",
+    })
+    expect(comDeclaracao.success).toBe(true)
+  })
+
+  it("rejeita declaração de benefício no fluxo mensalista", () => {
+    expect(
+      solicitacaoMatriculaSchema.safeParse({
+        ...solicitacaoValida,
+        beneficioAtivoDeclarado: "on",
+      }).success,
+    ).toBe(false)
+  })
+
+  it("rejeita tipo de pagamento desconhecido", () => {
+    expect(
+      solicitacaoMatriculaSchema.safeParse({
+        ...solicitacaoValida,
+        tipoPagamento: "AVULSO",
+      }).success,
+    ).toBe(false)
+  })
 })
 
 describe("aprovacaoMatriculaSchema", () => {
@@ -54,6 +95,14 @@ describe("aprovacaoMatriculaSchema", () => {
       diaVencimento: 29,
     })
     expect(resultado.success).toBe(false)
+  })
+
+  it("aceita aprovação sem vencimento para solicitações externas", () => {
+    const resultado = aprovacaoMatriculaSchema.safeParse({
+      solicitacaoId: "solicitacao-1",
+      diaVencimento: undefined,
+    })
+    expect(resultado.success).toBe(true)
   })
 })
 

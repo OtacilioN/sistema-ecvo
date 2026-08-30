@@ -14,7 +14,7 @@ export default async function MatriculasPendentesPage() {
     <div className="space-y-6">
       <CabecalhoPagina
         titulo="Matrículas pendentes"
-        descricao="Analise os cadastros cuja primeira mensalidade já foi confirmada pelo Asaas."
+        descricao="Analise os cadastros mensalistas pagos e as solicitações Wellhub ou TotalPass declaradas."
       >
         <div className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm">
           <ClipboardList className="size-4 text-primary" />
