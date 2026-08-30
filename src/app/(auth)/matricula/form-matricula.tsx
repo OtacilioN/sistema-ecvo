@@ -10,12 +10,19 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { rotuloDiaSemana } from "@/lib/utils/datas"
+import { formatarBRL } from "@/lib/utils/formato"
 
 type Modalidade = Awaited<
   ReturnType<typeof import("@/lib/services/matricula.service").listarOpcoesPublicasMatricula>
 >[number]
 
-export function FormMatricula({ modalidades }: { modalidades: Modalidade[] }) {
+export function FormMatricula({
+  modalidades,
+  planoPadrao,
+}: {
+  modalidades: Modalidade[]
+  planoPadrao: { nome: string; valor: number }
+}) {
   const [estado, acao] = useActionState(acaoSolicitarMatricula, undefined)
   const [modalidadeId, setModalidadeId] = useState("")
   const [arquivo, setArquivo] = useState<File | null>(null)
@@ -46,6 +53,7 @@ export function FormMatricula({ modalidades }: { modalidades: Modalidade[] }) {
               inputMode="numeric"
               autoComplete="off"
               placeholder="000.000.000-00"
+              required
             />
             <Campo id="dataNascimento" rotulo="Data de nascimento" type="date" />
             <Campo id="telefone" rotulo="Telefone / WhatsApp" type="tel" autoComplete="tel" />
@@ -104,7 +112,7 @@ export function FormMatricula({ modalidades }: { modalidades: Modalidade[] }) {
         <Secao
           numero="04"
           titulo="Comprovante PIX"
-          descricao="Opcional. O anexo será conferido pelo gestor na análise."
+          descricao="Opcional. O pagamento será confirmado pelo Asaas; o anexo fica como evidência adicional."
         >
           <label className="group flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-border bg-muted/25 p-4 transition-colors hover:border-primary/60 hover:bg-primary/5">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-md bg-card text-primary shadow-sm">
@@ -131,6 +139,20 @@ export function FormMatricula({ modalidades }: { modalidades: Modalidade[] }) {
           </label>
         </Secao>
 
+        <Secao
+          numero="05"
+          titulo="Primeira mensalidade"
+          descricao="Ao enviar os dados, você receberá o QR Code PIX para concluir a solicitação."
+        >
+          <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
+            <p className="font-medium">{planoPadrao.nome}</p>
+            <p className="mt-1 text-2xl font-bold text-primary">
+              {formatarBRL(planoPadrao.valor)}
+              <span className="text-sm font-normal text-muted-foreground"> / mês</span>
+            </p>
+          </div>
+        </Secao>
+
         <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
           <input
             type="checkbox"
@@ -154,7 +176,7 @@ export function FormMatricula({ modalidades }: { modalidades: Modalidade[] }) {
         )}
 
         <BotaoEnviar size="lg" className="w-full sm:w-auto">
-          Enviar matrícula para análise
+          Continuar para o pagamento PIX
         </BotaoEnviar>
       </div>
 

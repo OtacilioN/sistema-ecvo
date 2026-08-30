@@ -8,21 +8,10 @@ import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select } from "@/components/ui/select"
 import { formatarBRL, formatarCPF } from "@/lib/utils/formato"
-import type { PlanoMatricula, SolicitacaoPendente } from "./lista-matriculas-pendentes"
+import type { SolicitacaoPendente } from "./lista-matriculas-pendentes"
 
-export function AcoesMatricula({
-  solicitacao,
-  planos,
-  competenciaAtual,
-  dataHoje,
-}: {
-  solicitacao: SolicitacaoPendente
-  planos: PlanoMatricula[]
-  competenciaAtual: string
-  dataHoje: string
-}) {
+export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPendente }) {
   const [aberto, setAberto] = useState(false)
   return (
     <>
@@ -34,15 +23,9 @@ export function AcoesMatricula({
         aoFechar={() => setAberto(false)}
         variante="lateral"
         titulo="Aprovar matrícula"
-        descricao="Confira os dados e vincule o plano que liberará o aluno."
+        descricao="Confira os dados e conclua a aprovação do pagamento já confirmado."
       >
-        <FormAprovacao
-          solicitacao={solicitacao}
-          planos={planos}
-          competenciaAtual={competenciaAtual}
-          dataHoje={dataHoje}
-          aoConcluir={() => setAberto(false)}
-        />
+        <FormAprovacao solicitacao={solicitacao} aoConcluir={() => setAberto(false)} />
       </Dialog>
     </>
   )
@@ -50,19 +33,12 @@ export function AcoesMatricula({
 
 function FormAprovacao({
   solicitacao,
-  planos,
-  competenciaAtual,
-  dataHoje,
   aoConcluir,
 }: {
   solicitacao: SolicitacaoPendente
-  planos: PlanoMatricula[]
-  competenciaAtual: string
-  dataHoje: string
   aoConcluir: () => void
 }) {
   const [estado, acao] = useActionState(acaoAprovarMatricula, undefined)
-  const [confirmarPagamento, setConfirmarPagamento] = useState(false)
 
   useEffect(() => {
     if (estado?.ok) aoConcluir()
@@ -71,7 +47,6 @@ function FormAprovacao({
   return (
     <form action={acao} className="space-y-6">
       <input type="hidden" name="solicitacaoId" value={solicitacao.id} />
-      <input type="hidden" name="competenciaEsperada" value={competenciaAtual} />
 
       <section className="space-y-3 rounded-lg border border-border bg-muted/25 p-4">
         <div>
@@ -90,16 +65,14 @@ function FormAprovacao({
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">Plano e vencimento</h3>
-        <div className="space-y-1.5">
-          <Label htmlFor={`plano-${solicitacao.id}`}>Plano de pagamento</Label>
-          <Select id={`plano-${solicitacao.id}`} name="planoId" defaultValue="" required>
-            <option value="">Selecione um plano</option>
-            {planos.map((plano) => (
-              <option key={plano.id} value={plano.id}>
-                {plano.nome} · {formatarBRL(plano.valor)} · {plano.periodicidade}
-              </option>
-            ))}
-          </Select>
+        <div className="rounded-lg border border-success/30 bg-success/5 p-4">
+          <p className="font-medium">{solicitacao.plano?.nome ?? "Plano não localizado"}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {solicitacao.plano
+              ? formatarBRL(solicitacao.cobrancasAsaas[0]?.valor ?? solicitacao.plano.valor)
+              : "—"}
+            {" · pagamento confirmado pelo Asaas"}
+          </p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={`vencimento-${solicitacao.id}`}>Dia de vencimento</Label>
@@ -137,37 +110,6 @@ function FormAprovacao({
             <span className="text-xs text-muted-foreground">Não anexado</span>
           )}
         </div>
-
-        {solicitacao.comprovantePagamentoUrl && (
-          <label className="flex items-start gap-3 border-t border-border pt-3 text-sm">
-            <input
-              type="checkbox"
-              name="comprovanteConfirmado"
-              checked={confirmarPagamento}
-              onChange={(evento) => setConfirmarPagamento(evento.currentTarget.checked)}
-              className="mt-0.5 size-4 accent-primary"
-            />
-            <span>
-              <span className="block font-medium">O comprovante confere</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                Registrar a mensalidade inicial como paga via PIX.
-              </span>
-            </span>
-          </label>
-        )}
-        {confirmarPagamento && (
-          <div className="space-y-1.5">
-            <Label htmlFor={`pago-em-${solicitacao.id}`}>Data do pagamento</Label>
-            <Input
-              id={`pago-em-${solicitacao.id}`}
-              name="pagoEm"
-              type="date"
-              max={dataHoje}
-              defaultValue={dataHoje}
-              required
-            />
-          </div>
-        )}
       </section>
 
       <div className="rounded-lg border border-primary/25 bg-primary/5 p-4 text-sm">
@@ -175,8 +117,8 @@ function FormAprovacao({
           <ShieldCheck className="size-4 text-primary" /> O que acontece ao aprovar
         </p>
         <p className="mt-2 text-muted-foreground">
-          A conta do aluno será criada, a modalidade e o plano serão vinculados e a mensalidade
-          inicial será gerada. O check-in ainda exigirá o aceite do termo de responsabilidade.
+          A conta do aluno será criada, a modalidade e o plano padrão serão vinculados e a primeira
+          mensalidade ficará registrada como paga pelo Asaas. O comprovante opcional não gera baixa.
         </p>
       </div>
 

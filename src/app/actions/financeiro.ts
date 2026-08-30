@@ -50,10 +50,12 @@ export async function acaoCriarPlano(
     valor: formData.get("valor"),
     periodicidade: formData.get("periodicidade"),
     limiteAulas: formData.get("limiteAulas") || undefined,
+    padrao: formData.get("padrao"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
-  await criarPlano({ ...parsed.data, autorId: usuario.id })
+  const resultado = await criarPlano({ ...parsed.data, autorId: usuario.id })
+  if (!resultado.ok) return { erro: resultado.motivo }
   revalidatePath("/gestao/financeiro")
   revalidatePath("/gestao/auditoria")
   return { ok: true }
@@ -71,6 +73,7 @@ export async function acaoAtualizarPlano(
     periodicidade: formData.get("periodicidade"),
     limiteAulas: formData.get("limiteAulas") || undefined,
     ativo: formData.get("ativo"),
+    padrao: formData.get("padrao"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 

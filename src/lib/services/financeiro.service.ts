@@ -518,30 +518,40 @@ export async function criarPlano(params: {
   valor: number
   periodicidade: Periodicidade
   limiteAulas?: number | null
+  padrao: boolean
   autorId: string
 }) {
-  const plano = await db.plano.create({
-    data: {
-      nome: params.nome,
-      valor: params.valor,
-      periodicidade: params.periodicidade,
-      limiteAulas: params.limiteAulas ?? null,
-    },
+  if (params.padrao && params.periodicidade !== "MENSAL") {
+    return { ok: false as const, motivo: "O plano padrão precisa ter periodicidade mensal." }
+  }
+
+  const plano = await db.$transaction(async (tx) => {
+    if (params.padrao)
+      await tx.plano.updateMany({ where: { padrao: true }, data: { padrao: false } })
+    const criado = await tx.plano.create({
+      data: {
+        nome: params.nome,
+        valor: params.valor,
+        periodicidade: params.periodicidade,
+        limiteAulas: params.limiteAulas ?? null,
+        padrao: params.padrao,
+      },
+    })
+
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "PLANO",
+        entidade: "Plano",
+        entidadeId: criado.id,
+        valorNovo: serializarPlano(criado),
+      },
+      tx,
+    )
+    return criado
   })
 
-  await registrarLog({
-    autorId: params.autorId,
-    acao: "PLANO",
-    entidade: "Plano",
-    entidadeId: plano.id,
-    valorNovo: {
-      nome: plano.nome,
-      valor: Number(plano.valor),
-      periodicidade: plano.periodicidade,
-    },
-  })
-
-  return plano
+  return { ok: true as const, plano }
 }
 
 export async function atualizarPlano(params: {
@@ -551,6 +561,7 @@ export async function atualizarPlano(params: {
   periodicidade: Periodicidade
   limiteAulas?: number | null
   ativo: boolean
+  padrao: boolean
   autorId: string
 }) {
   const anterior = await db.plano.findUnique({
@@ -562,11 +573,27 @@ export async function atualizarPlano(params: {
       periodicidade: true,
       limiteAulas: true,
       ativo: true,
+      padrao: true,
     },
   })
   if (!anterior) return { ok: false as const, motivo: "Plano não encontrado." }
+  if (params.padrao && (!params.ativo || params.periodicidade !== "MENSAL")) {
+    return { ok: false as const, motivo: "O plano padrão precisa estar ativo e ser mensal." }
+  }
+  if (anterior.padrao && !params.padrao) {
+    return {
+      ok: false as const,
+      motivo: "Defina outro plano como padrão antes de remover este vínculo.",
+    }
+  }
 
   const plano = await db.$transaction(async (tx) => {
+    if (params.padrao) {
+      await tx.plano.updateMany({
+        where: { padrao: true, id: { not: params.planoId } },
+        data: { padrao: false },
+      })
+    }
     const atualizado = await tx.plano.update({
       where: { id: params.planoId },
       data: {
@@ -575,6 +602,7 @@ export async function atualizarPlano(params: {
         periodicidade: params.periodicidade,
         limiteAulas: params.limiteAulas ?? null,
         ativo: params.ativo,
+        padrao: params.padrao,
       },
     })
 
@@ -610,10 +638,17 @@ export async function excluirPlano(params: {
       periodicidade: true,
       limiteAulas: true,
       ativo: true,
+      padrao: true,
       _count: { select: { alunos: true, mensalidades: true } },
     },
   })
   if (!plano) return { ok: false as const, motivo: "Plano não encontrado." }
+  if (plano.padrao) {
+    return {
+      ok: false as const,
+      motivo: "Defina outro plano como padrão antes de excluir este plano.",
+    }
+  }
 
   let planoDestino: { id: string; nome: string } | null = null
   if (plano._count.alunos > 0) {
@@ -1093,6 +1128,43 @@ export async function registrarMensalidadeInicialPaga(
     agora,
     formaPagamento: params.formaPagamento,
     observacao: params.observacao ?? "Pagamento informado no cadastro do aluno.",
+    autorId: params.autorId,
+  })
+}
+
+export async function registrarMensalidadeInicialPagaAsaas(
+  tx: Prisma.TransactionClient,
+  params: {
+    alunoId: string
+    competencia: string
+    valor: Prisma.Decimal | number
+    pagoEm: Date
+    autorId: string
+    agora?: Date
+  },
+) {
+  const agora = params.agora ?? new Date()
+  if (params.pagoEm.getTime() >= fimExclusivoDoDiaAcademia(agora).getTime()) {
+    return { ok: false as const, motivo: "A data do pagamento Asaas não pode estar no futuro." }
+  }
+  const mensalidade = await obterOuCriarMensalidadeNaTransacao(tx, {
+    alunoId: params.alunoId,
+    competencia: params.competencia,
+    autorId: params.autorId,
+  })
+  if (!mensalidade.ok) return mensalidade
+  if (Number(mensalidade.mensalidade.valor) !== Number(params.valor)) {
+    await tx.mensalidade.update({
+      where: { id: mensalidade.mensalidade.id },
+      data: { valor: params.valor },
+    })
+  }
+  return baixarMensalidadeNaTransacao(tx, {
+    mensalidadeId: mensalidade.mensalidade.id,
+    pagoEm: params.pagoEm,
+    agora,
+    formaPagamento: "PIX_ASAAS",
+    observacao: "Primeira mensalidade confirmada pelo Asaas antes da aprovação da matrícula.",
     autorId: params.autorId,
   })
 }
@@ -1636,6 +1708,7 @@ function serializarPlano(plano: {
   periodicidade: Periodicidade
   limiteAulas: number | null
   ativo: boolean
+  padrao: boolean
 }): Prisma.InputJsonObject {
   return {
     nome: plano.nome,
@@ -1643,6 +1716,7 @@ function serializarPlano(plano: {
     periodicidade: plano.periodicidade,
     limiteAulas: plano.limiteAulas,
     ativo: plano.ativo,
+    padrao: plano.padrao,
   }
 }
 

@@ -21,6 +21,11 @@ cobrança excedente e contrariaria a janela operacional do provedor.
   tentativa desfaça um pagamento posterior. Cada tentativa recebida preserva `recebidaEmAsaas`; se houver
   pagamento duplicado e a tentativa eleita for estornada, a quitação e a data passam para a outra tentativa
   recebida. A mensalidade só reabre quando nenhuma tentativa recebida sobreviver.
+- Antes da aprovação da matrícula, usar `CobrancaMatriculaAsaas` ligada à solicitação e ao snapshot do plano
+  padrão, sem criar `Usuario`, `Aluno` ou `Mensalidade` provisórios. O comprovante continua opcional e não
+  produz baixa. Somente `PAYMENT_RECEIVED` libera a fila administrativa; `PAYMENT_CONFIRMED` pode ser cautelar
+  e permanece pendente. Na aprovação, a cobrança é materializada no modelo financeiro canônico para que
+  estornos futuros preservem as mesmas regras.
 - Preservar `Mensalidade.vencimento` como data histórica. Se o aluno emitir o PIX mensal depois dessa
   data, gravar separadamente em `CobrancaAsaas.vencimentoAsaas` a data civil atual da academia e enviá-la
   ao provedor; webhook e conciliação validam essa data técnica, sem alterar competência ou inadimplência.

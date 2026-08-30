@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
     $queryRaw: vi.fn(),
     eventoWebhookAsaas: { createMany: vi.fn(), delete: vi.fn() },
     clienteAsaas: { findUnique: vi.fn() },
+    cobrancaMatriculaAsaas: { findFirst: vi.fn(), update: vi.fn() },
     cobrancaAsaas: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -133,6 +134,7 @@ describe("processarWebhookAsaas", () => {
     vi.clearAllMocks()
     mocks.db.cobrancaAsaas.findFirst.mockResolvedValue({ id: "cobranca-1" })
     mocks.tx.eventoWebhookAsaas.createMany.mockResolvedValue({ count: 1 })
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(null)
     mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
       args?.where?.OR ? cobrancaLocal : null,
     )
@@ -178,6 +180,76 @@ describe("processarWebhookAsaas", () => {
       },
     })
     expect(mocks.sincronizarStatusFinanceiroAluno).toHaveBeenCalledWith(mocks.tx, "aluno-1")
+  })
+
+  it("confirma a cobrança da pré-matrícula sem criar uma baixa mensal prematura", async () => {
+    const cobrancaMatricula = {
+      id: "cobranca-matricula-1",
+      status: "PENDENTE" as const,
+      asaasPaymentId: "pay_matricula",
+      asaasCustomerId: "cus_matricula",
+      externalReference: "matricula:solicitacao-1",
+      valor: 100,
+      vencimentoAsaas: new Date("2026-09-10T12:00:00.000Z"),
+    }
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(cobrancaMatricula)
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      id: "pay_matricula",
+      customer: "cus_matricula",
+      value: 100,
+      externalReference: "matricula:solicitacao-1",
+    })
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_matricula",
+      event: "PAYMENT_RECEIVED",
+      payment: { id: "pay_matricula" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).toHaveBeenCalledWith({
+      where: { id: "cobranca-matricula-1" },
+      data: expect.objectContaining({
+        status: "RECEBIDA",
+        asaasPaymentId: "pay_matricula",
+        asaasCustomerId: "cus_matricula",
+        recebidaEmAsaas: new Date("2026-09-10T15:00:00.000Z"),
+      }),
+    })
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("não conclui a pré-matrícula no estado cautelar CONFIRMED", async () => {
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue({
+      id: "cobranca-matricula-1",
+      status: "PENDENTE",
+      asaasPaymentId: "pay_matricula",
+      asaasCustomerId: "cus_matricula",
+      externalReference: "matricula:solicitacao-1",
+      valor: 100,
+      vencimentoAsaas: new Date("2026-09-10T12:00:00.000Z"),
+    })
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      id: "pay_matricula",
+      customer: "cus_matricula",
+      value: 100,
+      status: "CONFIRMED",
+      externalReference: "matricula:solicitacao-1",
+    })
+
+    await processarWebhookAsaas({
+      id: "evt_matricula_confirmed",
+      event: "PAYMENT_CONFIRMED",
+      payment: { id: "pay_matricula" },
+    })
+
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).toHaveBeenCalledWith({
+      where: { id: "cobranca-matricula-1" },
+      data: expect.objectContaining({ status: "PENDENTE", recebidaEmAsaas: undefined }),
+    })
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
   })
 
   it("aceita a exclusão terminal autenticada sem reconsultar um recurso remoto já removido", async () => {

@@ -3,11 +3,7 @@ import { Prisma } from "@prisma/client"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
-import {
-  obterOuCriarMensalidadeNaTransacao,
-  registrarMensalidadeInicialPaga,
-} from "@/lib/services/financeiro.service"
-import { chaveCompetencia } from "@/lib/utils/datas"
+import { registrarMensalidadeInicialPagaAsaas } from "@/lib/services/financeiro.service"
 import type {
   AprovacaoMatriculaInput,
   SolicitacaoMatriculaInput,
@@ -71,6 +67,13 @@ export async function solicitarMatricula(
         select: { id: true, nome: true },
       })
       if (!modalidade) throw new ErroMatricula("A modalidade selecionada não está disponível.")
+      const plano = await tx.plano.findFirst({
+        where: { padrao: true, ativo: true, periodicidade: "MENSAL" },
+        select: { id: true, nome: true, valor: true },
+      })
+      if (!plano) {
+        throw new ErroMatricula("O plano padrão de matrícula não está configurado.")
+      }
 
       const criada = await tx.solicitacaoMatricula.create({
         data: {
@@ -84,6 +87,7 @@ export async function solicitarMatricula(
           contatoEmergencia: params.contatoEmergencia,
           restricoesMedicas: params.restricoesMedicas,
           modalidadeId: modalidade.id,
+          planoId: plano.id,
           comprovantePagamentoUrl: params.comprovante?.url ?? null,
           comprovanteContentType: params.comprovante?.contentType ?? null,
           comprovanteNomeOriginal: params.comprovante?.nomeOriginal ?? null,
@@ -100,6 +104,9 @@ export async function solicitarMatricula(
             modalidadeId: modalidade.id,
             modalidadeNome: modalidade.nome,
             comprovanteInformado: Boolean(params.comprovante),
+            planoId: plano.id,
+            planoNome: plano.nome,
+            valorPlano: Number(plano.valor),
           },
         },
         tx,
@@ -123,7 +130,7 @@ export async function solicitarMatricula(
 
 export function listarMatriculasPendentes() {
   return db.solicitacaoMatricula.findMany({
-    where: { status: "PENDENTE" },
+    where: { status: "PENDENTE", cobrancasAsaas: { some: { status: "RECEBIDA" } } },
     orderBy: { criadoEm: "asc" },
     select: {
       id: true,
@@ -139,6 +146,26 @@ export function listarMatriculasPendentes() {
       comprovanteContentType: true,
       comprovanteNomeOriginal: true,
       criadoEm: true,
+      plano: { select: { id: true, nome: true, valor: true, periodicidade: true } },
+      cobrancasAsaas: {
+        where: { status: "RECEBIDA" },
+        orderBy: { recebidaEmAsaas: "desc" },
+        take: 1,
+        select: {
+          id: true,
+          asaasPaymentId: true,
+          asaasCustomerId: true,
+          externalReference: true,
+          competencia: true,
+          valor: true,
+          vencimentoAsaas: true,
+          pixCopiaECola: true,
+          qrCodeExpiraEm: true,
+          invoiceUrl: true,
+          statusAsaas: true,
+          recebidaEmAsaas: true,
+        },
+      },
       modalidade: { select: { id: true, nome: true } },
     },
   })
@@ -148,17 +175,19 @@ export async function aprovarMatricula(
   params: AprovacaoMatriculaInput & { autorId: string; agora?: Date },
 ) {
   const agora = params.agora ?? new Date()
-  if (params.competenciaEsperada !== chaveCompetencia(agora)) {
-    return {
-      ok: false as const,
-      motivo: "A competência mudou. Atualize a página e analise a matrícula novamente.",
-    }
-  }
   try {
     return await db.$transaction(async (tx) => {
       const solicitacao = await tx.solicitacaoMatricula.findUnique({
         where: { id: params.solicitacaoId },
-        include: { modalidade: { select: { id: true, nome: true, ativa: true } } },
+        include: {
+          modalidade: { select: { id: true, nome: true, ativa: true } },
+          plano: true,
+          cobrancasAsaas: {
+            where: { status: "RECEBIDA" },
+            orderBy: { recebidaEmAsaas: "desc" },
+            take: 1,
+          },
+        },
       })
       if (solicitacao?.status !== "PENDENTE") {
         return { ok: false as const, motivo: "Esta matrícula já foi analisada ou não existe." }
@@ -169,15 +198,19 @@ export async function aprovarMatricula(
       if (!solicitacao.modalidade.ativa) {
         return { ok: false as const, motivo: "A modalidade solicitada está inativa." }
       }
-      if (params.comprovanteConfirmado && !solicitacao.comprovantePagamentoUrl) {
-        return { ok: false as const, motivo: "Esta matrícula não possui comprovante anexado." }
+      const plano = solicitacao.plano
+      const cobrancaMatricula = solicitacao.cobrancasAsaas[0]
+      if (
+        !plano ||
+        !cobrancaMatricula?.recebidaEmAsaas ||
+        !cobrancaMatricula.asaasPaymentId ||
+        !cobrancaMatricula.asaasCustomerId
+      ) {
+        return {
+          ok: false as const,
+          motivo: "A primeira mensalidade ainda não foi confirmada pelo Asaas.",
+        }
       }
-
-      const plano = await tx.plano.findFirst({
-        where: { id: params.planoId, ativo: true },
-        select: { id: true, nome: true },
-      })
-      if (!plano) return { ok: false as const, motivo: "Selecione um plano ativo." }
 
       const reservada = await tx.solicitacaoMatricula.updateMany({
         where: { id: solicitacao.id, status: "PENDENTE" },
@@ -221,22 +254,48 @@ export async function aprovarMatricula(
       })
       if (!usuario.aluno) throw new ErroMatricula("Não foi possível criar o aluno.")
 
-      const mensalidade = params.comprovanteConfirmado
-        ? await registrarMensalidadeInicialPaga(tx, {
-            alunoId: usuario.aluno.id,
-            competenciaEsperada: params.competenciaEsperada,
-            pagoEm: params.pagoEm!,
-            formaPagamento: "PIX",
-            observacao: "Comprovante PIX confirmado na aprovação da matrícula.",
-            autorId: params.autorId,
-            agora,
-          })
-        : await obterOuCriarMensalidadeNaTransacao(tx, {
-            alunoId: usuario.aluno.id,
-            competencia: params.competenciaEsperada,
-            autorId: params.autorId,
-          })
+      const mensalidade = await registrarMensalidadeInicialPagaAsaas(tx, {
+        alunoId: usuario.aluno.id,
+        competencia: cobrancaMatricula.competencia,
+        valor: cobrancaMatricula.valor,
+        pagoEm: cobrancaMatricula.recebidaEmAsaas,
+        autorId: params.autorId,
+        agora,
+      })
       if (!mensalidade.ok) throw new ErroMatricula(mensalidade.motivo)
+
+      await tx.clienteAsaas.create({
+        data: {
+          alunoId: usuario.aluno.id,
+          asaasCustomerId: cobrancaMatricula.asaasCustomerId,
+          tipoPagador: "ALUNO",
+        },
+      })
+      const cobrancaCanonica = await tx.cobrancaAsaas.create({
+        data: {
+          mensalidadeId: mensalidade.mensalidade.id,
+          tipo: "PIX_MENSAL",
+          status: "RECEBIDA",
+          ativa: true,
+          asaasPaymentId: cobrancaMatricula.asaasPaymentId,
+          externalReference: cobrancaMatricula.externalReference,
+          vencimentoAsaas: cobrancaMatricula.vencimentoAsaas,
+          statusAsaas: cobrancaMatricula.statusAsaas,
+          pixCopiaECola: cobrancaMatricula.pixCopiaECola,
+          qrCodeExpiraEm: cobrancaMatricula.qrCodeExpiraEm,
+          invoiceUrl: cobrancaMatricula.invoiceUrl,
+          ultimoEventoAsaas: cobrancaMatricula.ultimoEventoAsaas,
+          recebidaEmAsaas: cobrancaMatricula.recebidaEmAsaas,
+        },
+      })
+      await tx.mensalidade.update({
+        where: { id: mensalidade.mensalidade.id },
+        data: { cobrancaQuitacaoAsaasId: cobrancaCanonica.id },
+      })
+      await tx.cobrancaMatriculaAsaas.update({
+        where: { id: cobrancaMatricula.id },
+        data: { mensalidadeId: mensalidade.mensalidade.id, ativa: false },
+      })
 
       await tx.solicitacaoMatricula.update({
         where: { id: solicitacao.id },
@@ -280,7 +339,9 @@ export async function aprovarMatricula(
             planoId: plano.id,
             modalidadeId: solicitacao.modalidade.id,
             diaVencimento: params.diaVencimento,
-            comprovanteConfirmado: params.comprovanteConfirmado,
+            pagamentoAsaasConfirmado: true,
+            asaasPaymentId: cobrancaMatricula.asaasPaymentId,
+            comprovanteInformado: Boolean(solicitacao.comprovantePagamentoUrl),
           },
         },
         tx,

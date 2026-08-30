@@ -597,9 +597,11 @@ model Plano {
   periodicidade         Periodicidade          @default(MENSAL)
   limiteAulas           Int? // null = ilimitado
   ativo                 Boolean                @default(true)
+  padrao                Boolean                @default(false)
   alunos                Aluno[]
   mensalidades          Mensalidade[]
-  solicitacoesMatricula SolicitacaoMatricula[]
+  solicitacoesMatricula SolicitacaoMatricula[] @relation("PlanoSolicitacaoMatricula")
+  solicitacoesAprovadas SolicitacaoMatricula[] @relation("PlanoAprovadoMatricula")
   criadoEm              DateTime               @default(now())
   atualizadoEm          DateTime               @updatedAt
 }
@@ -615,26 +617,62 @@ model SolicitacaoMatricula {
   endereco                String?
   contatoEmergencia       String?
   restricoesMedicas       String?
+  tokenAcompanhamento     String                     @unique @default(cuid())
   modalidade              Modalidade                 @relation(fields: [modalidadeId], references: [id])
   modalidadeId            String
+  plano                   Plano?                     @relation("PlanoSolicitacaoMatricula", fields: [planoId], references: [id], onDelete: Restrict)
+  planoId                 String?
   comprovantePagamentoUrl String?
   comprovanteContentType  String?
   comprovanteNomeOriginal String?
   status                  StatusSolicitacaoMatricula @default(PENDENTE)
   aluno                   Aluno?                     @relation(fields: [alunoId], references: [id], onDelete: SetNull)
   alunoId                 String?                    @unique
-  planoAprovado           Plano?                     @relation(fields: [planoAprovadoId], references: [id], onDelete: SetNull)
+  planoAprovado           Plano?                     @relation("PlanoAprovadoMatricula", fields: [planoAprovadoId], references: [id], onDelete: SetNull)
   planoAprovadoId         String?
   analisadoPor            Usuario?                   @relation("AnalisadorMatricula", fields: [analisadoPorId], references: [id], onDelete: SetNull)
   analisadoPorId          String?
   analisadoEm             DateTime?
   justificativa           String?
+  cobrancasAsaas          CobrancaMatriculaAsaas[]
   criadoEm                DateTime                   @default(now())
   atualizadoEm            DateTime                   @updatedAt
 
   @@index([status, criadoEm])
   @@index([modalidadeId])
+  @@index([planoId])
   @@index([analisadoPorId])
+}
+
+model CobrancaMatriculaAsaas {
+  id                       String               @id @default(cuid())
+  solicitacao              SolicitacaoMatricula @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
+  solicitacaoId            String
+  mensalidade              Mensalidade?         @relation(fields: [mensalidadeId], references: [id], onDelete: SetNull)
+  mensalidadeId            String?              @unique
+  status                   StatusCobrancaAsaas  @default(CRIANDO)
+  geracao                  Int                  @default(1)
+  ativa                    Boolean              @default(true)
+  asaasCustomerId          String?
+  asaasPaymentId           String?              @unique
+  externalReference        String               @unique
+  competencia              String
+  valor                    Decimal              @db.Decimal(10, 2)
+  vencimentoAsaas          DateTime
+  statusAsaas              String?
+  pixCopiaECola            String?
+  qrCodeExpiraEm           DateTime?
+  invoiceUrl               String?
+  ultimoEventoAsaas        String?
+  ultimoErro               String?
+  recebidaEmAsaas          DateTime?
+  estornoParcialPendenteEm DateTime?
+  criadoEm                 DateTime             @default(now())
+  atualizadoEm             DateTime             @updatedAt
+
+  @@unique([solicitacaoId, geracao])
+  @@index([status])
+  @@index([solicitacaoId, ativa])
 }
 
 model AlunoPlanoModalidade {
@@ -651,27 +689,28 @@ model AlunoPlanoModalidade {
 }
 
 model Mensalidade {
-  id                      String                 @id @default(cuid())
-  aluno                   Aluno                  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  id                      String                  @id @default(cuid())
+  aluno                   Aluno                   @relation(fields: [alunoId], references: [id], onDelete: Cascade)
   alunoId                 String
-  plano                   Plano?                 @relation(fields: [planoId], references: [id], onDelete: SetNull)
+  plano                   Plano?                  @relation(fields: [planoId], references: [id], onDelete: SetNull)
   planoId                 String?
   competencia             String // "2026-06"
-  valor                   Decimal                @db.Decimal(10, 2)
+  valor                   Decimal                 @db.Decimal(10, 2)
   vencimento              DateTime
-  status                  StatusMensalidade      @default(EM_ABERTO)
+  status                  StatusMensalidade       @default(EM_ABERTO)
   pagoEm                  DateTime?
   formaPagamento          String?
   observacao              String?
   repasseSnapshot         Json?
-  contratoPixAutomatico   ContratoPixAutomatico? @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
+  contratoPixAutomatico   ContratoPixAutomatico?  @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
   contratoPixAutomaticoId String?
   numeroCicloPix          Int?
-  cobrancasAsaas          CobrancaAsaas[]        @relation("TentativasCobrancaAsaas")
-  cobrancaQuitacaoAsaas   CobrancaAsaas?         @relation("QuitacaoMensalidadeAsaas", fields: [cobrancaQuitacaoAsaasId], references: [id], onDelete: SetNull)
-  cobrancaQuitacaoAsaasId String?                @unique
-  criadoEm                DateTime               @default(now())
-  atualizadoEm            DateTime               @updatedAt
+  cobrancasAsaas          CobrancaAsaas[]         @relation("TentativasCobrancaAsaas")
+  cobrancaQuitacaoAsaas   CobrancaAsaas?          @relation("QuitacaoMensalidadeAsaas", fields: [cobrancaQuitacaoAsaasId], references: [id], onDelete: SetNull)
+  cobrancaQuitacaoAsaasId String?                 @unique
+  cobrancaMatriculaAsaas  CobrancaMatriculaAsaas?
+  criadoEm                DateTime                @default(now())
+  atualizadoEm            DateTime                @updatedAt
 
   @@unique([alunoId, competencia])
   @@unique([contratoPixAutomaticoId, numeroCicloPix])

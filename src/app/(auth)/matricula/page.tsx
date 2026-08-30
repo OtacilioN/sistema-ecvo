@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Marca } from "@/components/marca"
 import { listarOpcoesPublicasMatricula } from "@/lib/services/matricula.service"
+import { obterPlanoPadraoMatricula } from "@/lib/services/pagamento-matricula.service"
 import { FormMatricula } from "./form-matricula"
 
 export const metadata: Metadata = {
@@ -13,7 +14,10 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic"
 
 export default async function MatriculaPage() {
-  const modalidades = await listarOpcoesPublicasMatricula()
+  const [modalidades, planoPadrao] = await Promise.all([
+    listarOpcoesPublicasMatricula(),
+    obterPlanoPadraoMatricula(),
+  ])
 
   return (
     <main className="w-full max-w-5xl py-4">
@@ -50,7 +54,17 @@ export default async function MatriculaPage() {
           </div>
         </div>
 
-        <FormMatricula modalidades={modalidades} />
+        {planoPadrao ? (
+          <FormMatricula
+            modalidades={modalidades}
+            planoPadrao={{ ...planoPadrao, valor: Number(planoPadrao.valor) }}
+          />
+        ) : (
+          <p className="p-8 text-center text-sm text-destructive">
+            A matrícula online está temporariamente indisponível porque o plano padrão não foi
+            configurado.
+          </p>
+        )}
       </section>
 
       <p className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">

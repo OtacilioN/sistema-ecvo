@@ -8,6 +8,7 @@ import {
   validarComprovanteMatricula,
 } from "@/lib/comprovantes-matricula"
 import { aprovarMatricula, solicitarMatricula } from "@/lib/services/matricula.service"
+import { gerarCobrancaMatriculaAsaas } from "@/lib/services/pagamento-matricula.service"
 import {
   excluirComprovanteMatriculaSeExistir,
   salvarComprovanteMatricula,
@@ -75,7 +76,15 @@ export async function acaoSolicitarMatricula(
     return { erro: resultado.motivo }
   }
 
-  redirect("/matricula/enviada")
+  await gerarCobrancaMatriculaAsaas(resultado.solicitacao.tokenAcompanhamento)
+  redirect(`/matricula/pagamento/${resultado.solicitacao.tokenAcompanhamento}`)
+}
+
+export async function acaoGerarPagamentoMatricula(formData: FormData) {
+  const token = formData.get("token")
+  if (typeof token !== "string" || token.length < 10) return
+  await gerarCobrancaMatriculaAsaas(token, { verificar: true })
+  revalidatePath(`/matricula/pagamento/${token}`)
 }
 
 export async function acaoAprovarMatricula(
@@ -83,14 +92,9 @@ export async function acaoAprovarMatricula(
   formData: FormData,
 ): Promise<EstadoMatricula> {
   const gestor = await exigirPapel("GESTOR")
-  const comprovanteConfirmado = formData.get("comprovanteConfirmado") === "on"
   const parsed = aprovacaoMatriculaSchema.safeParse({
     solicitacaoId: formData.get("solicitacaoId"),
-    planoId: formData.get("planoId"),
     diaVencimento: formData.get("diaVencimento"),
-    comprovanteConfirmado,
-    competenciaEsperada: formData.get("competenciaEsperada"),
-    pagoEm: comprovanteConfirmado ? formData.get("pagoEm") : null,
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 

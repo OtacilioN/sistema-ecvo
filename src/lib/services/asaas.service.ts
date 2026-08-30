@@ -40,6 +40,7 @@ import {
   sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
 } from "@/lib/services/financeiro.service"
+import { aplicarWebhookPagamentoMatricula } from "@/lib/services/pagamento-matricula.service"
 import { chaveCompetencia, dataCivilParaDate, formatarDataInput } from "@/lib/utils/datas"
 import {
   idAutorizacaoDoWebhook,
@@ -131,7 +132,8 @@ function referenciaPagamentoEcvo(referencia?: string | null) {
     referencia &&
       (referencia.startsWith("mensalidade:") ||
         referencia.startsWith("pixauto:") ||
-        referencia.startsWith("pixauto-fallback:")),
+        referencia.startsWith("pixauto-fallback:") ||
+        referencia.startsWith("matricula:")),
   )
 }
 
@@ -2195,6 +2197,34 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
     const statusPagamento = statusCobrancaPorEvento(webhook.event)
 
     if (webhook.payment && statusPagamento) {
+      const cobrancaMatricula = await tx.cobrancaMatriculaAsaas.findFirst({
+        where: {
+          mensalidadeId: null,
+          OR: [
+            { asaasPaymentId: webhook.payment.id },
+            ...(webhook.payment.externalReference
+              ? [{ externalReference: webhook.payment.externalReference }]
+              : []),
+          ],
+        },
+        select: {
+          id: true,
+          status: true,
+          asaasPaymentId: true,
+          asaasCustomerId: true,
+          externalReference: true,
+          valor: true,
+          vencimentoAsaas: true,
+        },
+      })
+      if (cobrancaMatricula) {
+        const resultado = await aplicarWebhookPagamentoMatricula(tx, cobrancaMatricula, webhook)
+        if (!resultado.ok) {
+          await tx.eventoWebhookAsaas.delete({ where: { asaasEventId: webhook.id } })
+        }
+        return resultado
+      }
+
       const cobranca = await localizarCobrancaWebhook(tx, webhook.payment)
       if (cobranca) {
         await bloquearMensalidades(tx, [cobranca.mensalidadeId])

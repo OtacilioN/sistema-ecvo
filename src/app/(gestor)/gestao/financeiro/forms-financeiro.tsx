@@ -54,6 +54,7 @@ export type PlanoEdicao = {
   periodicidade: PeriodicidadePlano
   limiteAulas: number | null
   ativo: boolean
+  padrao: boolean
 }
 
 type StatusMensalidade = "EM_ABERTO" | "PAGA" | "VENCIDA" | "CANCELADA" | "ISENTA"
@@ -91,6 +92,15 @@ export function FormPlano({ aoConcluir }: { aoConcluir?: () => void }) {
         </Select>
       </div>
       <CampoTexto id="limiteAulas" rotulo="Limite de aulas" type="number" min="1" />
+      <label className="flex items-start gap-3 sm:col-span-2">
+        <input type="checkbox" name="padrao" className="mt-0.5 size-4 accent-primary" />
+        <span>
+          <span className="block text-sm font-medium">Plano padrão para novas matrículas</span>
+          <span className="block text-xs text-muted-foreground">
+            Precisa ser mensal e ficará ativo.
+          </span>
+        </span>
+      </label>
       <Erro estado={estado} />
       <div className="flex justify-end sm:col-span-2">
         <BotaoEnviar>
@@ -137,6 +147,20 @@ export function FormEditarPlano({
           <option value="ANUAL">Anual</option>
         </Select>
       </div>
+      <label className="flex items-start gap-3 sm:col-span-2">
+        <input
+          type="checkbox"
+          name="padrao"
+          defaultChecked={plano.padrao}
+          className="mt-0.5 size-4 accent-primary"
+        />
+        <span>
+          <span className="block text-sm font-medium">Plano padrão para novas matrículas</span>
+          <span className="block text-xs text-muted-foreground">
+            Ao selecionar, o padrão anterior será substituído.
+          </span>
+        </span>
+      </label>
       <CampoTexto
         id="limite-aulas-plano"
         nome="limiteAulas"

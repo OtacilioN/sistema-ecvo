@@ -62,11 +62,13 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   identificador externo).
 - **RF-001.1** O candidato pode solicitar a própria matrícula em rota pública, informando seus dados,
   escolhendo uma modalidade e consultando a grade recorrente ativa publicada para ela. Pode anexar um
-  comprovante PIX em imagem ou PDF. A solicitação não cria uma conta de aluno antes da análise.
+  comprovante PIX opcional em imagem ou PDF. O sistema aplica o plano padrão, emite a cobrança PIX da
+  primeira mensalidade no Asaas e só coloca a solicitação na fila administrativa após `PAYMENT_RECEIVED`.
+  A solicitação não cria uma conta de aluno antes da análise.
 - **RF-001.2** O gestor visualiza as matrículas pendentes e aprova cada solicitação em uma única operação,
-  obrigatoriamente vinculando modalidade, plano de pagamento e dia de vencimento. A aprovação cria o aluno,
-  gera a mensalidade inicial e libera a matrícula para o fluxo de treino; confirmar o comprovante como
-  pagamento é uma decisão explícita e separada do simples anexo.
+  confirmando o dia de vencimento. A aprovação usa o plano e o valor preservados na cobrança, cria o aluno,
+  registra a mensalidade inicial paga pelo Asaas e libera a matrícula para o fluxo de treino. O comprovante
+  anexado é evidência privada opcional e nunca substitui nem duplica a confirmação integrada.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,
@@ -141,7 +143,8 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **RF-045** Exames de graduação (data, modalidade, professor, inscritos, resultado, nova graduação, taxa).
 
 ### Financeiro
-- **RF-046** Cadastro de plano. **RF-047** Vínculo do plano ao aluno com mensalidade interna. **RF-048**
+- **RF-046** Cadastro de plano, com exatamente um plano mensal ativo marcado como padrão para novas
+  matrículas. **RF-047** Vínculo do plano ao aluno com mensalidade interna. **RF-048**
   Registro de mensalidades.
 - **RF-049** Status financeiro (Em aberto, Paga, Vencida, Cancelada, Isenta).
 - **RF-050** Adimplência. **RF-051** Bloqueio por inadimplência (alertar / bloquear agendamento / bloquear check-in / não aplicar).
@@ -152,7 +155,9 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   atingir o teto dos professores, reduzem
   proporcionalmente a parte dos professores.
 - **RF-053.3** Cada aluno com plano mensal pode usar cobrança PIX mensal pelo Asaas. Cada competência gera
-  uma cobrança dinâmica e um QR Code de uso único, sem alterar o valor histórico da mensalidade.
+  uma cobrança dinâmica e um QR Code de uso único, sem alterar o valor histórico da mensalidade. A primeira
+  cobrança também pode nascer na solicitação pública, antes da existência do aluno, e é transferida para a
+  mensalidade canônica durante a aprovação.
 - **RF-053.4** O gestor pode habilitar PIX Automático semestral para um aluno, e o próprio aluno pode
   habilitá-lo para si. O sistema materializa exatamente seis competências mensais pelo valor da mensalidade:
   o QR inicial paga a primeira e solicita a autorização; após a autorização ativa, somente as cinco
@@ -212,6 +217,9 @@ mensalidade automaticamente; gerar ou exibir QR Code não equivale a pagamento.
 RN-024 uma cobrança Asaas em processamento ou recebida impede alteração manual incompatível da mensalidade.
 Estorno integral reabre a mensalidade; estorno parcial retira a mensalidade dos repasses e exige conciliação
 manual auditada. Tentativas remotas permanecem no histórico; somente uma pode estar ativa por mensalidade.
+
+RN-025 o plano padrão deve estar ativo e ter periodicidade mensal. A cobrança de matrícula preserva plano,
+competência e valor apresentados ao candidato; uma troca posterior do padrão não altera essa cobrança.
 
 ## 8. Requisitos não funcionais (RNF)
 

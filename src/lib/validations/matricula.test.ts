@@ -10,7 +10,7 @@ const solicitacaoValida = {
   email: "ALUNO@EXEMPLO.COM",
   senha: "123456",
   confirmarSenha: "123456",
-  cpf: "",
+  cpf: "529.982.247-25",
   telefone: "(83) 99999-9999",
   dataNascimento: "",
   endereco: "",
@@ -24,7 +24,7 @@ describe("solicitacaoMatriculaSchema", () => {
   it("normaliza os dados do cadastro público", () => {
     const dados = solicitacaoMatriculaSchema.parse(solicitacaoValida)
     expect(dados.email).toBe("aluno@exemplo.com")
-    expect(dados.cpf).toBeNull()
+    expect(dados.cpf).toBe("52998224725")
     expect(dados.endereco).toBeNull()
   })
 
@@ -40,26 +40,18 @@ describe("solicitacaoMatriculaSchema", () => {
 })
 
 describe("aprovacaoMatriculaSchema", () => {
-  it("exige plano para liberar a matrícula", () => {
+  it("aceita somente os dados administrativos que ainda cabem ao gestor", () => {
     const resultado = aprovacaoMatriculaSchema.safeParse({
       solicitacaoId: "solicitacao-1",
-      planoId: "",
       diaVencimento: 10,
-      comprovanteConfirmado: false,
-      competenciaEsperada: "2026-08",
-      pagoEm: null,
     })
-    expect(resultado.success).toBe(false)
+    expect(resultado.success).toBe(true)
   })
 
-  it("exige data quando o comprovante for confirmado", () => {
+  it("rejeita dia de vencimento fora do intervalo permitido", () => {
     const resultado = aprovacaoMatriculaSchema.safeParse({
       solicitacaoId: "solicitacao-1",
-      planoId: "plano-1",
-      diaVencimento: 10,
-      comprovanteConfirmado: true,
-      competenciaEsperada: "2026-08",
-      pagoEm: null,
+      diaVencimento: 29,
     })
     expect(resultado.success).toBe(false)
   })

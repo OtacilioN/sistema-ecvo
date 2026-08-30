@@ -23,17 +23,18 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
   capacidade e duplicidade; `Checkin.realizadoEm` guarda o horário real e
   `associadoAutomaticamente` preserva que a aula foi escolhida pelo sistema.
 - **Solicitação pública de matrícula**: `SolicitacaoMatricula` guarda os dados fornecidos pelo candidato,
-  a modalidade pretendida e a referência privada do comprovante PIX. Nenhum `Usuario`/`Aluno` é criado
-  enquanto a solicitação estiver `PENDENTE`. A aprovação do gestor cria a conta, liga `Aluno.planoId`,
-  `Aluno.modalidades` e `AlunoPlanoModalidade`, gera a mensalidade inicial e registra auditoria na mesma
-  transação. O anexo só dá baixa na mensalidade quando o gestor o confirma explicitamente.
+  a modalidade pretendida, o plano padrão aplicado e a referência privada do comprovante PIX opcional.
+  `CobrancaMatriculaAsaas` preserva competência, valor, cliente, cobrança e QR antes de existir um aluno.
+  Nenhum `Usuario`/`Aluno` é criado enquanto a solicitação estiver `PENDENTE`. Somente `PAYMENT_RECEIVED`
+  a torna visível para aprovação. A aprovação cria a conta, liga plano/modalidade, registra a mensalidade
+  paga e materializa a cobrança canônica na mesma transação; o anexo nunca gera baixa.
 
 ## Entidades
 
 Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento (agendamento de aula) · Checkin ·
 TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · Graduacao · GraduacaoAluno ·
 Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · ClienteAsaas ·
-ContratoPixAutomatico · CobrancaAsaas · EventoWebhookAsaas · SolicitacaoMatricula · Importacao ·
+ContratoPixAutomatico · CobrancaAsaas · CobrancaMatriculaAsaas · EventoWebhookAsaas · SolicitacaoMatricula · Importacao ·
 RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao · InscricaoPush.
 
 ## Diagrama (ER simplificado)
@@ -63,6 +64,8 @@ erDiagram
   ContratoPixAutomatico ||--o{ Mensalidade : "seis ciclos"
   ContratoPixAutomatico ||--o{ CobrancaAsaas : "materializa"
   Mensalidade ||--o{ CobrancaAsaas : "tentativas"
+  SolicitacaoMatricula ||--o{ CobrancaMatriculaAsaas : "cobra antes da aprovação"
+  Plano ||--o{ SolicitacaoMatricula : "aplicado"
 
   Professor }o--o{ Modalidade : "habilitado"
   Professor ||--o{ Turma : "ministra"
@@ -92,6 +95,8 @@ erDiagram
 - **Turma** modela tanto a grade recorrente (`diasSemana`/`horaInicio`/`horaFim`) quanto eventos únicos
 - **Aluno.diaVencimento** define o dia usado ao gerar mensalidades internas; `Mensalidade.vencimento`
   preserva a data histórica da cobrança gerada.
+- **Plano.padrao** identifica o único plano mensal ativo aplicado a novas matrículas. Índice parcial e
+  `CHECK` no PostgreSQL impedem dois padrões ou um padrão inativo/não mensal.
 - **ClienteAsaas** reserva localmente o aluno antes da criação remota; enquanto a operação está em curso,
   o identificador remoto pode ser nulo e falhas sanitizadas ficam em `ultimoErro`. Depois, mantém somente o
   identificador remoto e se o pagador é o aluno ou seu responsável financeiro. **ContratoPixAutomatico**
@@ -107,6 +112,10 @@ erDiagram
   quitação corretamente quando um pagamento duplicado sobrevivente substitui uma tentativa estornada.
   `PIX_AUTOMATICO_FALLBACK` identifica a contingência convencional de um ciclo cuja janela automática foi
   perdida.
+- **CobrancaMatriculaAsaas** usa referência determinística e token público opaco, recebe o webhook no mesmo
+  pipeline idempotente e só aceita `PAYMENT_RECEIVED` como liquidação final. Na aprovação, seus identificadores
+  são materializados em `ClienteAsaas`/`CobrancaAsaas`; webhooks posteriores, inclusive estornos, seguem o
+  fluxo financeiro canônico.
 - O QR inicial do PIX Automático representa o ciclo 1. Os ciclos 2 a 6 são criados pelo job diário somente
   com autorização ativa. `EventoWebhookAsaas.asaasEventId` impede processamento duplicado; o payload bruto,
   documentos e segredos do Asaas não são guardados na auditoria.

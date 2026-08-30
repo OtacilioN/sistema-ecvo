@@ -16,6 +16,7 @@ export const planoSchema = z.object({
   valor: z.coerce.number().positive("Informe o valor"),
   periodicidade: z.enum(["MENSAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL"]),
   limiteAulas: z.coerce.number().int().positive().optional().nullable(),
+  padrao: z.preprocess((valor) => valor === "on" || valor === true, z.boolean()),
 })
 
 export const planoEdicaoSchema = planoSchema.extend({

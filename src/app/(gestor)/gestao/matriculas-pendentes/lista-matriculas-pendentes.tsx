@@ -23,25 +23,19 @@ export type SolicitacaoPendente = {
   comprovanteNomeOriginal: string | null
   criadoEm: string
   modalidade: { id: string; nome: string }
-}
-
-export type PlanoMatricula = {
-  id: string
-  nome: string
-  valor: number
-  periodicidade: string
+  plano: { id: string; nome: string; valor: number; periodicidade: string } | null
+  cobrancasAsaas: Array<{
+    asaasPaymentId: string | null
+    valor: number
+    competencia: string
+    recebidaEmAsaas: Date | null
+  }>
 }
 
 export function ListaMatriculasPendentes({
   solicitacoes,
-  planos,
-  competenciaAtual,
-  dataHoje,
 }: {
   solicitacoes: SolicitacaoPendente[]
-  planos: PlanoMatricula[]
-  competenciaAtual: string
-  dataHoje: string
 }) {
   const [busca, setBusca] = useState("")
   const filtradas = useMemo(() => {
@@ -119,12 +113,7 @@ export function ListaMatriculasPendentes({
                     {item.comprovantePagamentoUrl ? "Comprovante anexado" : "Sem comprovante"}
                   </p>
                 </div>
-                <AcoesMatricula
-                  solicitacao={item}
-                  planos={planos}
-                  competenciaAtual={competenciaAtual}
-                  dataHoje={dataHoje}
-                />
+                <AcoesMatricula solicitacao={item} />
               </article>
             ))}
           </div>
