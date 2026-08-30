@@ -303,8 +303,8 @@ async function requisitarAsaas<T>(
   }
 
   let resposta: Response
-  const timeoutMsInformado = Number((dependencias.env ?? process.env).ASAAS_TIMEOUT_MS ?? 15_000)
-  const timeoutMs = Number.isFinite(timeoutMsInformado) ? timeoutMsInformado : 15_000
+  const timeoutMsInformado = Number((dependencias.env ?? process.env).ASAAS_TIMEOUT_MS ?? 8_000)
+  const timeoutMs = Number.isFinite(timeoutMsInformado) ? timeoutMsInformado : 8_000
   const controlador = new AbortController()
   const temporizador = setTimeout(() => controlador.abort(), Math.max(1_000, timeoutMs))
   try {

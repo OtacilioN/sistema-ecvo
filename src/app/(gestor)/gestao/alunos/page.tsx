@@ -3,7 +3,7 @@ import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { listarAlunos } from "@/lib/services/aluno.service"
 import { listarModalidades } from "@/lib/services/modalidade.service"
-import { chaveCompetencia } from "@/lib/utils/datas"
+import { chaveCompetencia, formatarDataInput } from "@/lib/utils/datas"
 import { BotaoNovoAluno } from "./acoes-aluno"
 import { TabelaAlunos } from "./tabela-alunos"
 
@@ -13,9 +13,10 @@ export default async function AlunosPage() {
   const usuario = await exigirGestao()
   const podeAdministrarAluno = usuario.papel === "GESTOR"
   const competenciaAtual = chaveCompetencia()
+  const dataHoje = formatarDataInput(new Date())
   const [alunos, modalidades, planos] = await Promise.all([
     listarAlunos({ competenciaMensalidade: competenciaAtual }),
-    listarModalidades({ apenasAtivas: true }),
+    listarModalidades(),
     db.plano.findMany({ orderBy: [{ ativo: "desc" }, { nome: "asc" }] }),
   ])
   const opcoesModalidades = modalidades.map((m) => ({ id: m.id, nome: m.nome }))
@@ -30,7 +31,13 @@ export default async function AlunosPage() {
   return (
     <div className="space-y-6">
       <CabecalhoPagina titulo="Alunos" descricao="Cadastro e gestão de alunos.">
-        <BotaoNovoAluno modalidades={opcoesModalidades} planos={opcoesPlanos} />
+        <BotaoNovoAluno
+          modalidades={opcoesModalidades}
+          planos={opcoesPlanos}
+          competenciaAtual={competenciaAtual}
+          dataHoje={dataHoje}
+          podeRegistrarPagamento={podeAdministrarAluno}
+        />
       </CabecalhoPagina>
 
       <TabelaAlunos

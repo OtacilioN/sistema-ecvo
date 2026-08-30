@@ -40,7 +40,7 @@ financeiro de mensalistas, pagamentos avulsos, importação Wellhub/TotalPass + 
 Fora do MVP: integrações automáticas via API de Wellhub/TotalPass/Gympass, conciliação financeira
 automática dessas plataformas, reconhecimento facial, app mobile nativo, papéis separados
 (coordenador/financeiro/contador), aluno experimental. A integração financeira com Asaas descrita em
-RF-053.2 e RF-053.3 é uma extensão posterior incorporada ao produto.
+RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 
 ## 5. Permissões por papel (resumo)
 
@@ -60,6 +60,13 @@ RF-053.2 e RF-053.3 é uma extensão posterior incorporada ao produto.
 - **RF-001** Cadastro de aluno (nome, CPF, nascimento, telefone, e-mail, endereço, foto, tipo, status,
   modalidades, data de início, contato de emergência, observações admin/técnicas, restrições médicas,
   identificador externo).
+- **RF-001.1** O candidato pode solicitar a própria matrícula em rota pública, informando seus dados,
+  escolhendo uma modalidade e consultando a grade recorrente ativa publicada para ela. Pode anexar um
+  comprovante PIX em imagem ou PDF. A solicitação não cria uma conta de aluno antes da análise.
+- **RF-001.2** O gestor visualiza as matrículas pendentes e aprova cada solicitação em uma única operação,
+  obrigatoriamente vinculando modalidade, plano de pagamento e dia de vencimento. A aprovação cria o aluno,
+  gera a mensalidade inicial e libera a matrícula para o fluxo de treino; confirmar o comprovante como
+  pagamento é uma decisão explícita e separada do simples anexo.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,
@@ -94,8 +101,10 @@ RF-053.2 e RF-053.3 é uma extensão posterior incorporada ao produto.
 
 ### Check-in
 - **RF-019** Realização de check-in (botão, QR Code, geolocalização a até 300 m da academia, lançamento por gestor/professor).
-- **RF-020** Validação (aluno ativo; permissão; plano mensal interno adimplente se configurado; aula
-  existente; há agendamento se exigido; vaga disponível).
+- **RF-020** Validação (aluno ativo; mensalista com plano vinculado e modalidade coberta pelo plano;
+  permissão; plano mensal interno adimplente se configurado; aula
+  existente; há agendamento se exigido; vaga disponível). Na janela padrão, o check-in é permitido
+  de 30 minutos antes do início até 30 minutos após o término da aula.
 - **RF-020.1** A modalidade pode liberar check-in sem restrição de horário. Nesse modo, o sistema
   associa o registro a uma aula oficial do mesmo dia: prioriza agendamento confirmado, aula em andamento,
   próxima aula futura e, após o último horário, a última aula encerrada. O horário real do check-in é
@@ -139,21 +148,25 @@ RF-053.2 e RF-053.3 é uma extensão posterior incorporada ao produto.
 - **RF-052** Pagamentos avulsos (aula, diária, pacote, seminário, evento, exame, produto).
 - **RF-053** Wellhub/TotalPass podem combinar vínculo externo com plano mensal interno por modalidade.
 - **RF-053.1** Divisão de receita de mensalidade interna: valor base global por modalidade; professor recebe
-  até 60% do valor base cheio por modalidade; sócio A e sócio B dividem o excedente igualmente. Descontos
-  reduzem primeiro a parte dos sócios e, se a arrecadação não atingir o teto dos professores, reduzem
+  até 60% do valor base cheio por modalidade. Descontos reduzem primeiro a sobra e, se a arrecadação não
+  atingir o teto dos professores, reduzem
   proporcionalmente a parte dos professores.
-- **RF-053.2** Cada aluno com plano mensal pode usar cobrança PIX mensal pelo Asaas. Cada competência gera
+- **RF-053.3** Cada aluno com plano mensal pode usar cobrança PIX mensal pelo Asaas. Cada competência gera
   uma cobrança dinâmica e um QR Code de uso único, sem alterar o valor histórico da mensalidade.
-- **RF-053.3** O gestor pode habilitar PIX Automático semestral para um aluno, e o próprio aluno pode
+- **RF-053.4** O gestor pode habilitar PIX Automático semestral para um aluno, e o próprio aluno pode
   habilitá-lo para si. O sistema materializa exatamente seis competências mensais pelo valor da mensalidade:
   o QR inicial paga a primeira e solicita a autorização; após a autorização ativa, somente as cinco
   instruções futuras são enviadas ao Asaas na janela admitida pelo provedor. Eventos autenticados,
   confirmados na API e idempotentes conciliam pagamento, vencimento, estorno e autorização. Se a janela
   de uma instrução for perdida, o sistema emite uma única cobrança PIX de contingência para a mesma
   competência, alerta aluno e gestores e mantém os ciclos seguintes automáticos.
-- **RF-053.4** O próprio aluno e o gestor podem cancelar o PIX Automático. Antes de liberar o modo mensal
+- **RF-053.5** O próprio aluno e o gestor podem cancelar o PIX Automático. Antes de liberar o modo mensal
   ou uma baixa manual, o sistema consulta a conta Asaas, preserva cobranças recebidas, encerra a autorização
   e remove somente cobranças pendentes, com estados transitórios e auditoria para tolerar concorrência.
+- **RF-053.2** Da sobra mensal após os professores, são abatidos primeiro R$ 2.670,00 de custos fixos
+  (aluguel, água, luz e internet). Um déficit é exibido como valor negativo em vermelho; saldo zero ou
+  positivo é exibido em verde. Somente o saldo positivo é dividido igualmente entre Caixa/investimento,
+  Sócio A e Sócio B.
 
 ### Wellhub e TotalPass
 - **RF-054** Cadastro do tipo de vínculo. **RF-055** Mesmo fluxo operacional de treino.
@@ -163,7 +176,7 @@ RF-053.2 e RF-053.3 é uma extensão posterior incorporada ao produto.
 - **RF-060** Conciliação com histórico interno. **RF-061** Status de conciliação.
 - **RF-062** Resolução manual de divergências (com log). **RF-063** Relatório de conciliação. **RF-064** Histórico de importações.
 - **RF-064.1** Divisão de repasse Wellhub/TotalPass: professor recebe 60% do valor repassado pela plataforma
-  no período; sócio A recebe 20%; sócio B recebe 20%.
+  no período; os 40% restantes integram a sobra mensal sujeita aos custos fixos e à divisão da RF-053.2.
 
 ### Relatórios
 - **RF-065..072** Alunos, agendamentos, check-ins, presença, horas, graduação, financeiro, conciliação.
@@ -183,18 +196,20 @@ várias graduações · RN-009 professor é responsável pela graduação · RN-
 automaticamente · RN-011 Wellhub/TotalPass conciliam por planilha no MVP · RN-012 plano mensal interno tem
 controle financeiro · RN-013 avulso tem pagamentos pontuais · RN-014 **não existe aluno experimental** ·
 RN-015 CPF tem prioridade na identificação · RN-016 check-in invalidado deve aparecer na conciliação ·
-RN-017 repasse de mensalidade interna usa cascata: professores até o teto por modalidade, depois sócios ·
-RN-018 repasse Wellhub/TotalPass divide o valor repassado diretamente em 60/20/20.
+RN-017 repasse de mensalidade interna usa cascata: professores até o teto por modalidade, depois sobra mensal ·
+RN-018 repasse Wellhub/TotalPass separa 60% para o professor e 40% para a sobra mensal.
 
 RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 como padrão inicial.
 RN-020 plano é um pacote comercial disponível para qualquer modalidade; as modalidades contratadas são
 definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno.
+RN-021 a sobra mensal paga primeiro R$ 2.670,00 de custos fixos; apenas o saldo positivo é dividido
+igualmente entre Caixa/investimento, Sócio A e Sócio B.
 
-RN-021 o PIX Automático semestral possui exatamente seis ciclos; o pagamento imediato conta como ciclo 1
-e nenhuma sétima cobrança pode ser emitida. RN-022 somente confirmação financeira do Asaas pode baixar uma
+RN-022 o PIX Automático semestral possui exatamente seis ciclos; o pagamento imediato conta como ciclo 1
+e nenhuma sétima cobrança pode ser emitida. RN-023 somente confirmação financeira do Asaas pode baixar uma
 mensalidade automaticamente; gerar ou exibir QR Code não equivale a pagamento.
 
-RN-023 uma cobrança Asaas em processamento ou recebida impede alteração manual incompatível da mensalidade.
+RN-024 uma cobrança Asaas em processamento ou recebida impede alteração manual incompatível da mensalidade.
 Estorno integral reabre a mensalidade; estorno parcial retira a mensalidade dos repasses e exige conciliação
 manual auditada. Tentativas remotas permanecem no histórico; somente uma pode estar ativa por mensalidade.
 

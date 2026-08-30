@@ -17,7 +17,13 @@ export default async function AlunoAgenda() {
   const [aluno, config] = await Promise.all([
     db.aluno.findUnique({
       where: { id: alunoId },
-      select: { status: true, modalidades: { select: { id: true } } },
+      select: {
+        status: true,
+        tipo: true,
+        planoId: true,
+        modalidades: { where: { ativa: true }, select: { id: true } },
+        modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
+      },
     }),
     db.configuracaoAcademia.findUnique({
       where: { id: "default" },
@@ -25,7 +31,23 @@ export default async function AlunoAgenda() {
     }),
   ])
   const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))
-  const modalidadeIds = alunoOperacional ? (aluno?.modalidades.map((m) => m.id) ?? []) : []
+  const modalidadesInternas = new Set(
+    aluno?.modalidadesPlano
+      .filter((modalidade) => !modalidade.plataformaExterna)
+      .map((modalidade) => modalidade.modalidadeId) ?? [],
+  )
+  const matriculaLiberada = Boolean(
+    alunoOperacional &&
+      aluno &&
+      (aluno.tipo !== "MENSALISTA" || (aluno.planoId && modalidadesInternas.size > 0)),
+  )
+  const modalidadeIds = matriculaLiberada
+    ? (aluno?.modalidades
+        .filter((modalidade) =>
+          aluno.tipo === "MENSALISTA" ? modalidadesInternas.has(modalidade.id) : true,
+        )
+        .map((modalidade) => modalidade.id) ?? [])
+    : []
   const agora = new Date()
   const janelaHoras = config?.janelaComparecimentoHoras ?? 24
 
@@ -33,7 +55,11 @@ export default async function AlunoAgenda() {
     where: {
       cancelada: false,
       fim: { gte: agora },
-      turma: { modalidadeId: { in: modalidadeIds } },
+      turma: {
+        ativa: true,
+        modalidadeId: { in: modalidadeIds },
+        modalidade: { ativa: true },
+      },
     },
     orderBy: { inicio: "asc" },
     take: 12,
@@ -165,9 +191,9 @@ export default async function AlunoAgenda() {
           <CardContent className="flex items-center gap-3 py-8 text-muted-foreground">
             <CalendarX className="size-5 shrink-0" />
             <span className="text-sm">
-              {alunoOperacional
+              {matriculaLiberada
                 ? "Nenhuma aula disponível nas suas modalidades."
-                : "Matrícula trancada. Procure a gestão para retomar os treinos."}
+                : "Matrícula aguardando liberação e vínculo de um plano de pagamento."}
             </span>
           </CardContent>
         </Card>

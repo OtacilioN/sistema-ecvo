@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest"
 import { formatarData } from "@/lib/utils/datas"
 import {
+  alunoSchema,
   dadosAlunoSchema,
   dadosTurmaSchema,
   meusDadosAlunoSchema,
   turmaRecorrenteSchema,
 } from "./cadastros"
+
+const alunoValido = {
+  nome: "Aluno ECVO",
+  email: "aluno@ecvo.com.br",
+  senha: "123456",
+  tipo: "MENSALISTA",
+  fotoUrl: "",
+  planoId: "plano-1",
+  modalidadeIds: ["modalidade-1"],
+  cobrancasModalidades: [{ modalidadeId: "modalidade-1", plataformaExterna: null }],
+}
 
 const turmaValida = {
   modalidadeId: "modalidade-1",
@@ -74,6 +86,46 @@ describe("dadosAlunoSchema", () => {
 
     expect(formatarData(parsed.dataNascimento as Date)).toBe("14/12/1996")
     expect(formatarData(parsed.dataInicio as Date)).toBe("10/06/2026")
+  })
+})
+
+describe("alunoSchema", () => {
+  it("normaliza o pagamento da mensalidade inicial", () => {
+    const parsed = alunoSchema.parse({
+      ...alunoValido,
+      pagamentoInicial: {
+        competenciaEsperada: "2026-08",
+        pagoEm: "2026-08-27",
+        formaPagamento: "  Pix  ",
+        observacao: "  Pago na matrícula  ",
+      },
+    })
+
+    expect(parsed.pagamentoInicial).toMatchObject({
+      formaPagamento: "Pix",
+      observacao: "Pago na matrícula",
+    })
+    expect(formatarData(parsed.pagamentoInicial?.pagoEm as Date)).toBe("27/08/2026")
+  })
+
+  it("exige plano para registrar a mensalidade inicial como paga", () => {
+    const parsed = alunoSchema.safeParse({
+      ...alunoValido,
+      planoId: "",
+      pagamentoInicial: { competenciaEsperada: "2026-08", pagoEm: "2026-08-27" },
+    })
+
+    expect(parsed.success).toBe(false)
+    if (!parsed.success) {
+      expect(parsed.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["pagamentoInicial"],
+            message: "Vincule um plano para registrar a mensalidade inicial como paga.",
+          }),
+        ]),
+      )
+    }
   })
 })
 

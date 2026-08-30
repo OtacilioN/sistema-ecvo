@@ -21,7 +21,7 @@ O modelo técnico legado `Comparecimento` representa o agendamento da aula pelo 
 | **Wellhub / TotalPass** | Aluno vinculado a plataforma externa. Pode também ter plano mensal interno para modalidades pagas diretamente à academia; o uso externo segue conciliação por planilha (sem API no MVP). |
 | **Avulso** | Aluno que paga por aula, diária, pacote, seminário ou evento pontual. |
 | **Adimplência / Inadimplência** | Situação de pagamento de plano mensal interno (em dia / em atraso). Pode bloquear agendamento/check-in conforme configuração (RF-051). |
-| **Repasse financeiro** | Divisão da arrecadação entre professor, sócio A e sócio B. Mensalidade interna usa cascata por valor base; Wellhub/TotalPass divide o valor repassado diretamente em 60% professor, 20% sócio A e 20% sócio B. |
+| **Repasse financeiro** | Divisão da arrecadação: primeiro o repasse dos professores; depois R$ 2.670,00 de custos fixos mensais; por fim, o saldo positivo é dividido igualmente entre Caixa/investimento, Sócio A e Sócio B. |
 | **Conciliação** | Comparação dos registros importados (Wellhub/TotalPass) com o histórico interno de check-ins (RF-060). |
 | **Divergência** | Registro importado que não casa com o histórico interno (aluno não identificado, data/horário divergente, check-in invalidado etc.). |
 | **No-show** | Aluno agendou a aula mas não fez check-in (RF-018). |

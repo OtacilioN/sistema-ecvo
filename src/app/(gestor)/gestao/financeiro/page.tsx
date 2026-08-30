@@ -66,8 +66,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       include: {
         usuario: { select: { nome: true } },
         plano: { select: { nome: true } },
-        modalidades: { select: { id: true, nome: true } },
+        modalidades: { where: { ativa: true }, select: { id: true, nome: true } },
         modalidadesPlano: {
+          where: { modalidade: { ativa: true } },
           select: {
             plataformaExterna: true,
             modalidade: { select: { id: true, nome: true } },

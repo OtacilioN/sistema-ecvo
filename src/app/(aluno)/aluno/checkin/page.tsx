@@ -5,7 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { exigirAluno } from "@/lib/auth/dal"
-import { selecionarAulaReferenciaCheckinLivre } from "@/lib/checkin-horario"
+import {
+  podeRealizarCheckinNaJanela,
+  selecionarAulaReferenciaCheckinLivre,
+  TOLERANCIA_PADRAO_CHECKIN_MINUTOS,
+} from "@/lib/checkin-horario"
 import { db } from "@/lib/db"
 import { montarCandidataCheckinLivre } from "@/lib/services/checkin.service"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
@@ -22,8 +26,6 @@ import { LeitorQRCodeAluno } from "./leitor-qrcode-aluno"
 
 export const dynamic = "force-dynamic"
 
-const JANELA_CHECKIN_MS = 30 * 60_000
-
 export default async function CheckinGlobalPage({
   searchParams,
 }: {
@@ -39,25 +41,47 @@ export default async function CheckinGlobalPage({
     where: { id: alunoId },
     select: {
       status: true,
-      modalidades: { select: { id: true, checkinSemRestricaoHorario: true } },
+      tipo: true,
+      planoId: true,
+      modalidades: {
+        where: { ativa: true },
+        select: { id: true, checkinSemRestricaoHorario: true },
+      },
+      modalidadesPlano: {
+        select: { modalidadeId: true, plataformaExterna: true },
+      },
     },
   })
   const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))
-  const modalidadeIds = alunoOperacional
-    ? (aluno?.modalidades.map((modalidade) => modalidade.id) ?? [])
+  const modalidadesInternas = new Set(
+    aluno?.modalidadesPlano
+      .filter((modalidade) => !modalidade.plataformaExterna)
+      .map((modalidade) => modalidade.modalidadeId) ?? [],
+  )
+  const matriculaLiberada = Boolean(
+    alunoOperacional &&
+      aluno &&
+      (aluno.tipo !== "MENSALISTA" || (aluno.planoId && modalidadesInternas.size > 0)),
+  )
+  const modalidadeIds = matriculaLiberada
+    ? (aluno?.modalidades
+        .filter(
+          (modalidade) => aluno.tipo !== "MENSALISTA" || modalidadesInternas.has(modalidade.id),
+        )
+        .map((modalidade) => modalidade.id) ?? [])
     : []
   const agora = new Date()
-  const proximoInicioLiberado = new Date(agora.getTime() + JANELA_CHECKIN_MS)
+  const fimMinimoLiberado = new Date(agora.getTime() - TOLERANCIA_PADRAO_CHECKIN_MINUTOS * 60_000)
   const inicioDia = inicioDoDiaAcademia(agora)
   const fimDia = fimExclusivoDoDiaAcademia(agora)
 
-  const aulasCandidatas = alunoOperacional
+  const aulasCandidatas = matriculaLiberada
     ? await db.aula.findMany({
         where: {
           cancelada: false,
           OR: [
             { inicio: { gte: inicioDia, lt: fimDia } },
-            { inicio: { lt: inicioDia }, fim: { gte: agora } },
+            { inicio: { lt: inicioDia }, fim: { gte: fimMinimoLiberado } },
           ],
           turma: {
             ativa: true,
@@ -114,7 +138,11 @@ export default async function CheckinGlobalPage({
     .filter((aula) =>
       aula.turma.modalidade.checkinSemRestricaoHorario
         ? referenciasLivres.has(aula.id)
-        : aula.inicio <= proximoInicioLiberado && aula.fim >= agora,
+        : podeRealizarCheckinNaJanela({
+            inicioAula: aula.inicio,
+            fimAula: aula.fim,
+            agora,
+          }),
     )
     .slice(0, 8)
 
@@ -144,21 +172,23 @@ export default async function CheckinGlobalPage({
         </Card>
       )}
 
-      {!tokenAtual && <LeitorQRCodeAluno />}
+      {matriculaLiberada && !tokenAtual && <LeitorQRCodeAluno />}
 
-      {!alunoOperacional && (
+      {!matriculaLiberada && (
         <Card>
           <CardContent className="flex gap-3 py-6 text-sm text-muted-foreground">
             <AlertTriangle className="mt-0.5 size-5 shrink-0" />
             <div>
-              <p className="font-medium text-foreground">Matrícula trancada.</p>
-              <p className="mt-1">Procure a gestão para retomar os treinos.</p>
+              <p className="font-medium text-foreground">Check-in ainda não liberado.</p>
+              <p className="mt-1">
+                Sua matrícula precisa estar ativa e vinculada a um plano de pagamento.
+              </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {alunoOperacional && aulas.length === 0 && (
+      {matriculaLiberada && aulas.length === 0 && (
         <Card>
           <CardContent className="flex gap-3 py-6 text-sm text-muted-foreground">
             <Clock className="mt-0.5 size-5 shrink-0" />
@@ -166,7 +196,7 @@ export default async function CheckinGlobalPage({
               <p className="font-medium text-foreground">Nenhuma aula liberada agora.</p>
               <p className="mt-1">
                 Nas modalidades com horário livre, é necessário haver uma aula oficial no dia. Nas
-                demais, o check-in abre 30 minutos antes e fecha no fim da aula.
+                demais, o check-in abre 30 minutos antes e fecha 30 minutos após o fim da aula.
               </p>
             </div>
           </CardContent>

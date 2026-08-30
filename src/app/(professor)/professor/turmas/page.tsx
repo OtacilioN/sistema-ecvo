@@ -18,6 +18,7 @@ export default async function ProfessorAulas() {
     where: {
       inicio: { gte: desde },
       cancelada: false,
+      turma: { ativa: true, modalidade: { ativa: true } },
       OR: [{ professorId }, { turma: { professorId } }],
     },
     orderBy: { inicio: "asc" },

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic"
 export default async function ModalidadesPage() {
   const usuario = await exigirGestao()
   const podeEditar = usuario.papel === "GESTOR"
-  const modalidades = await listarModalidades()
+  const modalidades = await listarModalidades({ incluirInativas: true })
 
   return (
     <div className="space-y-6">

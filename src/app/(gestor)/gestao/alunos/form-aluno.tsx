@@ -41,10 +41,16 @@ type Plano = {
 export function FormAluno({
   modalidades,
   planos,
+  competenciaAtual,
+  dataHoje,
+  podeRegistrarPagamento,
   aoConcluir,
 }: {
   modalidades: { id: string; nome: string }[]
   planos: Plano[]
+  competenciaAtual: string
+  dataHoje: string
+  podeRegistrarPagamento: boolean
   aoConcluir?: () => void
 }) {
   const [estado, acao] = useActionState<EstadoForm, FormData>(acaoCriarAluno, undefined)
@@ -52,12 +58,17 @@ export function FormAluno({
   const [uploadPendente, setUploadPendente] = useState(false)
   const [fotoKey, setFotoKey] = useState(0)
   const [modalidadesSelecionadas, setModalidadesSelecionadas] = useState<Set<string>>(new Set())
+  const [planoSelecionadoId, setPlanoSelecionadoId] = useState("")
+  const [mensalidadeInicialPaga, setMensalidadeInicialPaga] = useState(false)
+  const planoSelecionado = planos.find((plano) => plano.id === planoSelecionadoId)
 
   useEffect(() => {
     if (estado?.ok) {
       ref.current?.reset()
       setFotoKey((key) => key + 1)
       setModalidadesSelecionadas(new Set())
+      setPlanoSelecionadoId("")
+      setMensalidadeInicialPaga(false)
       aoConcluir?.()
     }
   }, [estado?.ok, aoConcluir])
@@ -111,7 +122,16 @@ export function FormAluno({
       </div>
       <div className="space-y-1.5 sm:col-span-2">
         <Label htmlFor="planoId">Plano de pagamento</Label>
-        <Select id="planoId" name="planoId" defaultValue="">
+        <Select
+          id="planoId"
+          name="planoId"
+          value={planoSelecionadoId}
+          onChange={(event) => {
+            const planoId = event.currentTarget.value
+            setPlanoSelecionadoId(planoId)
+            if (!planoId) setMensalidadeInicialPaga(false)
+          }}
+        >
           <option value="">Sem plano</option>
           {planos.map((plano) => (
             <option key={plano.id} value={plano.id}>
@@ -120,6 +140,66 @@ export function FormAluno({
           ))}
         </Select>
       </div>
+      {podeRegistrarPagamento && planoSelecionado && (
+        <fieldset className="space-y-3 rounded-md border border-border p-4 sm:col-span-2">
+          <legend className="px-1 text-sm font-medium text-muted-foreground">
+            Mensalidade inicial
+          </legend>
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              name="mensalidadeInicialPaga"
+              checked={mensalidadeInicialPaga}
+              onChange={(event) => setMensalidadeInicialPaga(event.currentTarget.checked)}
+              className="mt-0.5 accent-primary"
+            />
+            <span>
+              <span className="font-medium">A mensalidade deste mês já foi paga</span>
+              <span className="mt-1 block text-muted-foreground">
+                Ao cadastrar, a competência {rotuloCompetencia(competenciaAtual)} será registrada
+                como paga.
+              </span>
+            </span>
+          </label>
+
+          {mensalidadeInicialPaga && (
+            <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
+              <input
+                type="hidden"
+                name="pagamentoInicialCompetenciaEsperada"
+                value={competenciaAtual}
+              />
+              <div className="rounded-md bg-muted/40 p-3 text-sm sm:col-span-2">
+                <span className="text-muted-foreground">Valor da mensalidade: </span>
+                <span className="font-semibold">{formatarBRL(planoSelecionado.valor)}</span>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pagamentoInicialPagoEm">Data do pagamento</Label>
+                <Input
+                  id="pagamentoInicialPagoEm"
+                  name="pagamentoInicialPagoEm"
+                  type="date"
+                  max={dataHoje}
+                  defaultValue={dataHoje}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pagamentoInicialFormaPagamento">Forma de pagamento</Label>
+                <Input
+                  id="pagamentoInicialFormaPagamento"
+                  name="pagamentoInicialFormaPagamento"
+                  placeholder="Pix, cartão, dinheiro..."
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="pagamentoInicialObservacao">Observação do pagamento</Label>
+                <Input id="pagamentoInicialObservacao" name="pagamentoInicialObservacao" />
+              </div>
+            </div>
+          )}
+        </fieldset>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor="telefone">Telefone</Label>
         <Input id="telefone" name="telefone" />
@@ -261,4 +341,9 @@ export function FormAluno({
 function rotuloPlano(plano: Plano) {
   const status = plano.ativo ? "" : " · inativo"
   return `${plano.nome} · ${formatarBRL(plano.valor)} · ${plano.periodicidade}${status}`
+}
+
+function rotuloCompetencia(competencia: string) {
+  const [ano, mes] = competencia.split("-")
+  return `${mes}/${ano}`
 }

@@ -6,7 +6,7 @@ import { db } from "@/lib/db"
 // Aceita um TransactionClient para participar da mesma transação da operação auditada.
 
 type RegistrarLogParams = {
-  autorId?: string | null
+  autorId: string | null
   acao: TipoAcaoAudit
   entidade: string
   entidadeId: string
@@ -19,7 +19,7 @@ export function registrarLog(params: RegistrarLogParams, tx?: Prisma.Transaction
   const client = tx ?? db
   return client.logAuditoria.create({
     data: {
-      autorId: params.autorId,
+      autorId: params.autorId ?? null,
       acao: params.acao,
       entidade: params.entidade,
       entidadeId: params.entidadeId,

@@ -8,7 +8,8 @@ somente porque o build passou.
 - [ ] Aplicar `prisma migrate deploy` no banco Production aprovado antes de publicar a aplicação.
 - [ ] Confirmar as tabelas `ClienteAsaas`, `ContratoPixAutomatico`, `CobrancaAsaas` e
   `EventoWebhookAsaas`, os índices parciais de contrato aberto e cobrança ativa e a migration de reserva
-  do cliente/histórico de tentativas, além da migration de cancelamento operacional.
+  do cliente/histórico de tentativas, a migration de cancelamento operacional e a inclusão de
+  `CANCELANDO` no índice único de contrato aberto por aluno.
 - [ ] Confirmar que Preview e Production usam bancos fisicamente isolados.
 
 ## 2. Conta e credenciais Asaas
@@ -31,8 +32,16 @@ somente porque o build passou.
 - [ ] Configurar o webhook Production em `https://app.ecvo.com.br/api/webhooks/asaas`, ativo e sem fila
   interrompida.
 - [ ] Habilitar eventos tradicionais de cobrança usados pelo fluxo (`PAYMENT_CONFIRMED`,
-  `PAYMENT_RECEIVED`, `PAYMENT_OVERDUE`, `PAYMENT_REFUNDED`, `PAYMENT_DELETED`) e eventos de autorização
-  e instrução do PIX Automático.
+  `PAYMENT_RECEIVED`, `PAYMENT_OVERDUE`, `PAYMENT_REFUNDED`, `PAYMENT_PARTIALLY_REFUNDED`,
+  `PAYMENT_DELETED`), os eventos de autorização (`PIX_AUTOMATIC_RECURRING_AUTHORIZATION_CREATED`,
+  `PIX_AUTOMATIC_RECURRING_AUTHORIZATION_ACTIVATED`, `PIX_AUTOMATIC_RECURRING_AUTHORIZATION_CANCELLED`,
+  `PIX_AUTOMATIC_RECURRING_AUTHORIZATION_EXPIRED`, `PIX_AUTOMATIC_RECURRING_AUTHORIZATION_REFUSED`) e os
+  eventos de instrução (`PIX_AUTOMATIC_RECURRING_PAYMENT_INSTRUCTION_CREATED`,
+  `PIX_AUTOMATIC_RECURRING_PAYMENT_INSTRUCTION_SCHEDULED`,
+  `PIX_AUTOMATIC_RECURRING_PAYMENT_INSTRUCTION_REFUSED`,
+  `PIX_AUTOMATIC_RECURRING_PAYMENT_INSTRUCTION_CANCELLED`) do PIX Automático, com envio sequencial.
+- [ ] Configurar `ASAAS_TIMEOUT_MS=8000` em Production para que a consulta canônica ao Asaas ainda permita
+  responder ao webhook dentro do limite de 10 segundos do provedor.
 - [ ] Configurar `CRON_SECRET` Production e confirmar execução diária de
   `/api/tarefas/cobrancas-pix-automatico`.
 - [ ] Monitorar respostas não 2xx, `ultimoErro`, contratos em `ERRO`, cobranças divergentes e fila de

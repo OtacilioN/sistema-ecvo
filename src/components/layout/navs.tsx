@@ -3,6 +3,7 @@ import {
   Bell,
   CalendarDays,
   ClipboardCheck,
+  ClipboardList,
   CreditCard,
   FileBarChart,
   GraduationCap,
@@ -24,6 +25,11 @@ export const NAV_GESTOR: ItemNav[] = [
   { href: "/gestao", rotulo: "Início", icone: <LayoutDashboard className={ic} /> },
   { href: "/gestao/gestores", rotulo: "Gestores", icone: <ShieldCheck className={ic} /> },
   { href: "/gestao/alunos", rotulo: "Alunos", icone: <Users className={ic} /> },
+  {
+    href: "/gestao/matriculas-pendentes",
+    rotulo: "Matrículas pendentes",
+    icone: <ClipboardList className={ic} />,
+  },
   { href: "/gestao/professores", rotulo: "Professores", icone: <UserRound className={ic} /> },
   { href: "/gestao/modalidades", rotulo: "Modalidades", icone: <GraduationCap className={ic} /> },
   { href: "/gestao/turmas", rotulo: "Turmas e horários", icone: <CalendarDays className={ic} /> },
@@ -36,7 +42,9 @@ export const NAV_GESTOR: ItemNav[] = [
   { href: "/gestao/perfil", rotulo: "Minha conta", icone: <KeyRound className={ic} /> },
 ]
 
-export const NAV_SECRETARIA: ItemNav[] = NAV_GESTOR
+export const NAV_SECRETARIA: ItemNav[] = NAV_GESTOR.filter(
+  (item) => item.href !== "/gestao/matriculas-pendentes",
+)
 
 export const NAV_PROFESSOR: ItemNav[] = [
   { href: "/professor", rotulo: "Início", icone: <LayoutDashboard className={ic} /> },

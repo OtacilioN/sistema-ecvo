@@ -92,9 +92,15 @@ export type AlunoLinha = {
 export function BotaoNovoAluno({
   modalidades,
   planos,
+  competenciaAtual,
+  dataHoje,
+  podeRegistrarPagamento,
 }: {
   modalidades: Modalidade[]
   planos: Plano[]
+  competenciaAtual: string
+  dataHoje: string
+  podeRegistrarPagamento: boolean
 }) {
   const [aberto, setAberto] = useState(false)
   return (
@@ -109,7 +115,14 @@ export function BotaoNovoAluno({
         titulo="Novo aluno"
         descricao="Cadastro de aluno."
       >
-        <FormAluno modalidades={modalidades} planos={planos} aoConcluir={() => setAberto(false)} />
+        <FormAluno
+          modalidades={modalidades}
+          planos={planos}
+          competenciaAtual={competenciaAtual}
+          dataHoje={dataHoje}
+          podeRegistrarPagamento={podeRegistrarPagamento}
+          aoConcluir={() => setAberto(false)}
+        />
       </Dialog>
     </>
   )

@@ -11,7 +11,12 @@ import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
-import { chaveCompetencia, formatarData, inicioDoDiaAcademia } from "@/lib/utils/datas"
+import {
+  chaveCompetencia,
+  fimExclusivoDoDiaAcademia,
+  formatarData,
+  inicioDoDiaAcademia,
+} from "@/lib/utils/datas"
 
 type Cliente = Prisma.TransactionClient | typeof db
 
@@ -23,8 +28,6 @@ export type MensalidadeResumo = {
 export type ConfiguracaoRepasseFinanceiro = {
   valorBaseModalidade: number
   percentualProfessor: number
-  percentualSocioA: number
-  percentualSocioB: number
 }
 
 export type ItemRepasseModalidade = {
@@ -66,6 +69,15 @@ export type ResultadoRepasseFinanceiro = {
       tetoProfessor: number
     }>
   }>
+  sobraAposProfessores: number
+}
+
+export type ResultadoDistribuicaoSobraFinanceira = {
+  sobraAposProfessores: number
+  custosFixos: number
+  saldoAposCustosFixos: number
+  valorDistribuivel: number
+  caixaInvestimento: number
   socioA: number
   socioB: number
 }
@@ -90,9 +102,9 @@ const MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO =
 export const CONFIGURACAO_REPASSE_PADRAO: ConfiguracaoRepasseFinanceiro = {
   valorBaseModalidade: 100,
   percentualProfessor: 60,
-  percentualSocioA: 20,
-  percentualSocioB: 20,
 }
+
+export const CUSTOS_FIXOS_MENSAIS = 2670
 
 export function statusMensalidadeEfetivo(
   mensalidade: MensalidadeResumo,
@@ -264,11 +276,10 @@ export function calcularRepasseFinanceiro(params: {
           )
 
   const repasseProfessoresCentavos = valoresProfessor.reduce((total, valor) => total + valor, 0)
-  const restanteSociosCentavos = Math.max(0, valorRecebidoCentavos - repasseProfessoresCentavos)
-  const [socioACentavos, socioBCentavos] = dividirProporcionalmente(restanteSociosCentavos, [
-    config.percentualSocioA,
-    config.percentualSocioB,
-  ])
+  const sobraAposProfessoresCentavos = Math.max(
+    0,
+    valorRecebidoCentavos - repasseProfessoresCentavos,
+  )
 
   const professores = new Map<
     string,
@@ -306,6 +317,37 @@ export function calcularRepasseFinanceiro(params: {
     professores: Array.from(professores.values()).map(({ valorCentavos: _, ...professor }) => ({
       ...professor,
     })),
+    sobraAposProfessores: deCentavos(sobraAposProfessoresCentavos),
+  }
+}
+
+export function calcularDistribuicaoSobraFinanceira(params: {
+  totalRecebido: number
+  totalProfessores: number
+  custosFixos?: number
+}): ResultadoDistribuicaoSobraFinanceira {
+  const totalRecebidoCentavos = paraCentavos(params.totalRecebido)
+  const totalProfessoresCentavos = paraCentavos(params.totalProfessores)
+  const custosFixosCentavos = paraCentavos(params.custosFixos ?? CUSTOS_FIXOS_MENSAIS)
+
+  if (totalRecebidoCentavos < 0 || totalProfessoresCentavos < 0 || custosFixosCentavos < 0) {
+    throw new Error("Totais financeiros e custos fixos não podem ser negativos.")
+  }
+
+  const sobraAposProfessoresCentavos = totalRecebidoCentavos - totalProfessoresCentavos
+  const saldoAposCustosFixosCentavos = sobraAposProfessoresCentavos - custosFixosCentavos
+  const valorDistribuivelCentavos = Math.max(0, saldoAposCustosFixosCentavos)
+  const [caixaInvestimentoCentavos, socioACentavos, socioBCentavos] = dividirProporcionalmente(
+    valorDistribuivelCentavos,
+    [1, 1, 1],
+  )
+
+  return {
+    sobraAposProfessores: deCentavos(sobraAposProfessoresCentavos),
+    custosFixos: deCentavos(custosFixosCentavos),
+    saldoAposCustosFixos: deCentavos(saldoAposCustosFixosCentavos),
+    valorDistribuivel: deCentavos(valorDistribuivelCentavos),
+    caixaInvestimento: deCentavos(caixaInvestimentoCentavos),
     socioA: deCentavos(socioACentavos),
     socioB: deCentavos(socioBCentavos),
   }
@@ -741,37 +783,46 @@ async function obterOuCriarMensalidade(params: {
   competencia: string
   autorId?: string
 }) {
-  const [aluno, configuracao] = await Promise.all([
-    db.aluno.findUnique({
-      where: { id: params.alunoId },
-      include: {
-        plano: true,
-        modalidadesPlano: {
-          select: {
-            plataformaExterna: true,
-            modalidade: {
-              select: {
-                id: true,
-                nome: true,
-                turmas: {
-                  where: { ativa: true, professorId: { not: null } },
-                  orderBy: { criadoEm: "asc" },
-                  select: {
-                    professorId: true,
-                    professor: { select: { usuario: { select: { nome: true } } } },
-                  },
+  return db.$transaction((tx) => obterOuCriarMensalidadeNaTransacao(tx, params))
+}
+
+export async function obterOuCriarMensalidadeNaTransacao(
+  tx: Prisma.TransactionClient,
+  params: {
+    alunoId: string
+    competencia: string
+    autorId?: string
+  },
+) {
+  const aluno = await tx.aluno.findUnique({
+    where: { id: params.alunoId },
+    include: {
+      plano: true,
+      modalidadesPlano: {
+        select: {
+          plataformaExterna: true,
+          modalidade: {
+            select: {
+              id: true,
+              nome: true,
+              turmas: {
+                where: { ativa: true, professorId: { not: null } },
+                orderBy: { criadoEm: "asc" },
+                select: {
+                  professorId: true,
+                  professor: { select: { usuario: { select: { nome: true } } } },
                 },
               },
             },
           },
         },
       },
-    }),
-    db.configuracaoAcademia.findUnique({
-      where: { id: "default" },
-      select: { valorBaseModalidade: true },
-    }),
-  ])
+    },
+  })
+  const configuracao = await tx.configuracaoAcademia.findUnique({
+    where: { id: "default" },
+    select: { valorBaseModalidade: true },
+  })
 
   if (!aluno) return { ok: false as const, motivo: "Aluno não encontrado." }
   if (!aluno.plano) {
@@ -796,61 +847,57 @@ async function obterOuCriarMensalidade(params: {
   }
   const plano = aluno.plano
 
-  const mensalidade = await db.$transaction(async (tx) => {
-    const existente = await tx.mensalidade.findUnique({
-      where: {
-        alunoId_competencia: { alunoId: aluno.id, competencia: params.competencia },
-      },
-    })
-    if (existente) return { mensalidade: existente, criada: false }
+  const existente = await tx.mensalidade.findUnique({
+    where: {
+      alunoId_competencia: { alunoId: aluno.id, competencia: params.competencia },
+    },
+  })
+  if (existente) return { ok: true as const, mensalidade: existente, criada: false }
 
-    const criada = await tx.mensalidade.create({
-      data: {
-        alunoId: aluno.id,
-        planoId: plano.id,
-        competencia: params.competencia,
-        valor: plano.valor,
-        vencimento: vencimentoDaCompetencia(params.competencia, aluno.diaVencimento),
-        repasseSnapshot: repasseSnapshot as unknown as Prisma.InputJsonValue,
-      },
-    })
-
-    if (params.autorId) {
-      await registrarLog(
-        {
-          autorId: params.autorId,
-          acao: "PAGAMENTO",
-          entidade: "Mensalidade",
-          entidadeId: criada.id,
-          valorNovo: {
-            alunoId: aluno.id,
-            competencia: criada.competencia,
-            valor: Number(criada.valor),
-            diaVencimento: aluno.diaVencimento,
-            modalidadeIds: modalidadesInternas.map((modalidade) => modalidade.modalidadeId),
-            repasseSnapshot,
-            vencimento: criada.vencimento.toISOString(),
-            status: criada.status,
-          },
-        },
-        tx,
-      )
-    }
-
-    await criarNotificacao(tx, {
-      usuarioId: aluno.usuarioId,
-      tipo: "FINANCEIRO",
-      titulo: "Mensalidade gerada",
-      mensagem: `${criada.competencia}: ${Number(criada.valor).toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-      })}.`,
-    })
-
-    return { mensalidade: criada, criada: true }
+  const criada = await tx.mensalidade.create({
+    data: {
+      alunoId: aluno.id,
+      planoId: plano.id,
+      competencia: params.competencia,
+      valor: plano.valor,
+      vencimento: vencimentoDaCompetencia(params.competencia, aluno.diaVencimento),
+      repasseSnapshot: repasseSnapshot as unknown as Prisma.InputJsonValue,
+    },
   })
 
-  return { ok: true as const, ...mensalidade }
+  if (params.autorId) {
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "PAGAMENTO",
+        entidade: "Mensalidade",
+        entidadeId: criada.id,
+        valorNovo: {
+          alunoId: aluno.id,
+          competencia: criada.competencia,
+          valor: Number(criada.valor),
+          diaVencimento: aluno.diaVencimento,
+          modalidadeIds: modalidadesInternas.map((modalidade) => modalidade.modalidadeId),
+          repasseSnapshot,
+          vencimento: criada.vencimento.toISOString(),
+          status: criada.status,
+        },
+      },
+      tx,
+    )
+  }
+
+  await criarNotificacao(tx, {
+    usuarioId: aluno.usuarioId,
+    tipo: "FINANCEIRO",
+    titulo: "Mensalidade gerada",
+    mensagem: `${criada.competencia}: ${Number(criada.valor).toLocaleString("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    })}.`,
+  })
+
+  return { ok: true as const, mensalidade: criada, criada: true }
 }
 
 export async function gerarMensalidadesRecorrentes(params?: { competencia?: string }) {
@@ -894,7 +941,21 @@ export async function baixarMensalidade(params: {
   observacao?: string | null
   autorId: string
 }) {
-  const mensalidade = await db.mensalidade.findUnique({
+  return db.$transaction((tx) => baixarMensalidadeNaTransacao(tx, params))
+}
+
+async function baixarMensalidadeNaTransacao(
+  tx: Prisma.TransactionClient,
+  params: {
+    mensalidadeId: string
+    formaPagamento?: string | null
+    observacao?: string | null
+    pagoEm?: Date
+    agora?: Date
+    autorId: string
+  },
+) {
+  const mensalidade = await tx.mensalidade.findUnique({
     where: { id: params.mensalidadeId },
     include: {
       aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } },
@@ -917,83 +978,123 @@ export async function baixarMensalidade(params: {
     return { ok: false as const, motivo: MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO }
   }
 
-  const atualizada = await db.$transaction(async (tx) => {
-    await bloquearMensalidadeFinanceira(tx, params.mensalidadeId)
-    const cobrancasAtivas = await tx.cobrancaAsaas.findMany({
-      where: { mensalidadeId: params.mensalidadeId, ativa: true },
-      select: { ativa: true },
-    })
-    if (cobrancaAsaasBloqueiaAlteracaoManual(cobrancasAtivas)) {
-      return ALTERACAO_MANUAL_BLOQUEADA
-    }
-    const alterada = await tx.mensalidade.updateMany({
-      where: {
-        id: params.mensalidadeId,
-        status: mensalidade.status,
-        atualizadoEm: mensalidade.atualizadoEm,
-      },
-      data: {
-        status: "PAGA",
-        pagoEm: new Date(),
-        formaPagamento: params.formaPagamento ?? null,
-        cobrancaQuitacaoAsaasId: null,
-        observacao: params.observacao ?? mensalidade.observacao,
-      },
-    })
-    if (alterada.count === 0) return null
-    await tx.cobrancaAsaas.updateMany({
-      where: { mensalidadeId: params.mensalidadeId, estornoParcialPendenteEm: { not: null } },
-      data: { estornoParcialPendenteEm: null },
-    })
-    const nova = await tx.mensalidade.findUniqueOrThrow({
-      where: { id: params.mensalidadeId },
-    })
-
-    await registrarLog(
-      {
-        autorId: params.autorId,
-        acao: "PAGAMENTO",
-        entidade: "Mensalidade",
-        entidadeId: mensalidade.id,
-        valorAntigo: {
-          alunoId: mensalidade.alunoId,
-          alunoNome: mensalidade.aluno.usuario.nome,
-          competencia: mensalidade.competencia,
-          valor: Number(mensalidade.valor),
-          status: mensalidade.status,
-        },
-        valorNovo: {
-          alunoId: nova.alunoId,
-          alunoNome: mensalidade.aluno.usuario.nome,
-          competencia: nova.competencia,
-          valor: Number(nova.valor),
-          status: nova.status,
-          formaPagamento: nova.formaPagamento,
-        },
-        justificativa: params.observacao ?? null,
-      },
-      tx,
-    )
-
-    await criarNotificacao(tx, {
-      usuarioId: mensalidade.aluno.usuarioId,
-      tipo: "FINANCEIRO",
-      ...mensagemStatusMensalidade({ competencia: nova.competencia, status: nova.status }),
-    })
-
-    await sincronizarStatusFinanceiroAluno(tx, nova.alunoId, new Date(), params.autorId)
-
-    return nova
+  await bloquearMensalidadeFinanceira(tx, params.mensalidadeId)
+  const cobrancasAtivas = await tx.cobrancaAsaas.findMany({
+    where: { mensalidadeId: params.mensalidadeId, ativa: true },
+    select: { ativa: true },
   })
-
-  if (atualizada === ALTERACAO_MANUAL_BLOQUEADA) {
+  if (cobrancaAsaasBloqueiaAlteracaoManual(cobrancasAtivas)) {
     return { ok: false as const, motivo: MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO }
   }
-  if (!atualizada) {
+
+  const alterada = await tx.mensalidade.updateMany({
+    where: {
+      id: params.mensalidadeId,
+      status: mensalidade.status,
+      atualizadoEm: mensalidade.atualizadoEm,
+    },
+    data: {
+      status: "PAGA",
+      pagoEm: params.pagoEm ?? new Date(),
+      formaPagamento: params.formaPagamento ?? null,
+      cobrancaQuitacaoAsaasId: null,
+      observacao: params.observacao ?? mensalidade.observacao,
+    },
+  })
+  if (alterada.count === 0) {
     return { ok: false as const, motivo: "A mensalidade foi alterada por outra operação." }
   }
 
-  return { ok: true as const, mensalidade: atualizada }
+  await tx.cobrancaAsaas.updateMany({
+    where: { mensalidadeId: params.mensalidadeId, estornoParcialPendenteEm: { not: null } },
+    data: { estornoParcialPendenteEm: null },
+  })
+  const nova = await tx.mensalidade.findUniqueOrThrow({
+    where: { id: params.mensalidadeId },
+  })
+
+  await registrarLog(
+    {
+      autorId: params.autorId,
+      acao: "PAGAMENTO",
+      entidade: "Mensalidade",
+      entidadeId: mensalidade.id,
+      valorAntigo: {
+        alunoId: mensalidade.alunoId,
+        alunoNome: mensalidade.aluno.usuario.nome,
+        competencia: mensalidade.competencia,
+        valor: Number(mensalidade.valor),
+        status: mensalidade.status,
+      },
+      valorNovo: {
+        alunoId: nova.alunoId,
+        alunoNome: mensalidade.aluno.usuario.nome,
+        competencia: nova.competencia,
+        valor: Number(nova.valor),
+        status: nova.status,
+        pagoEm: nova.pagoEm?.toISOString() ?? null,
+        formaPagamento: nova.formaPagamento,
+      },
+      justificativa: params.observacao ?? null,
+    },
+    tx,
+  )
+
+  await criarNotificacao(tx, {
+    usuarioId: mensalidade.aluno.usuarioId,
+    tipo: "FINANCEIRO",
+    ...mensagemStatusMensalidade({ competencia: nova.competencia, status: nova.status }),
+  })
+
+  await sincronizarStatusFinanceiroAluno(
+    tx,
+    nova.alunoId,
+    params.agora ?? new Date(),
+    params.autorId,
+  )
+
+  return { ok: true as const, mensalidade: nova }
+}
+
+export async function registrarMensalidadeInicialPaga(
+  tx: Prisma.TransactionClient,
+  params: {
+    alunoId: string
+    competenciaEsperada: string
+    pagoEm: Date
+    formaPagamento?: string | null
+    observacao?: string | null
+    autorId: string
+    agora?: Date
+  },
+) {
+  const agora = params.agora ?? new Date()
+  const competenciaAtual = chaveCompetencia(agora)
+  if (params.competenciaEsperada !== competenciaAtual) {
+    return {
+      ok: false as const,
+      motivo: "A competência mudou. Atualize a página e informe o pagamento novamente.",
+    }
+  }
+  if (params.pagoEm.getTime() >= fimExclusivoDoDiaAcademia(agora).getTime()) {
+    return { ok: false as const, motivo: "A data do pagamento não pode estar no futuro." }
+  }
+
+  const mensalidade = await obterOuCriarMensalidadeNaTransacao(tx, {
+    alunoId: params.alunoId,
+    competencia: competenciaAtual,
+    autorId: params.autorId,
+  })
+  if (!mensalidade.ok) return mensalidade
+
+  return baixarMensalidadeNaTransacao(tx, {
+    mensalidadeId: mensalidade.mensalidade.id,
+    pagoEm: params.pagoEm,
+    agora,
+    formaPagamento: params.formaPagamento,
+    observacao: params.observacao ?? "Pagamento informado no cadastro do aluno.",
+    autorId: params.autorId,
+  })
 }
 
 export async function darBaixaMensalidadeAluno(params: {
@@ -1354,6 +1455,7 @@ function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[
     {
       modalidades: {
         some: {
+          ativa: true,
           professores: { some: { id: professorId, ativo: true, usuario: { ativo: true } } },
         },
       },
@@ -1362,6 +1464,7 @@ function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[
       modalidadesPlano: {
         some: {
           modalidade: {
+            ativa: true,
             professores: { some: { id: professorId, ativo: true, usuario: { ativo: true } } },
           },
         },
@@ -1370,6 +1473,7 @@ function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[
     {
       modalidades: {
         some: {
+          ativa: true,
           turmas: { some: { professorId, ativa: true } },
         },
       },
@@ -1378,6 +1482,7 @@ function condicoesAlunoDoProfessor(professorId: string): Prisma.AlunoWhereInput[
       modalidadesPlano: {
         some: {
           modalidade: {
+            ativa: true,
             turmas: { some: { professorId, ativa: true } },
           },
         },
@@ -1403,6 +1508,7 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
     {
       modalidades: {
         some: {
+          ativa: true,
           alunos: { some: { id: alunoId } },
         },
       },
@@ -1410,6 +1516,7 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
     {
       modalidades: {
         some: {
+          ativa: true,
           alunosPlanos: { some: { alunoId } },
         },
       },
@@ -1418,7 +1525,7 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
       turmas: {
         some: {
           ativa: true,
-          modalidade: { alunos: { some: { id: alunoId } } },
+          modalidade: { ativa: true, alunos: { some: { id: alunoId } } },
         },
       },
     },
@@ -1426,7 +1533,7 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
       turmas: {
         some: {
           ativa: true,
-          modalidade: { alunosPlanos: { some: { alunoId } } },
+          modalidade: { ativa: true, alunosPlanos: { some: { alunoId } } },
         },
       },
     },
@@ -1485,13 +1592,8 @@ function validarConfiguracaoRepasse(config: ConfiguracaoRepasseFinanceiro) {
   if (config.valorBaseModalidade <= 0) {
     throw new Error("Valor base da modalidade deve ser positivo.")
   }
-  const percentuais = [config.percentualProfessor, config.percentualSocioA, config.percentualSocioB]
-  if (percentuais.some((percentual) => percentual < 0)) {
-    throw new Error("Percentuais de repasse não podem ser negativos.")
-  }
-  const total = percentuais.reduce((soma, percentual) => soma + percentual, 0)
-  if (Math.abs(total - 100) > 0.001) {
-    throw new Error("Percentuais de repasse devem somar 100%.")
+  if (config.percentualProfessor < 0 || config.percentualProfessor > 100) {
+    throw new Error("Percentual de repasse do professor deve estar entre 0% e 100%.")
   }
 }
 

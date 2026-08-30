@@ -1,5 +1,6 @@
 import "server-only"
 import {
+  type ContratoPixAutomatico,
   type Mensalidade,
   Prisma,
   type StatusCobrancaAsaas,
@@ -720,29 +721,44 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
         throw new ErroEscolhaPagamento("Outra forma de pagamento já foi selecionada.")
       }
 
-      const salvo = contratoRetomavel
-        ? await tx.contratoPixAutomatico.update({
-            where: { id: contratoRetomavel.id },
-            data: {
-              asaasAuthorizationId: null,
-              asaasConciliationId: null,
-              status: "CRIANDO",
-              inicio,
-              fim,
-              valor: aluno.plano!.valor,
-              pixCopiaECola: null,
-              qrCodeExpiraEm: null,
-              ultimoErro: null,
-            },
-          })
-        : await tx.contratoPixAutomatico.create({
-            data: {
-              alunoId: aluno.id,
-              inicio,
-              fim,
-              valor: aluno.plano!.valor,
-            },
-          })
+      let salvo: ContratoPixAutomatico
+      if (contratoRetomavel) {
+        const retomado = await tx.contratoPixAutomatico.updateMany({
+          where: {
+            id: contratoRetomavel.id,
+            status: "ERRO",
+            atualizadoEm: contratoRetomavel.atualizadoEm,
+          },
+          data: {
+            asaasAuthorizationId: null,
+            asaasConciliationId: null,
+            status: "CRIANDO",
+            inicio,
+            fim,
+            valor: aluno.plano!.valor,
+            pixCopiaECola: null,
+            qrCodeExpiraEm: null,
+            ultimoErro: null,
+          },
+        })
+        if (retomado.count === 0) {
+          throw new ErroEscolhaPagamento(
+            "O ciclo de PIX Automático foi alterado por outra operação.",
+          )
+        }
+        salvo = await tx.contratoPixAutomatico.findUniqueOrThrow({
+          where: { id: contratoRetomavel.id },
+        })
+      } else {
+        salvo = await tx.contratoPixAutomatico.create({
+          data: {
+            alunoId: aluno.id,
+            inicio,
+            fim,
+            valor: aluno.plano!.valor,
+          },
+        })
+      }
 
       for (const [indice, mensalidade] of mensalidades.entries()) {
         await tx.mensalidade.update({

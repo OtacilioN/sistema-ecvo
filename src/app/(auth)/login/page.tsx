@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { Marca } from "@/components/marca"
 import { BotaoInstalarApp } from "@/components/pwa-install-button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,6 +31,12 @@ export default async function LoginPage({
           <LoginForm mensagemInicial={mensagemInicial} />
         </CardContent>
       </Card>
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        Ainda não é aluno?{" "}
+        <Link href="/matricula" className="font-medium text-primary hover:underline">
+          Faça seu cadastro e matrícula
+        </Link>
+      </p>
       <div className="mt-4 flex justify-center">
         <BotaoInstalarApp rotuloSempreVisivel />
       </div>

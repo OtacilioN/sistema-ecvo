@@ -13,6 +13,8 @@ import {
 const base: ContextoCheckin = {
   statusAluno: "ATIVO",
   tipoAluno: "MENSALISTA",
+  possuiPlanoPagamento: true,
+  modalidadeCobertaPeloPlano: true,
   aulaCancelada: false,
   jaTemCheckinValido: false,
   temComparecimento: true,
@@ -42,6 +44,31 @@ describe("avaliarCheckin", () => {
 
   it.each(["CANCELADO", "TRANCADO"] as const)("bloqueia aluno %s", (statusAluno) => {
     expect(avaliarCheckin({ ...base, statusAluno })).toMatchObject({ ok: false })
+  })
+
+  it("bloqueia mensalista sem aprovação completa e vínculo de plano", () => {
+    expect(avaliarCheckin({ ...base, possuiPlanoPagamento: false })).toEqual({
+      ok: false,
+      motivo: "Matrícula pendente de aprovação e vínculo de plano.",
+    })
+    expect(avaliarCheckin({ ...base, modalidadeCobertaPeloPlano: false })).toEqual({
+      ok: false,
+      motivo: "Matrícula pendente de aprovação e vínculo de plano.",
+    })
+  })
+
+  it("não exige plano interno de aluno Wellhub, TotalPass ou avulso", () => {
+    for (const tipoAluno of ["WELLHUB", "TOTALPASS", "AVULSO"] as const) {
+      expect(
+        avaliarCheckin({
+          ...base,
+          tipoAluno,
+          possuiPlanoPagamento: false,
+          modalidadeCobertaPeloPlano: false,
+          mensalidadeInternaNaModalidade: false,
+        }),
+      ).toEqual({ ok: true })
+    }
   })
 
   it("bloqueia inadimplente só quando a política é BLOQUEAR_CHECKIN", () => {
@@ -217,7 +244,7 @@ describe("podeRealizarCheckinNaJanela", () => {
   const inicioAula = new Date("2026-06-10T20:00:00Z")
   const fimAula = new Date("2026-06-10T21:00:00Z")
 
-  it("libera de 30 minutos antes até o fim da aula", () => {
+  it("libera de 30 minutos antes até 30 minutos após o fim da aula", () => {
     expect(
       podeRealizarCheckinNaJanela({
         inicioAula,
@@ -229,7 +256,7 @@ describe("podeRealizarCheckinNaJanela", () => {
       podeRealizarCheckinNaJanela({
         inicioAula,
         fimAula,
-        agora: new Date("2026-06-10T21:00:00Z"),
+        agora: new Date("2026-06-10T21:30:00Z"),
       }),
     ).toBe(true)
   })
@@ -246,7 +273,7 @@ describe("podeRealizarCheckinNaJanela", () => {
       podeRealizarCheckinNaJanela({
         inicioAula,
         fimAula,
-        agora: new Date("2026-06-10T21:00:01Z"),
+        agora: new Date("2026-06-10T21:30:01Z"),
       }),
     ).toBe(false)
   })

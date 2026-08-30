@@ -17,6 +17,7 @@ export default async function ProfessorInicio() {
     where: {
       inicio: { gte: inicioDia, lte: fimDia },
       cancelada: false,
+      turma: { ativa: true, modalidade: { ativa: true } },
       OR: [{ professorId }, { turma: { professorId } }],
     },
   })

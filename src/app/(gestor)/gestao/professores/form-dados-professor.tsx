@@ -36,6 +36,10 @@ export function FormDadosProfessor({
     undefined,
   )
   const modalidadeIds = new Set(professor.modalidades)
+  const modalidadeIdsAtivos = new Set(modalidades.map((modalidade) => modalidade.id))
+  const modalidadeIdsInativos = professor.modalidades.filter(
+    (modalidadeId) => !modalidadeIdsAtivos.has(modalidadeId),
+  )
   const [uploadPendente, setUploadPendente] = useState(false)
 
   useEffect(() => {
@@ -76,6 +80,9 @@ export function FormDadosProfessor({
 
       <div className="space-y-1.5 sm:col-span-2">
         <Label>Modalidades</Label>
+        {modalidadeIdsInativos.map((modalidadeId) => (
+          <input key={modalidadeId} type="hidden" name="modalidadeIds" value={modalidadeId} />
+        ))}
         <div className="flex flex-wrap gap-2">
           {modalidades.map((m) => (
             <label

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   atualizarVencimentosMensalidadesAluno,
+  calcularDistribuicaoSobraFinanceira,
   calcularRepasseFinanceiro,
   gerarLembretesFinanceiros,
   lerRepasseSnapshotMensalidade,
@@ -12,6 +13,7 @@ import {
   mensalidadeBloqueiaTreino,
   mensalistaAdimplente,
   modalidadesMensalidadeInterna,
+  registrarMensalidadeInicialPaga,
   sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
   vencerMensalidadesAtrasadas,
@@ -83,6 +85,153 @@ describe("mensalidadeBloqueiaTreino", () => {
         new Date("2026-06-11T12:00:00Z"),
       ),
     ).toBe(true)
+  })
+})
+
+describe("registrarMensalidadeInicialPaga", () => {
+  it("gera e baixa a competência atual na mesma transação", async () => {
+    const logs: Array<Record<string, unknown>> = []
+    const notificacoes: Array<Record<string, unknown>> = []
+    const mensalidadeAberta = {
+      id: "mensalidade-1",
+      alunoId: "aluno-1",
+      planoId: "plano-1",
+      competencia: "2026-08",
+      valor: 250,
+      vencimento: new Date("2026-08-10T12:00:00Z"),
+      status: "EM_ABERTO",
+      pagoEm: null,
+      formaPagamento: null,
+      observacao: null,
+      repasseSnapshot: null,
+      atualizadoEm: new Date("2026-08-27T14:00:00Z"),
+    }
+    let buscasMensalidade = 0
+    let mensalidadePersistida = mensalidadeAberta
+    const cliente = {
+      $queryRaw: async () => [{ id: "mensalidade-1" }],
+      aluno: {
+        findUnique: async () => ({
+          id: "aluno-1",
+          usuarioId: "usuario-1",
+          diaVencimento: 10,
+          plano: { id: "plano-1", valor: 250 },
+          modalidadesPlano: [
+            {
+              plataformaExterna: null,
+              modalidade: {
+                id: "modalidade-1",
+                nome: "Jiu-Jitsu",
+                turmas: [
+                  {
+                    professorId: "professor-1",
+                    professor: { usuario: { nome: "Professor ECVO" } },
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+        updateMany: async () => ({ count: 0 }),
+      },
+      configuracaoAcademia: {
+        findUnique: async (params: { select: Record<string, boolean> }) =>
+          "valorBaseModalidade" in params.select
+            ? { valorBaseModalidade: 100 }
+            : { notificarFinanceiro: true },
+      },
+      mensalidade: {
+        findUnique: async () => {
+          buscasMensalidade += 1
+          if (buscasMensalidade === 1) return null
+          return {
+            ...mensalidadePersistida,
+            aluno: { usuarioId: "usuario-1", usuario: { nome: "Aluno ECVO" } },
+          }
+        },
+        create: async (params: { data: Record<string, unknown> }) => {
+          mensalidadePersistida = { ...mensalidadeAberta, ...params.data } as never
+          return mensalidadePersistida
+        },
+        update: async (params: { data: Record<string, unknown> }) => {
+          mensalidadePersistida = { ...mensalidadePersistida, ...params.data } as never
+          return mensalidadePersistida
+        },
+        updateMany: async (params: { data: Record<string, unknown> }) => {
+          mensalidadePersistida = { ...mensalidadePersistida, ...params.data } as never
+          return { count: 1 }
+        },
+        findUniqueOrThrow: async () => mensalidadePersistida,
+        findFirst: async () => null,
+      },
+      cobrancaAsaas: {
+        findMany: async () => [],
+        updateMany: async () => ({ count: 0 }),
+      },
+      logAuditoria: {
+        create: async (params: { data: Record<string, unknown> }) => {
+          logs.push(params.data)
+          return params.data
+        },
+      },
+      notificacao: {
+        create: async (params: { data: Record<string, unknown> }) => {
+          notificacoes.push(params.data)
+          return { id: `notificacao-${notificacoes.length}`, ...params.data }
+        },
+      },
+    } as never
+
+    const resultado = await registrarMensalidadeInicialPaga(cliente, {
+      alunoId: "aluno-1",
+      competenciaEsperada: "2026-08",
+      pagoEm: new Date("2026-08-27T12:00:00Z"),
+      formaPagamento: "Pix",
+      observacao: "Pago na matrícula",
+      autorId: "gestor-1",
+      agora: new Date("2026-08-27T15:00:00Z"),
+    })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      mensalidade: {
+        competencia: "2026-08",
+        status: "PAGA",
+        pagoEm: new Date("2026-08-27T12:00:00Z"),
+        formaPagamento: "Pix",
+        observacao: "Pago na matrícula",
+      },
+    })
+    expect(logs).toHaveLength(2)
+    expect(resultado.ok && resultado.mensalidade.repasseSnapshot).toEqual([
+      {
+        modalidadeId: "modalidade-1",
+        modalidadeNome: "Jiu-Jitsu",
+        professorId: "professor-1",
+        professorNome: "Professor ECVO",
+        plataformaExterna: null,
+        valorBase: 100,
+      },
+    ])
+    expect(notificacoes).toEqual([
+      expect.objectContaining({ titulo: "Mensalidade gerada" }),
+      expect.objectContaining({ titulo: "Mensalidade atualizada" }),
+    ])
+  })
+
+  it("rejeita se a competência exibida ficou desatualizada", async () => {
+    const resultado = await registrarMensalidadeInicialPaga({} as never, {
+      alunoId: "aluno-1",
+      competenciaEsperada: "2026-07",
+      pagoEm: new Date("2026-08-27T12:00:00Z"),
+      autorId: "gestor-1",
+      agora: new Date("2026-08-27T15:00:00Z"),
+    })
+
+    expect(resultado).toEqual({
+      ok: false,
+      motivo: "A competência mudou. Atualize a página e informe o pagamento novamente.",
+    })
   })
 })
 
@@ -520,7 +669,7 @@ describe("mensagemPagamentoAvulso", () => {
 })
 
 describe("calcularRepasseFinanceiro", () => {
-  it("divide preço cheio em 60% professor, 20% sócio A e 20% sócio B", () => {
+  it("separa o repasse do professor da sobra do recebimento", () => {
     expect(
       calcularRepasseFinanceiro({
         valorRecebido: 100,
@@ -537,12 +686,11 @@ describe("calcularRepasseFinanceiro", () => {
           modalidades: [{ modalidadeId: "kickboxing", valor: 60, tetoProfessor: 60 }],
         },
       ],
-      socioA: 20,
-      socioB: 20,
+      sobraAposProfessores: 40,
     })
   })
 
-  it("mantém professores no valor cheio e sócios absorvem desconto de duas modalidades", () => {
+  it("mantém professores no valor cheio e reduz a sobra quando há desconto", () => {
     expect(
       calcularRepasseFinanceiro({
         valorRecebido: 175,
@@ -558,8 +706,7 @@ describe("calcularRepasseFinanceiro", () => {
         { professorId: "prof-a", valor: 60 },
         { professorId: "prof-b", valor: 60 },
       ],
-      socioA: 27.5,
-      socioB: 27.5,
+      sobraAposProfessores: 55,
     })
   })
 
@@ -577,8 +724,7 @@ describe("calcularRepasseFinanceiro", () => {
       { professorId: "prof-a", valor: 120 },
       { professorId: "prof-b", valor: 60 },
     ])
-    expect(resultado.socioA).toBe(27.5)
-    expect(resultado.socioB).toBe(27.5)
+    expect(resultado.sobraAposProfessores).toBe(55)
   })
 
   it("direciona arrecadação parcial inteira ao professor até atingir o teto", () => {
@@ -589,12 +735,11 @@ describe("calcularRepasseFinanceiro", () => {
       }),
     ).toMatchObject({
       professores: [{ professorId: "prof-a", valor: 40 }],
-      socioA: 0,
-      socioB: 0,
+      sobraAposProfessores: 0,
     })
   })
 
-  it("divide repasse Wellhub/TotalPass diretamente em 60/20/20", () => {
+  it("separa 60% para professor no repasse Wellhub/TotalPass", () => {
     expect(
       calcularRepasseFinanceiro({
         valorRecebido: 90,
@@ -603,12 +748,11 @@ describe("calcularRepasseFinanceiro", () => {
       }),
     ).toMatchObject({
       professores: [{ professorId: "prof-a", valor: 54 }],
-      socioA: 18,
-      socioB: 18,
+      sobraAposProfessores: 36,
     })
   })
 
-  it("aplica 60/20/20 no repasse externo mesmo abaixo do teto do professor", () => {
+  it("aplica 60% ao professor no repasse externo mesmo abaixo do teto", () => {
     expect(
       calcularRepasseFinanceiro({
         valorRecebido: 40,
@@ -617,8 +761,7 @@ describe("calcularRepasseFinanceiro", () => {
       }),
     ).toMatchObject({
       professores: [{ professorId: "prof-a", valor: 24 }],
-      socioA: 8,
-      socioB: 8,
+      sobraAposProfessores: 16,
     })
   })
 
@@ -630,8 +773,7 @@ describe("calcularRepasseFinanceiro", () => {
       }),
     ).toMatchObject({
       professores: [{ professorId: "prof-a", valor: 0 }],
-      socioA: 0,
-      socioB: 0,
+      sobraAposProfessores: 0,
     })
   })
 
@@ -657,8 +799,7 @@ describe("calcularRepasseFinanceiro", () => {
       }),
     ).toMatchObject({
       professores: [{ professorId: "prof-oyama", valor: 60 }],
-      socioA: 15,
-      socioB: 15,
+      sobraAposProfessores: 30,
     })
   })
 
@@ -698,8 +839,74 @@ describe("calcularRepasseFinanceiro", () => {
       }),
     ).toMatchObject({
       professores: [{ professorId: "prof-oyama", valor: 60 }],
-      socioA: 15,
-      socioB: 15,
+      sobraAposProfessores: 30,
     })
+  })
+})
+
+describe("calcularDistribuicaoSobraFinanceira", () => {
+  it("desconta os custos fixos e divide o saldo igualmente em três partes", () => {
+    expect(
+      calcularDistribuicaoSobraFinanceira({
+        totalRecebido: 6000,
+        totalProfessores: 3000,
+      }),
+    ).toEqual({
+      sobraAposProfessores: 3000,
+      custosFixos: 2670,
+      saldoAposCustosFixos: 330,
+      valorDistribuivel: 330,
+      caixaInvestimento: 110,
+      socioA: 110,
+      socioB: 110,
+    })
+  })
+
+  it("expõe o déficit e zera as três partes quando a sobra não cobre os custos fixos", () => {
+    expect(
+      calcularDistribuicaoSobraFinanceira({
+        totalRecebido: 4000,
+        totalProfessores: 2000,
+      }),
+    ).toEqual({
+      sobraAposProfessores: 2000,
+      custosFixos: 2670,
+      saldoAposCustosFixos: -670,
+      valorDistribuivel: 0,
+      caixaInvestimento: 0,
+      socioA: 0,
+      socioB: 0,
+    })
+  })
+
+  it("considera o custo fixo quitado quando o saldo é exatamente zero", () => {
+    expect(
+      calcularDistribuicaoSobraFinanceira({
+        totalRecebido: 3670,
+        totalProfessores: 1000,
+      }),
+    ).toMatchObject({
+      saldoAposCustosFixos: 0,
+      caixaInvestimento: 0,
+      socioA: 0,
+      socioB: 0,
+    })
+  })
+
+  it("preserva todos os centavos na divisão em três partes", () => {
+    const resultado = calcularDistribuicaoSobraFinanceira({
+      totalRecebido: 2670.01,
+      totalProfessores: 0,
+    })
+
+    expect(resultado).toMatchObject({
+      saldoAposCustosFixos: 0.01,
+      caixaInvestimento: 0.01,
+      socioA: 0,
+      socioB: 0,
+    })
+    expect(resultado.caixaInvestimento + resultado.socioA + resultado.socioB).toBe(
+      resultado.valorDistribuivel,
+    )
   })
 })

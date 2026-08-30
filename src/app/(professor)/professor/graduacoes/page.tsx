@@ -22,6 +22,7 @@ export default async function Page() {
     where: { id: professorId },
     include: {
       modalidades: {
+        where: { ativa: true },
         orderBy: { nome: "asc" },
         include: { graduacoes: { orderBy: [{ ordem: "asc" }, { nome: "asc" }] } },
       },
@@ -40,7 +41,10 @@ export default async function Page() {
       orderBy: { usuario: { nome: "asc" } },
       include: {
         usuario: { select: { nome: true } },
-        modalidades: { where: { id: { in: modalidadeIds } }, select: { id: true, nome: true } },
+        modalidades: {
+          where: { ativa: true, id: { in: modalidadeIds } },
+          select: { id: true, nome: true },
+        },
         movimentosHoras: { select: { modalidadeId: true, minutos: true } },
         graduacoes: {
           orderBy: { concedidaEm: "desc" },

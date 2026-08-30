@@ -81,6 +81,17 @@ export function bloqueiaComparecimentoPorFinanceiro(p: {
   )
 }
 
+export function podeAgendarModalidade(p: {
+  tipoAluno: TipoAluno
+  possuiPlanoPagamento: boolean
+  modalidadeVinculada: boolean
+  modalidadeCobertaPeloPlano: boolean
+}): boolean {
+  if (!p.modalidadeVinculada) return false
+  if (p.tipoAluno !== "MENSALISTA") return true
+  return p.possuiPlanoPagamento && p.modalidadeCobertaPeloPlano
+}
+
 export function podeMarcarNoShow(params: { fimAula: Date; agora?: Date }): boolean {
   return (params.agora ?? new Date()).getTime() >= params.fimAula.getTime()
 }
@@ -133,8 +144,10 @@ export async function marcarComparecimento(params: {
       select: {
         status: true,
         tipo: true,
+        planoId: true,
         usuarioId: true,
-        modalidadesPlano: { select: { modalidadeId: true } },
+        modalidades: { where: { ativa: true }, select: { id: true } },
+        modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
       },
     }),
     db.aula.findUnique({
@@ -163,18 +176,35 @@ export async function marcarComparecimento(params: {
   if (!aluno) return { ok: false, motivo: "Aluno não encontrado." }
   if (!aula || aula.cancelada) return { ok: false, motivo: "Aula indisponível." }
   const regras = resolverRegrasTreino(config, aula.turma.modalidade)
-  const mensalidadeInternaNaModalidade = aluno.modalidadesPlano.some(
-    (modalidade) => modalidade.modalidadeId === aula.turma.modalidadeId,
+  const modalidadeVinculada = aluno.modalidades.some(
+    (modalidade) => modalidade.id === aula.turma.modalidadeId,
   )
+  const modalidadeCobertaPeloPlano = aluno.modalidadesPlano.some(
+    (modalidade) =>
+      modalidade.modalidadeId === aula.turma.modalidadeId && !modalidade.plataformaExterna,
+  )
+  if (
+    !podeAgendarModalidade({
+      tipoAluno: aluno.tipo,
+      possuiPlanoPagamento: Boolean(aluno.planoId),
+      modalidadeVinculada,
+      modalidadeCobertaPeloPlano,
+    })
+  ) {
+    return {
+      ok: false,
+      motivo: !modalidadeVinculada
+        ? "Aluno não matriculado nesta modalidade."
+        : "Matrícula pendente de aprovação e vínculo de plano.",
+    }
+  }
   const termoAceito = await termoResponsabilidadeAtualAceito(params.alunoId)
 
   const podeFinanceiro = !bloqueiaComparecimentoPorFinanceiro({
     statusAluno: aluno.status,
     tipoAluno: aluno.tipo,
-    mensalidadeInternaNaModalidade: Boolean(mensalidadeInternaNaModalidade),
-    mensalidadeEmDia: mensalidadeInternaNaModalidade
-      ? await mensalidadeEmDia(params.alunoId)
-      : true,
+    mensalidadeInternaNaModalidade: modalidadeCobertaPeloPlano,
+    mensalidadeEmDia: modalidadeCobertaPeloPlano ? await mensalidadeEmDia(params.alunoId) : true,
     bloqueioInadimplencia: config.bloqueioInadimplencia,
     termoResponsabilidadeAceito: termoAceito,
   })
