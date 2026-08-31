@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { enviarPushParaNotificacao } from "@/lib/services/push.service"
 import {
   campoConfiguracaoNotificacao,
+  criarNotificacao,
   DIAS_RETENCAO_NOTIFICACOES_LIDAS,
   DIAS_RETENCAO_NOTIFICACOES_TODAS,
+  enviarPushParaNotificacoes,
   expurgarNotificacoesAntigas,
   gerarLembretesAgendamentoAulasAmanha,
   gerarLembretesAniversario,
@@ -35,6 +37,7 @@ beforeEach(() => {
 
 describe("campoConfiguracaoNotificacao", () => {
   it("mapeia cada tipo de notificação para sua flag configurável", () => {
+    expect(campoConfiguracaoNotificacao("MATRICULA")).toBeNull()
     expect(campoConfiguracaoNotificacao("COMPARECIMENTO")).toBe("notificarComparecimento")
     expect(campoConfiguracaoNotificacao("LEMBRETE_TREINO")).toBe("notificarLembreteTreino")
     expect(campoConfiguracaoNotificacao("LEMBRETE_AGENDAMENTO")).toBe(
@@ -46,6 +49,59 @@ describe("campoConfiguracaoNotificacao", () => {
     expect(campoConfiguracaoNotificacao("CHECKIN_INVALIDADO")).toBe("notificarCheckinInvalidado")
     expect(campoConfiguracaoNotificacao("CHECKIN_REALIZADO")).toBe("notificarCheckinRealizado")
     expect(campoConfiguracaoNotificacao("ANIVERSARIO")).toBe("notificarAniversario")
+  })
+
+  it("mantém matrícula sempre ativa e tenta o push sem consultar uma flag configurável", async () => {
+    const cliente = {
+      configuracaoAcademia: { findUnique: vi.fn() },
+      notificacao: {
+        create: vi.fn(async ({ data }: { data: NotificacaoData }) => ({
+          id: "notificacao-matricula",
+          lida: false,
+          criadoEm: new Date("2026-08-30T12:00:00-03:00"),
+          ...data,
+        })),
+      },
+    }
+
+    const notificacao = await criarNotificacao(
+      cliente as unknown as Parameters<typeof criarNotificacao>[0],
+      {
+        usuarioId: "gestor-1",
+        tipo: "MATRICULA",
+        titulo: "Nova solicitação de matrícula",
+        mensagem: "Ana solicitou matrícula em Jiu-Jitsu como mensalista.",
+      },
+    )
+
+    expect(notificacao).toEqual(expect.objectContaining({ id: "notificacao-matricula" }))
+    expect(cliente.configuracaoAcademia.findUnique).not.toHaveBeenCalled()
+    expect(enviarPushParaNotificacao).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "notificacao-matricula", usuarioId: "gestor-1" }),
+    )
+  })
+
+  it("continua o lote de push quando uma entrega falha", async () => {
+    vi.mocked(enviarPushParaNotificacao).mockRejectedValueOnce(new Error("provedor indisponível"))
+
+    await enviarPushParaNotificacoes([
+      {
+        id: "notificacao-1",
+        usuarioId: "gestor-1",
+        tipo: "MATRICULA",
+        titulo: "Nova solicitação de matrícula",
+        mensagem: "Primeira",
+      },
+      {
+        id: "notificacao-2",
+        usuarioId: "gestor-2",
+        tipo: "MATRICULA",
+        titulo: "Nova solicitação de matrícula",
+        mensagem: "Segunda",
+      },
+    ])
+
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(2)
   })
 })
 

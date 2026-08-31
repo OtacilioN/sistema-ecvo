@@ -75,6 +75,8 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   Wellhub/TotalPass cria o aluno com o tipo e o vínculo externo da modalidade correspondentes, sem efeitos
   financeiros internos. O comprovante anexado é evidência privada opcional do fluxo mensalista e nunca
   substitui nem duplica a confirmação integrada.
+- **RF-001.3** Cada nova solicitação de matrícula e cada aprovação concluída gera uma notificação interna
+  com tentativa de Web Push para todos os gestores ativos, incluindo o gestor que realizou a aprovação.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,

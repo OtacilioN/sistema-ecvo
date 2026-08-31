@@ -220,6 +220,7 @@ enum TipoAcaoAudit {
 }
 
 enum TipoNotificacao {
+  MATRICULA
   COMPARECIMENTO
   LEMBRETE_TREINO
   LEMBRETE_AGENDAMENTO

@@ -30,6 +30,9 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
   a solicitação estiver `PENDENTE`. Mensalistas só ficam visíveis para aprovação após `PAYMENT_RECEIVED`;
   Wellhub/TotalPass entram na fila sem cobrança. A aprovação externa liga a modalidade por
   `AlunoPlanoModalidade.plataformaExterna`, sem criar plano, mensalidade ou registros Asaas.
+- **Notificação de matrícula**: cada solicitação criada e cada aprovação concluída cria uma `Notificacao`
+  do tipo `MATRICULA` para cada gestor ativo; o serviço de notificações tenta entregar o mesmo conteúdo
+  por Web Push às inscrições ativas de cada destinatário.
 
 ## Entidades
 

@@ -8,6 +8,14 @@ import { formatarData, formatarDataHora, formatarHora, TIMEZONE } from "@/lib/ut
 
 type Cliente = Prisma.TransactionClient | typeof db
 
+type NotificacaoParaPush = {
+  id: string
+  usuarioId: string
+  tipo: TipoNotificacao
+  titulo: string
+  mensagem: string
+}
+
 type CampoConfiguracaoNotificacao =
   | "notificarComparecimento"
   | "notificarLembreteTreino"
@@ -19,7 +27,8 @@ type CampoConfiguracaoNotificacao =
   | "notificarCheckinRealizado"
   | "notificarAniversario"
 
-const CAMPO_CONFIG: Record<TipoNotificacao, CampoConfiguracaoNotificacao> = {
+const CAMPO_CONFIG: Record<TipoNotificacao, CampoConfiguracaoNotificacao | null> = {
+  MATRICULA: null,
   COMPARECIMENTO: "notificarComparecimento",
   LEMBRETE_TREINO: "notificarLembreteTreino",
   LEMBRETE_AGENDAMENTO: "notificarLembreteAgendamento",
@@ -49,7 +58,9 @@ function intervaloAmanhaAcademia(agora: Date): { inicio: Date; fim: Date } {
   return intervaloDiaAcademia(formatInTimeZone(amanha, TIMEZONE, "yyyy-MM-dd"))
 }
 
-export function campoConfiguracaoNotificacao(tipo: TipoNotificacao): CampoConfiguracaoNotificacao {
+export function campoConfiguracaoNotificacao(
+  tipo: TipoNotificacao,
+): CampoConfiguracaoNotificacao | null {
   return CAMPO_CONFIG[tipo]
 }
 
@@ -65,7 +76,8 @@ async function campoNotificacaoAtivo(
 }
 
 export async function notificacaoAtiva(cliente: Cliente, tipo: TipoNotificacao): Promise<boolean> {
-  return campoNotificacaoAtivo(cliente, campoConfiguracaoNotificacao(tipo))
+  const campo = campoConfiguracaoNotificacao(tipo)
+  return campo ? campoNotificacaoAtivo(cliente, campo) : true
 }
 
 export async function criarNotificacao(
@@ -76,6 +88,7 @@ export async function criarNotificacao(
     titulo: string
     mensagem: string
   },
+  opcoes?: { enviarPush?: boolean },
 ) {
   if (!(await notificacaoAtiva(cliente, params.tipo))) return null
 
@@ -88,13 +101,25 @@ export async function criarNotificacao(
     },
   })
 
-  try {
-    await enviarPushParaNotificacao(notificacao)
-  } catch {
-    // Push é um canal secundário; a notificação interna continua sendo a fonte de verdade.
+  if (opcoes?.enviarPush !== false) {
+    try {
+      await enviarPushParaNotificacao(notificacao)
+    } catch {
+      // Push é um canal secundário; a notificação interna continua sendo a fonte de verdade.
+    }
   }
 
   return notificacao
+}
+
+export async function enviarPushParaNotificacoes(notificacoes: NotificacaoParaPush[]) {
+  for (const notificacao of notificacoes) {
+    try {
+      await enviarPushParaNotificacao(notificacao)
+    } catch {
+      // A persistência já foi concluída; falhas do canal não desfazem a operação principal.
+    }
+  }
 }
 
 export async function gerarLembretesTreino(

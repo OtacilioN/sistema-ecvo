@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => {
       updateMany: vi.fn(),
       update: vi.fn(),
     },
-    usuario: { create: vi.fn() },
+    usuario: { create: vi.fn(), findMany: vi.fn() },
     clienteAsaas: { create: vi.fn() },
     cobrancaAsaas: { create: vi.fn() },
     mensalidade: { update: vi.fn() },
@@ -27,6 +27,8 @@ const mocks = vi.hoisted(() => {
     gerarHashSenha: vi.fn(),
     registrarLog: vi.fn(),
     registrarMensalidadeInicialPagaAsaas: vi.fn(),
+    criarNotificacao: vi.fn(),
+    enviarPushParaNotificacoes: vi.fn(),
   }
 })
 
@@ -35,6 +37,10 @@ vi.mock("@/lib/auth/senha", () => ({ gerarHashSenha: mocks.gerarHashSenha }))
 vi.mock("@/lib/services/auditoria.service", () => ({ registrarLog: mocks.registrarLog }))
 vi.mock("@/lib/services/financeiro.service", () => ({
   registrarMensalidadeInicialPagaAsaas: mocks.registrarMensalidadeInicialPagaAsaas,
+}))
+vi.mock("@/lib/services/notificacao.service", () => ({
+  criarNotificacao: mocks.criarNotificacao,
+  enviarPushParaNotificacoes: mocks.enviarPushParaNotificacoes,
 }))
 
 import {
@@ -73,6 +79,11 @@ beforeEach(() => {
     id: "usuario-1",
     aluno: { id: "aluno-1" },
   })
+  mocks.tx.usuario.findMany.mockResolvedValue([{ id: "gestor-1" }, { id: "gestor-2" }])
+  mocks.criarNotificacao.mockImplementation(async (_cliente, params) => ({
+    id: `notificacao-${params.usuarioId}`,
+    ...params,
+  }))
 })
 
 describe("solicitarMatricula", () => {
@@ -98,6 +109,37 @@ describe("solicitarMatricula", () => {
         planoId: "plano-padrao",
       }),
     })
+    expect(mocks.tx.usuario.findMany).toHaveBeenCalledWith({
+      where: { papel: "GESTOR", ativo: true },
+      select: { id: true },
+    })
+    expect(mocks.criarNotificacao).toHaveBeenCalledTimes(2)
+    expect(mocks.criarNotificacao).toHaveBeenNthCalledWith(
+      1,
+      mocks.tx,
+      {
+        usuarioId: "gestor-1",
+        tipo: "MATRICULA",
+        titulo: "Nova solicitação de matrícula",
+        mensagem: "Aluno Parceiro solicitou matrícula em Jiu-Jitsu como mensalista.",
+      },
+      { enviarPush: false },
+    )
+    expect(mocks.criarNotificacao).toHaveBeenNthCalledWith(
+      2,
+      mocks.tx,
+      {
+        usuarioId: "gestor-2",
+        tipo: "MATRICULA",
+        titulo: "Nova solicitação de matrícula",
+        mensagem: "Aluno Parceiro solicitou matrícula em Jiu-Jitsu como mensalista.",
+      },
+      { enviarPush: false },
+    )
+    expect(mocks.enviarPushParaNotificacoes).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "notificacao-gestor-1", usuarioId: "gestor-1" }),
+      expect.objectContaining({ id: "notificacao-gestor-2", usuarioId: "gestor-2" }),
+    ])
   })
 
   it.each([
@@ -241,5 +283,32 @@ describe("aprovarMatricula", () => {
     expect(mocks.tx.cobrancaAsaas.create).not.toHaveBeenCalled()
     expect(mocks.tx.mensalidade.update).not.toHaveBeenCalled()
     expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.criarNotificacao).toHaveBeenCalledTimes(2)
+    expect(mocks.criarNotificacao).toHaveBeenCalledWith(
+      mocks.tx,
+      {
+        usuarioId: "gestor-1",
+        tipo: "MATRICULA",
+        titulo: "Matrícula aprovada",
+        mensagem:
+          "A matrícula de Aluno Parceiro em Jiu-Jitsu foi aprovada e o acesso do aluno foi liberado.",
+      },
+      { enviarPush: false },
+    )
+    expect(mocks.criarNotificacao).toHaveBeenCalledWith(
+      mocks.tx,
+      {
+        usuarioId: "gestor-2",
+        tipo: "MATRICULA",
+        titulo: "Matrícula aprovada",
+        mensagem:
+          "A matrícula de Aluno Parceiro em Jiu-Jitsu foi aprovada e o acesso do aluno foi liberado.",
+      },
+      { enviarPush: false },
+    )
+    expect(mocks.enviarPushParaNotificacoes).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "notificacao-gestor-1", usuarioId: "gestor-1" }),
+      expect.objectContaining({ id: "notificacao-gestor-2", usuarioId: "gestor-2" }),
+    ])
   })
 })

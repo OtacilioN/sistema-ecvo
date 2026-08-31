@@ -4,6 +4,7 @@ import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { registrarMensalidadeInicialPagaAsaas } from "@/lib/services/financeiro.service"
+import { criarNotificacao, enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
 import type {
   AprovacaoMatriculaInput,
   SolicitacaoMatriculaInput,
@@ -13,6 +14,40 @@ type DadosComprovante = {
   url: string
   contentType: string
   nomeOriginal: string
+}
+
+type ClienteMatricula = Prisma.TransactionClient
+
+const ROTULO_TIPO_PAGAMENTO = {
+  MENSALISTA: "mensalista",
+  WELLHUB: "Wellhub",
+  TOTALPASS: "TotalPass",
+} as const
+
+async function notificarGestoresSobreMatricula(
+  cliente: ClienteMatricula,
+  params: { titulo: string; mensagem: string },
+) {
+  const gestores = await cliente.usuario.findMany({
+    where: { papel: "GESTOR", ativo: true },
+    select: { id: true },
+  })
+
+  const notificacoes = []
+  for (const gestor of gestores) {
+    const notificacao = await criarNotificacao(
+      cliente,
+      {
+        usuarioId: gestor.id,
+        tipo: "MATRICULA",
+        ...params,
+      },
+      { enviarPush: false },
+    )
+    if (notificacao) notificacoes.push(notificacao)
+  }
+
+  return notificacoes
 }
 
 export function listarOpcoesPublicasMatricula() {
@@ -67,7 +102,7 @@ export async function solicitarMatricula(
   const senhaHash = await gerarHashSenha(params.senha)
 
   try {
-    const solicitacao = await db.$transaction(async (tx) => {
+    const resultadoTransacao = await db.$transaction(async (tx) => {
       const modalidade = await tx.modalidade.findFirst({
         where: { id: params.modalidadeId, ativa: true },
         select: { id: true, nome: true },
@@ -125,10 +160,17 @@ export async function solicitarMatricula(
         tx,
       )
 
-      return criada
+      const notificacoes = await notificarGestoresSobreMatricula(tx, {
+        titulo: "Nova solicitação de matrícula",
+        mensagem: `${params.nome} solicitou matrícula em ${modalidade.nome} como ${ROTULO_TIPO_PAGAMENTO[params.tipoPagamento]}.`,
+      })
+
+      return { solicitacao: criada, notificacoes }
     })
 
-    return { ok: true as const, solicitacao }
+    await enviarPushParaNotificacoes(resultadoTransacao.notificacoes)
+
+    return { ok: true as const, solicitacao: resultadoTransacao.solicitacao }
   } catch (erro) {
     if (erro instanceof ErroMatricula) return { ok: false as const, motivo: erro.message }
     if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === "P2002") {
@@ -200,7 +242,7 @@ export async function aprovarMatricula(
 ) {
   const agora = params.agora ?? new Date()
   try {
-    return await db.$transaction(async (tx) => {
+    const resultado = await db.$transaction(async (tx) => {
       const solicitacao = await tx.solicitacaoMatricula.findUnique({
         where: { id: params.solicitacaoId },
         include: {
@@ -405,8 +447,17 @@ export async function aprovarMatricula(
         tx,
       )
 
-      return { ok: true as const, alunoId: usuario.aluno.id }
+      const notificacoes = await notificarGestoresSobreMatricula(tx, {
+        titulo: "Matrícula aprovada",
+        mensagem: `A matrícula de ${solicitacao.nome} em ${solicitacao.modalidade.nome} foi aprovada e o acesso do aluno foi liberado.`,
+      })
+
+      return { ok: true as const, alunoId: usuario.aluno.id, notificacoes }
     })
+    if (!resultado.ok) return resultado
+
+    await enviarPushParaNotificacoes(resultado.notificacoes)
+    return { ok: true as const, alunoId: resultado.alunoId }
   } catch (erro) {
     if (erro instanceof ErroMatricula) return { ok: false as const, motivo: erro.message }
     if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === "P2002") {
