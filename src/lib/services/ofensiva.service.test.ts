@@ -13,7 +13,7 @@ function presenca(alunoId: string, dia: string, modalidadeId = modalidade): Pres
 
 describe("calcularOfensivas", () => {
   it("conta dias corridos inclusivos na sequência segunda, quarta, sexta e segunda", () => {
-    const dias = ["2026-08-24", "2026-08-26", "2026-08-28", "2026-08-31"]
+    const dias = ["2026-09-07", "2026-09-09", "2026-09-11", "2026-09-14"]
     const resultadosParciais = dias.map(
       (_, indice) =>
         calcularOfensivas(
@@ -24,30 +24,53 @@ describe("calcularOfensivas", () => {
 
     expect(resultadosParciais.map((item) => item.diasAtuais)).toEqual([1, 3, 5, 8])
     expect(resultadosParciais.at(-1)).toMatchObject({
-      inicioAtual: "2026-08-24",
-      ultimoTreino: "2026-08-31",
+      inicioAtual: "2026-09-07",
+      ultimoTreino: "2026-09-14",
       maximoDias: 8,
     })
   })
 
+  it("inicia o ranking em 31/08/2026 e ignora todo o histórico anterior", () => {
+    const [resultado] = calcularOfensivas(
+      [presenca("ana", "2026-08-01"), presenca("ana", "2026-08-30"), presenca("ana", "2026-08-31")],
+      "2026-08-31",
+    )
+
+    expect(resultado).toMatchObject({
+      diasAtuais: 1,
+      maximoDias: 1,
+      inicioAtual: "2026-08-31",
+      ultimoTreino: "2026-08-31",
+    })
+  })
+
+  it("não cria estado para quem só fez check-in antes do início do ranking", () => {
+    const resultado = calcularOfensivas(
+      [presenca("ana", "2026-08-29"), presenca("ana", "2026-08-30")],
+      "2026-08-31",
+    )
+
+    expect(resultado).toEqual([])
+  })
+
   it("quebra depois de uma falta em dia ativo e preserva o recorde alcançado", () => {
     const resultado = calcularOfensivas(
-      [presenca("ana", "2026-08-24"), presenca("ana", "2026-08-26"), presenca("bia", "2026-08-28")],
-      "2026-08-29",
+      [presenca("ana", "2026-09-07"), presenca("ana", "2026-09-09"), presenca("bia", "2026-09-11")],
+      "2026-09-12",
     ).find((item) => item.alunoId === "ana")
 
     expect(resultado).toMatchObject({
       diasAtuais: 0,
       maximoDias: 3,
       inicioAtual: null,
-      ultimoTreino: "2026-08-26",
+      ultimoTreino: "2026-09-09",
     })
   })
 
   it("não quebra quando ninguém fez check-in na modalidade", () => {
     const [resultado] = calcularOfensivas(
-      [presenca("ana", "2026-08-24"), presenca("ana", "2026-08-28")],
-      "2026-08-28",
+      [presenca("ana", "2026-09-07"), presenca("ana", "2026-09-11")],
+      "2026-09-11",
     )
 
     expect(resultado).toMatchObject({ diasAtuais: 5, maximoDias: 5 })
@@ -55,8 +78,8 @@ describe("calcularOfensivas", () => {
 
   it("conta no máximo uma vez por aluno e modalidade no mesmo dia", () => {
     const [resultado] = calcularOfensivas(
-      [presenca("ana", "2026-08-24"), presenca("ana", "2026-08-24"), presenca("ana", "2026-08-26")],
-      "2026-08-26",
+      [presenca("ana", "2026-09-07"), presenca("ana", "2026-09-07"), presenca("ana", "2026-09-09")],
+      "2026-09-09",
     )
 
     expect(resultado).toMatchObject({ diasAtuais: 3, maximoDias: 3 })
@@ -64,12 +87,12 @@ describe("calcularOfensivas", () => {
 
   it("não quebra a ofensiva de quem ainda pode treinar mais tarde no dia atual", () => {
     const resultadoHoje = calcularOfensivas(
-      [presenca("ana", "2026-08-24"), presenca("bia", "2026-08-26")],
-      "2026-08-26",
+      [presenca("ana", "2026-09-07"), presenca("bia", "2026-09-09")],
+      "2026-09-09",
     ).find((item) => item.alunoId === "ana")
     const resultadoAmanha = calcularOfensivas(
-      [presenca("ana", "2026-08-24"), presenca("bia", "2026-08-26")],
-      "2026-08-27",
+      [presenca("ana", "2026-09-07"), presenca("bia", "2026-09-09")],
+      "2026-09-10",
     ).find((item) => item.alunoId === "ana")
 
     expect(resultadoHoje?.diasAtuais).toBe(1)
@@ -79,11 +102,11 @@ describe("calcularOfensivas", () => {
   it("mantém ofensivas independentes por modalidade", () => {
     const resultados = calcularOfensivas(
       [
-        presenca("ana", "2026-08-24", "kickboxing"),
-        presenca("ana", "2026-08-26", "kickboxing"),
-        presenca("ana", "2026-08-25", "jiu-jitsu"),
+        presenca("ana", "2026-09-07", "kickboxing"),
+        presenca("ana", "2026-09-09", "kickboxing"),
+        presenca("ana", "2026-09-08", "jiu-jitsu"),
       ],
-      "2026-08-26",
+      "2026-09-09",
     )
 
     expect(resultados.find((item) => item.modalidadeId === "kickboxing")?.diasAtuais).toBe(3)
@@ -92,17 +115,17 @@ describe("calcularOfensivas", () => {
 
   it("recalcula segmentos quando uma presença retroativa é adicionada ou removida", () => {
     const semQuarta = calcularOfensivas(
-      [presenca("ana", "2026-08-24"), presenca("bia", "2026-08-26"), presenca("ana", "2026-08-28")],
-      "2026-08-29",
+      [presenca("ana", "2026-09-07"), presenca("bia", "2026-09-09"), presenca("ana", "2026-09-11")],
+      "2026-09-12",
     ).find((item) => item.alunoId === "ana")
     const comQuarta = calcularOfensivas(
       [
-        presenca("ana", "2026-08-24"),
-        presenca("ana", "2026-08-26"),
-        presenca("bia", "2026-08-26"),
-        presenca("ana", "2026-08-28"),
+        presenca("ana", "2026-09-07"),
+        presenca("ana", "2026-09-09"),
+        presenca("bia", "2026-09-09"),
+        presenca("ana", "2026-09-11"),
       ],
-      "2026-08-29",
+      "2026-09-12",
     ).find((item) => item.alunoId === "ana")
 
     expect(semQuarta).toMatchObject({ diasAtuais: 1, maximoDias: 1 })

@@ -39,6 +39,10 @@ type AlunoRanking = {
 
 const UM_DIA_MS = 86_400_000
 
+// Marco civil do ranking atual. Check-ins anteriores permanecem no histórico de presença/horas,
+// mas não formam dias ativos, ofensivas ou recordes neste novo ciclo.
+export const INICIO_RANKING_OFENSIVAS = "2026-08-31"
+
 function ordinalDia(dia: string): number {
   const [ano, mes, data] = dia.split("-").map(Number)
   return Date.UTC(ano, mes - 1, data) / UM_DIA_MS
@@ -67,7 +71,7 @@ export function calcularOfensivas(
 ): EstadoOfensiva[] {
   const presencasUnicas = new Map<string, PresencaOfensiva>()
   for (const presenca of presencasInformadas) {
-    if (presenca.dia > hoje) continue
+    if (presenca.dia < INICIO_RANKING_OFENSIVAS || presenca.dia > hoje) continue
     presencasUnicas.set(
       `${chaveEstado(presenca.alunoId, presenca.modalidadeId)}\u0000${presenca.dia}`,
       presenca,

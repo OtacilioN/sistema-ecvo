@@ -25,7 +25,8 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
 - **Ofensivas de treino**: `OfensivaTreino` materializa a ofensiva atual e máxima de cada par
   aluno/modalidade. O resumo é
   recalculável: a fonte canônica continua sendo `Checkin.status = VALIDO`, a data civil de `Aula.inicio`
-  e a modalidade preservada no crédito de `MovimentoHoras`.
+  e a modalidade preservada no crédito de `MovimentoHoras`. O ciclo vigente começa em 31/08/2026;
+  check-ins anteriores continuam preservados, mas são ignorados no cálculo do ranking.
 - **Solicitação pública de matrícula**: `SolicitacaoMatricula` guarda os dados fornecidos pelo candidato,
   a modalidade pretendida, `tipoPagamento` (mensalista, Wellhub ou TotalPass) e a declaração obrigatória
   de benefício ativo nos fluxos externos. Para mensalistas, também guarda o plano padrão aplicado e a

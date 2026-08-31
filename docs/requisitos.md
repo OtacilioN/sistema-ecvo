@@ -154,6 +154,9 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **RF-039.4** O aluno consulta um ranking geral da academia, rankings por modalidade e sua posição.
   Cada ranking classifica pela maior ofensiva histórica. No ranking geral vale o maior recorde do aluno
   entre suas modalidades, sem somá-las; quebrar a ofensiva atual não reduz sua pontuação no ranking.
+- **RF-039.5** O ciclo atual do ranking de ofensivas começa em **31/08/2026**. Check-ins de
+  30/08/2026 ou anteriores permanecem no histórico de presença e horas, mas não formam dias ativos,
+  ofensivas ou recordes desse ranking.
 
 ### Graduação
 - **RF-040** Cadastro de graduações por modalidade. **RF-041** Graduação atual por modalidade.
@@ -249,6 +252,8 @@ RN-029 ofensivas de modalidades diferentes nunca são combinadas; os rankings us
 e o ranking geral seleciona o maior recorde do aluno entre suas modalidades.
 RN-030 correções retroativas e invalidações recalculam ofensiva atual e máxima, pois presença inválida não
 pode sustentar recorde.
+RN-031 o ranking de ofensivas ignora integralmente check-ins anteriores a 31/08/2026; a partir desse marco,
+mantém as mesmas regras de dia ativo, quebra, deduplicação e independência por modalidade.
 
 ## 8. Requisitos não funcionais (RNF)
 

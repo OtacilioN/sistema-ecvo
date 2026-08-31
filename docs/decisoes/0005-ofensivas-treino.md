@@ -22,6 +22,8 @@ dia. O mesmo aluno também pode praticar várias modalidades com calendários in
   temporariamente a ofensiva de um aluno que ainda treinará à noite.
 - `OfensivaTreino` é um resumo materializado e recalculável, com ofensiva atual e máxima histórica. Check-in,
   invalidação e uma tarefa diária idempotente mantêm o resumo sincronizado.
+- O ciclo vigente do ranking começa em 31/08/2026. O histórico anterior permanece íntegro para presença
+  e horas, mas não participa dos dias ativos, sequências ou recordes do ranking.
 - Correções retroativas recalculam também a máxima: uma presença invalidada não sustenta um recorde.
 - Todos os rankings usam a maior ofensiva histórica. No ranking geral vale o maior recorde do aluno entre
   suas modalidades. Não somamos modalidades, para não favorecer artificialmente alunos multimodais.
