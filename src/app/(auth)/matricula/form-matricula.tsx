@@ -24,6 +24,8 @@ type Modalidade = Awaited<
   ReturnType<typeof import("@/lib/services/matricula.service").listarOpcoesPublicasMatricula>
 >[number]
 
+const classeCheckboxMatricula = "mt-0.5 size-5 shrink-0 cursor-pointer accent-primary"
+
 export function FormMatricula({
   modalidades,
   planoPadrao,
@@ -187,12 +189,12 @@ export function FormMatricula({
             titulo={`Confirmação ${parceiro}`}
             descricao="Esta declaração é obrigatória para enviar a solicitação."
           >
-            <label className="flex items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">
               <input
                 type="checkbox"
                 name="beneficioAtivoDeclarado"
                 required
-                className="mt-0.5 size-4 accent-primary"
+                className={classeCheckboxMatricula}
               />
               <span>
                 <span className="block font-medium">
@@ -207,13 +209,8 @@ export function FormMatricula({
           </Secao>
         )}
 
-        <label className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
-          <input
-            type="checkbox"
-            name="aceiteDados"
-            required
-            className="mt-0.5 size-4 accent-primary"
-          />
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
+          <input type="checkbox" name="aceiteDados" required className={classeCheckboxMatricula} />
           <span className="text-muted-foreground">
             Confirmo que os dados são verdadeiros e autorizo seu uso para análise e efetivação da
             matrícula.

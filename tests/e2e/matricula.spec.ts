@@ -44,6 +44,17 @@ test("atalho Wellhub exige Basic e não exibe cobrança", async ({ page }) => {
   await expect(page.getByText("Primeira mensalidade", { exact: true })).toHaveCount(0)
   await expect(page.getByText("Selecionar comprovante")).toHaveCount(0)
   await expect(page.getByRole("button", { name: "Enviar matrícula Wellhub" })).toBeVisible()
+
+  const dimensoesCheckboxes = await page.getByRole("checkbox").evaluateAll((checkboxes) =>
+    checkboxes.map((checkbox) => {
+      const { width, height } = checkbox.getBoundingClientRect()
+      return { width, height }
+    }),
+  )
+  expect(dimensoesCheckboxes).toEqual([
+    { width: 20, height: 20 },
+    { width: 20, height: 20 },
+  ])
 })
 
 test("atalho TotalPass exige TP1+ e não exibe cobrança", async ({ page }) => {
