@@ -465,6 +465,19 @@ export function mensagemLembreteVencimentoMensalidade(params: {
   }
 }
 
+export function mensagemLembretePagamentoMensalidadeAluno(params: {
+  competencia: string
+  vencimento: Date
+  valor: number
+}): { titulo: string; mensagem: string } {
+  return {
+    titulo: "Sua mensalidade vence em 5 dias",
+    mensagem: `${params.competencia}: vencimento em ${formatarData(
+      params.vencimento,
+    )}, valor ${formatarBRL(params.valor)}. Acesse o Financeiro para pagar via PIX.`,
+  }
+}
+
 export function mensagemInadimplenciaMensalidade(params: {
   alunoNome: string
   competencia: string
@@ -1361,10 +1374,11 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
   const agora = params?.agora ?? new Date()
   const hoje = inicioDoDia(agora)
   const amanha = intervaloDoDia(new Date(hoje.getTime() + 24 * 60 * 60 * 1000))
+  const emCincoDias = intervaloDoDia(new Date(hoje.getTime() + 5 * 24 * 60 * 60 * 1000))
   const vencidas = await vencerMensalidadesAtrasadas(cliente, { agora })
   const professoresNotificados = new Set<string>()
 
-  const [gestores, vencemAmanha, inadimplentes] = await Promise.all([
+  const [gestores, vencemAmanha, vencemEmCincoDias, inadimplentes] = await Promise.all([
     cliente.usuario.findMany({
       where: { papel: "GESTOR", ativo: true },
       select: { id: true },
@@ -1379,6 +1393,18 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
     }),
     cliente.mensalidade.findMany({
       where: {
+        status: "EM_ABERTO",
+        vencimento: { gte: emCincoDias.inicio, lt: emCincoDias.fim },
+        aluno: {
+          status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
+          usuario: { ativo: true },
+        },
+      },
+      include: { aluno: { select: { usuario: { select: { id: true } } } } },
+      orderBy: { vencimento: "asc" },
+    }),
+    cliente.mensalidade.findMany({
+      where: {
         status: "VENCIDA",
       },
       include: { aluno: { select: { usuario: { select: { nome: true } } } } },
@@ -1387,7 +1413,19 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
   ])
 
   let lembretesCriados = 0
+  let lembretesPagamentoCriados = 0
   let inadimplenciasCriadas = 0
+
+  for (const mensalidade of vencemEmCincoDias) {
+    const conteudo = mensagemLembretePagamentoMensalidadeAluno({
+      competencia: mensalidade.competencia,
+      vencimento: mensalidade.vencimento,
+      valor: Number(mensalidade.valor),
+    })
+    if (await criarNotificacaoFinanceiraUnica(cliente, mensalidade.aluno.usuario.id, conteudo)) {
+      lembretesPagamentoCriados++
+    }
+  }
 
   for (const mensalidade of vencemAmanha) {
     const conteudo = mensagemLembreteVencimentoMensalidade({
@@ -1436,10 +1474,12 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
     mensalidadesVencidasAtualizadas: vencidas.mensalidadesVencidas,
     alunosInadimplentesNotificados: vencidas.alunosNotificados,
     mensalidadesAVencer: vencemAmanha.length,
+    mensalidadesComLembretePagamento: vencemEmCincoDias.length,
     mensalidadesInadimplentes: inadimplentes.length,
     lembretesCriados,
+    lembretesPagamentoCriados,
     inadimplenciasCriadas,
-    totalCriado: lembretesCriados + inadimplenciasCriadas,
+    totalCriado: lembretesCriados + lembretesPagamentoCriados + inadimplenciasCriadas,
   }
 }
 

@@ -7,6 +7,7 @@ import {
   lerRepasseSnapshotMensalidade,
   mensagemInadimplenciaMensalidade,
   mensagemInadimplenciaMensalidadeAluno,
+  mensagemLembretePagamentoMensalidadeAluno,
   mensagemLembreteVencimentoMensalidade,
   mensagemPagamentoAvulso,
   mensagemStatusMensalidade,
@@ -530,6 +531,18 @@ describe("gerarLembretesFinanceiros", () => {
           where?: { status?: string; vencimento?: { lt?: Date; gte?: Date } }
         }) => {
           if (params.where?.status === "EM_ABERTO" && params.where.vencimento?.gte) {
+            if (params.where.vencimento.gte.getUTCDate() === 16) {
+              return [
+                {
+                  id: "mensalidade-lembrete-pagamento",
+                  alunoId: "aluno-lembrete-pagamento",
+                  competencia: "2026-06",
+                  vencimento: new Date("2026-06-16T12:00:00Z"),
+                  valor: 275,
+                  aluno: { usuario: { id: "usuario-aluno-1" } },
+                },
+              ]
+            }
             return [
               {
                 id: "mensalidade-a-vencer",
@@ -586,13 +599,19 @@ describe("gerarLembretesFinanceiros", () => {
       gestoresNotificados: 1,
       professoresNotificados: 2,
       mensalidadesAVencer: 1,
+      mensalidadesComLembretePagamento: 1,
       mensalidadesInadimplentes: 1,
       lembretesCriados: 2,
+      lembretesPagamentoCriados: 1,
       inadimplenciasCriadas: 3,
-      totalCriado: 5,
+      totalCriado: 6,
     })
     expect(professoresBuscados).toHaveLength(2)
     expect(notificacoes.map((notificacao) => notificacao.data)).toEqual([
+      expect.objectContaining({
+        usuarioId: "usuario-aluno-1",
+        titulo: "Sua mensalidade vence em 5 dias",
+      }),
       expect.objectContaining({
         usuarioId: "usuario-gestor-1",
         titulo: "Mensalidade vence amanhã",
@@ -618,6 +637,18 @@ describe("gerarLembretesFinanceiros", () => {
 })
 
 describe("mensagens de lembrete financeiro", () => {
+  it("gera lembrete de pagamento para o aluno cinco dias antes do vencimento", () => {
+    const mensagem = mensagemLembretePagamentoMensalidadeAluno({
+      competencia: "2026-06",
+      vencimento: new Date("2026-06-16T12:00:00Z"),
+      valor: 275,
+    })
+    expect(mensagem.titulo).toBe("Sua mensalidade vence em 5 dias")
+    expect(mensagem.mensagem).toContain("2026-06: vencimento em 16/06/2026")
+    expect(mensagem.mensagem).toContain("275,00")
+    expect(mensagem.mensagem).toContain("Acesse o Financeiro para pagar via PIX.")
+  })
+
   it("gera lembrete de vencimento no padrão pt-BR", () => {
     const mensagem = mensagemLembreteVencimentoMensalidade({
       alunoNome: "Ana Silva",
