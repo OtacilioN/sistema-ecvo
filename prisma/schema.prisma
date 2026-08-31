@@ -279,6 +279,7 @@ model Aluno {
   checkins                      Checkin[]
   tentativasCheckinInadimplente TentativaCheckinInadimplente[]
   movimentosHoras               MovimentoHoras[]
+  ofensivasTreino               OfensivaTreino[]
   graduacoes                    GraduacaoAluno[]
   mensalidades                  Mensalidade[]
   pagamentos                    Pagamento[]
@@ -387,6 +388,7 @@ model Modalidade {
   graduacoes                       Graduacao[]
   turmas                           Turma[]
   movimentosHoras                  MovimentoHoras[]
+  ofensivasTreino                  OfensivaTreino[]
   exames                           Exame[]
   alunosPlanos                     AlunoPlanoModalidade[]
   solicitacoesMatricula            SolicitacaoMatricula[]
@@ -524,6 +526,25 @@ model MovimentoHoras {
   @@index([alunoId])
   @@index([modalidadeId])
   @@index([checkinId])
+}
+
+// Resumo materializado da ofensiva por aluno e modalidade. A fonte de verdade continua
+// sendo o histórico de Checkin VALIDO; este resumo é persistido e integralmente recalculável.
+model OfensivaTreino {
+  aluno          Aluno      @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId        String
+  modalidade     Modalidade @relation(fields: [modalidadeId], references: [id], onDelete: Cascade)
+  modalidadeId   String
+  diasAtuais     Int        @default(0)
+  maximoDias     Int        @default(0)
+  inicioAtualEm  DateTime?  @db.Date
+  ultimoTreinoEm DateTime?  @db.Date
+  criadoEm       DateTime   @default(now())
+  atualizadoEm   DateTime   @updatedAt
+
+  @@id([alunoId, modalidadeId])
+  @@index([modalidadeId, maximoDias])
+  @@index([maximoDias])
 }
 
 // ───────────────────────── Graduação ─────────────────────────

@@ -12,6 +12,11 @@ O modelo técnico legado `Comparecimento` representa o agendamento da aula pelo 
 | **Invalidar / excluir check-in** | Ação de professor/gestor quando o aluno fez check-in mas não treinou. Remove a presença e **estorna** as horas, com log de auditoria (RF-027/028/035). |
 | **Estorno de horas** | Movimento negativo no livro-razão de horas que reverte um crédito (por invalidação de check-in). As horas originais não são apagadas. |
 | **Horas treinadas** | Soma das durações das aulas com check-in válido. Exibidas no total geral (jornada das 10 mil horas) e por modalidade (RF-032/033). |
+| **Ofensiva de treino** | Sequência de participação do aluno em uma modalidade, medida em dias civis inclusivos desde o primeiro treino da sequência até o último. Não é quantidade de check-ins. |
+| **Dia ativo da modalidade** | Dia civil em que pelo menos um aluno fez check-in válido na modalidade. Somente um dia ativo já encerrado pode quebrar a ofensiva de quem faltou; dia sem check-in de ninguém é neutro. |
+| **Ofensiva atual** | Duração da sequência ainda mantida pelo aluno em uma modalidade. Zera após uma falta em dia ativo já encerrado. |
+| **Máxima ofensiva** | Maior ofensiva válida já atingida pelo aluno em uma modalidade. É recalculada se uma presença for invalidada ou excluída. |
+| **Ranking geral de ofensivas** | Classificação dos alunos operacionais pela maior ofensiva histórica entre suas modalidades, sem somá-las. Quebrar a sequência atual não reduz o recorde usado no ranking; recordes iguais compartilham posição. |
 | **Marco** | Marca de progresso de horas (10, 50, 100, 250, 500, 1.000, 2.500, 5.000, 10.000h) — engajamento, não promessa (RF-036/037). |
 | **Graduação** | Faixa/nível do aluno em uma modalidade (ex.: faixa azul de jiu-jitsu). Concedida pelo professor; nunca automática (RN-009/010). |
 | **Modalidade** | Esporte/disciplina oferecido (jiu-jitsu, kickboxing, muay thai, boxe, MMA, wrestling, defesa pessoal, funcional…). |

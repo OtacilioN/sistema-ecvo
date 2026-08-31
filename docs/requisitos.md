@@ -143,6 +143,17 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **RF-038** Ajuste manual de horas (modalidade, quantidade, motivo, responsável, auditoria);
   professores só podem lançar horas positivas para alunos vinculados às suas modalidades.
 - **RF-039** Prevenção de duplicidade (mesma aula não conta duas vezes).
+- **RF-039.1** Cada aluno possui uma ofensiva de treino independente por modalidade. O valor é o
+  intervalo de dias civis, inclusivo, entre o primeiro e o último treino da sequência (por exemplo:
+  segunda = 1, quarta = 3, sexta = 5 e segunda seguinte = 8).
+- **RF-039.2** Um dia só pode quebrar ofensivas de uma modalidade quando pelo menos um aluno fez
+  check-in válido nela. A ausência é consolidada depois do encerramento do dia da academia; um dia
+  sem qualquer check-in válido é neutro.
+- **RF-039.3** O sistema mantém a ofensiva atual e a máxima ofensiva atingida por aluno e modalidade.
+  Check-in invalidado/excluído não conta e provoca recálculo do histórico afetado.
+- **RF-039.4** O aluno consulta um ranking geral da academia, rankings por modalidade e sua posição.
+  Cada ranking classifica pela maior ofensiva histórica. No ranking geral vale o maior recorde do aluno
+  entre suas modalidades, sem somá-las; quebrar a ofensiva atual não reduz sua pontuação no ranking.
 
 ### Graduação
 - **RF-040** Cadastro de graduações por modalidade. **RF-041** Graduação atual por modalidade.
@@ -230,6 +241,15 @@ manual auditada. Tentativas remotas permanecem no histórico; somente uma pode e
 RN-025 o plano padrão deve estar ativo e ter periodicidade mensal. A cobrança de matrícula preserva plano,
 competência e valor apresentados ao candidato; uma troca posterior do padrão não altera essa cobrança.
 
+RN-026 ofensivas usam somente `Checkin.status = VALIDO` e a data civil da aula no fuso da academia.
+RN-027 vários check-ins do mesmo aluno, modalidade e dia contam uma única vez para a ofensiva.
+RN-028 uma falta só quebra a ofensiva quando o dia terminou e houve ao menos um check-in válido de outro
+aluno na modalidade; o primeiro check-in do dia não pode quebrar antecipadamente quem treinará mais tarde.
+RN-029 ofensivas de modalidades diferentes nunca são combinadas; os rankings usam a maior ofensiva histórica
+e o ranking geral seleciona o maior recorde do aluno entre suas modalidades.
+RN-030 correções retroativas e invalidações recalculam ofensiva atual e máxima, pois presença inválida não
+pode sustentar recorde.
+
 ## 8. Requisitos não funcionais (RNF)
 
 RNF-001 web responsivo · RNF-002 experiência mobile do aluno · RNF-003 performance em telas críticas ·
@@ -246,6 +266,12 @@ invalidação · CA-010 mensalista inadimplente aplica regra configurada · CA-0
 e check-in do aluno exige confirmação prévia no aplicativo externo ·
 CA-013/014 importação concilia com histórico · CA-015 registro não conciliado → pendente · CA-016 conciliação
 manual com log · CA-017 check-in invalidado sinaliza divergência · CA-018 graduação atualiza atual + histórico.
+
+CA-019 check-ins válidos em segunda, quarta, sexta e segunda seguinte exibem 1, 3, 5 e 8 dias ·
+CA-020 se ninguém treinar em um feriado, nenhuma ofensiva da modalidade quebra · CA-021 se ao menos um aluno
+treinar e outro faltar, a ofensiva do ausente zera após o fechamento do dia e preserva o recorde válido ·
+CA-022 aluno multimodal visualiza ofensivas separadas, ranking geral, ranking por modalidade e sua posição;
+após quebrar uma ofensiva de 50 dias e iniciar outra de 1, 2 ou 5 dias, continua classificado pelos 50 dias.
 
 ## 10. Fluxos principais
 

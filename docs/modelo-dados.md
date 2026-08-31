@@ -22,6 +22,10 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
   janela padrão. O check-in continua vinculado a uma `Aula` oficial para preservar presença, horas,
   capacidade e duplicidade; `Checkin.realizadoEm` guarda o horário real e
   `associadoAutomaticamente` preserva que a aula foi escolhida pelo sistema.
+- **Ofensivas de treino**: `OfensivaTreino` materializa a ofensiva atual e máxima de cada par
+  aluno/modalidade. O resumo é
+  recalculável: a fonte canônica continua sendo `Checkin.status = VALIDO`, a data civil de `Aula.inicio`
+  e a modalidade preservada no crédito de `MovimentoHoras`.
 - **Solicitação pública de matrícula**: `SolicitacaoMatricula` guarda os dados fornecidos pelo candidato,
   a modalidade pretendida, `tipoPagamento` (mensalista, Wellhub ou TotalPass) e a declaração obrigatória
   de benefício ativo nos fluxos externos. Para mensalistas, também guarda o plano padrão aplicado e a
@@ -37,7 +41,7 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
 ## Entidades
 
 Usuário · Aluno · Responsavel · Professor · Modalidade · Turma · Aula · Comparecimento (agendamento de aula) · Checkin ·
-TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · Graduacao · GraduacaoAluno ·
+TentativaCheckinInadimplente · TokenCheckinAcademia · MovimentoHoras · OfensivaTreino · Graduacao · GraduacaoAluno ·
 Exame · InscricaoExame · Plano · AlunoPlanoModalidade · Mensalidade · Pagamento · ClienteAsaas ·
 ContratoPixAutomatico · CobrancaAsaas · CobrancaMatriculaAsaas · EventoWebhookAsaas · SolicitacaoMatricula · Importacao ·
 RegistroImportado · LogAuditoria · ConfiguracaoAcademia · Notificacao · InscricaoPush.
@@ -61,6 +65,7 @@ erDiagram
   Aluno ||--o{ Checkin : ""
   Aluno ||--o{ TentativaCheckinInadimplente : ""
   Aluno ||--o{ MovimentoHoras : ""
+  Aluno ||--o{ OfensivaTreino : "mantém por modalidade"
   Aluno ||--o{ GraduacaoAluno : ""
   Aluno ||--o{ Mensalidade : ""
   Aluno ||--o{ Pagamento : ""
@@ -79,6 +84,7 @@ erDiagram
   Modalidade ||--o{ Turma : ""
   Modalidade ||--o{ Graduacao : ""
   Modalidade ||--o{ MovimentoHoras : ""
+  Modalidade ||--o{ OfensivaTreino : "classifica"
   Turma ||--o{ Aula : "gera"
 
   Aula ||--o{ Comparecimento : ""
@@ -141,6 +147,10 @@ erDiagram
   cancelamento, exigência/política de check-in sem agendamento e lista de espera. Também pode ativar
   check-in sem restrição de horário; esta opção é própria da modalidade e não altera a exigência de
   agendamento. Campos nulos herdam a regra global de `ConfiguracaoAcademia`.
+- **OfensivaTreino** tem chave composta `alunoId + modalidadeId` e guarda os dias atuais, o recorde,
+  o início atual e o último treino. A rotina diária fecha ausências somente depois da virada do dia em
+  `America/Sao_Paulo`; check-in e invalidação recalculam imediatamente a modalidade sob lock. Dias sem
+  check-in válido de ninguém não entram no calendário de ofensivas.
 - **GraduacaoAluno** guarda a graduação concedida e, quando houver, `graduacaoAnteriorId`; isso preserva o
   histórico `anterior -> nova` exigido por RF-042 sem depender do log de auditoria para reconstruir a troca.
 - **LogAuditoria** guarda `valorAntigo`/`valorNovo` como JSON, gravado na mesma transação da ação crítica.

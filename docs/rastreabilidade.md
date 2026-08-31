@@ -31,6 +31,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Observações técnicas do aluno pelo professor (RF-003/RF-026/RF-079) | `Aluno`,`LogAuditoria` | `src/lib/services/aluno.service.ts`, `src/app/actions/treino.ts`, `professor/aula/[id]`, `aluno/perfil` |
 | Registro retroativo de check-in com justificativa e auditoria (RF-031) | `Checkin`,`LogAuditoria` | `checkinRetroativo`, `realizarCheckin`, `acaoLancarCheckin`, `professor/aula/[id]` |
 | Horas + estorno (RF-030..039) | `MovimentoHoras` | `src/lib/services/horas.service.ts`, `aluno/horas` |
+| Ofensivas por modalidade, recorde, fechamento diário e rankings do aluno (RF-039.1..039.4/RN-026..030/CA-019..022) | `OfensivaTreino`,`Checkin`,`MovimentoHoras` | `src/lib/services/ofensiva.service.ts`, `src/lib/services/ofensiva.service.test.ts`, `src/lib/services/checkin.service.ts`, `src/app/api/tarefas/sincronizar-ofensivas`, `aluno/ranking` |
 | Acompanhamento de horas por modalidade pelo professor (RF-026/RF-032/RF-033) | `MovimentoHoras`,`Aluno`,`Modalidade` | `professor/graduacoes` |
 | Ajuste manual de horas com auditoria (RF-038) | `MovimentoHoras`,`LogAuditoria` | `src/lib/services/horas.service.ts`, `src/app/actions/horas.ts`, `gestao/alunos`, `professor/graduacoes` |
 | Invalidação por professor/gestor (RF-027/028/035) | `Checkin`,`MovimentoHoras`,`LogAuditoria` | `checkin.service.ts`, `auditoria.service.ts`, `professor/aula/[id]`, `gestao/turmas/aula/[id]` |

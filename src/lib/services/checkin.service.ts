@@ -23,6 +23,7 @@ import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
 import { resolverRegrasTreino } from "@/lib/services/configuracao.service"
 import { creditarPorCheckin, estornarCheckin } from "@/lib/services/horas.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
+import { sincronizarOfensivasDaModalidade } from "@/lib/services/ofensiva.service"
 import {
   MENSAGEM_TERMO_RESPONSABILIDADE_PENDENTE,
   termoResponsabilidadeAtualAceito,
@@ -705,6 +706,8 @@ export async function realizarCheckin(params: {
   let checkinId: string
   try {
     checkinId = await db.$transaction(async (tx) => {
+      // Serializa a modalidade para manter a ofensiva consistente entre turmas/horários concorrentes.
+      await tx.$queryRaw`SELECT "id" FROM "Modalidade" WHERE "id" = ${aula.turma.modalidadeId} FOR UPDATE`
       // Serializa check-ins da mesma aula para revalidar duplicidade e capacidade sem corrida.
       await tx.$queryRaw`SELECT "id" FROM "Aula" WHERE "id" = ${aula.id} FOR UPDATE`
       const [aulaAtual, checkinAtual, comparecimentoAtual, comparecimentosAtivos, checkinsValidos] =
@@ -857,6 +860,13 @@ export async function realizarCheckin(params: {
         }
       }
 
+      if (!avaliacao.pendenteRevisao) {
+        await sincronizarOfensivasDaModalidade(tx, {
+          modalidadeId: aulaAtual.turma.modalidadeId,
+          agora,
+        })
+      }
+
       return checkin.id
     })
   } catch (erro) {
@@ -889,8 +899,20 @@ export async function invalidarCheckin(params: {
       aula: {
         select: {
           inicio: true,
-          turma: { select: { nome: true, modalidade: { select: { nome: true } } } },
+          turma: {
+            select: {
+              nome: true,
+              modalidadeId: true,
+              modalidade: { select: { nome: true } },
+            },
+          },
         },
+      },
+      movimentos: {
+        where: { tipo: "CREDITO" },
+        orderBy: { criadoEm: "asc" },
+        take: 1,
+        select: { modalidadeId: true },
       },
     },
   })
@@ -898,6 +920,8 @@ export async function invalidarCheckin(params: {
   if (checkin.status !== "VALIDO") return { ok: false, motivo: "Check-in já não está válido." }
 
   const foiInvalidado = await db.$transaction(async (tx) => {
+    const modalidadeId = checkin.movimentos[0]?.modalidadeId ?? checkin.aula.turma.modalidadeId
+    await tx.$queryRaw`SELECT "id" FROM "Modalidade" WHERE "id" = ${modalidadeId} FOR UPDATE`
     await tx.$queryRaw`SELECT "id" FROM "Checkin" WHERE "id" = ${checkin.id} FOR UPDATE`
     const checkinAtual = await tx.checkin.findUnique({
       where: { id: checkin.id },
@@ -940,6 +964,8 @@ export async function invalidarCheckin(params: {
       titulo: params.excluir ? "Seu check-in foi removido" : "Seu check-in foi invalidado",
       mensagem: `${checkin.aula.turma.nome ?? checkin.aula.turma.modalidade.nome}, em ${formatarDataHora(checkin.aula.inicio)}. Motivo: ${params.justificativa}`,
     })
+
+    await sincronizarOfensivasDaModalidade(tx, { modalidadeId })
 
     return true
   })
