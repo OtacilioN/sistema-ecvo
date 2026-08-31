@@ -76,7 +76,14 @@ export async function acaoCheckinAlunoQr(
   const { alunoId, usuario } = await exigirAluno()
   const aulaId = String(formData.get("aulaId"))
   const token = String(formData.get("token") ?? "")
-  const r = await realizarCheckinQr({ alunoId, aulaId, autorId: usuario.id, token })
+  const confirmouCheckinPlataforma = formData.get("confirmouCheckinPlataforma") === "on"
+  const r = await realizarCheckinQr({
+    alunoId,
+    aulaId,
+    autorId: usuario.id,
+    token,
+    confirmouCheckinPlataforma,
+  })
   revalidatePath("/aluno")
   revalidatePath("/aluno/checkin")
   revalidatePath(`/aluno/checkin/${aulaId}`)
@@ -119,6 +126,7 @@ export async function acaoCheckinAlunoGeolocalizacao(
   const r = await realizarCheckinGeolocalizacao({
     alunoId,
     autorId: usuario.id,
+    confirmouCheckinPlataforma: formData.get("confirmouCheckinPlataforma") === "on",
     ...dados.data,
   })
   revalidatePath("/aluno")

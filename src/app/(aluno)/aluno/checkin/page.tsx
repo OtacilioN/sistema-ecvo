@@ -10,6 +10,7 @@ import {
   selecionarAulaReferenciaCheckinLivre,
   TOLERANCIA_PADRAO_CHECKIN_MINUTOS,
 } from "@/lib/checkin-horario"
+import { plataformaCheckinDoTipo } from "@/lib/checkin-plataforma"
 import { db } from "@/lib/db"
 import { montarCandidataCheckinLivre } from "@/lib/services/checkin.service"
 import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
@@ -63,6 +64,7 @@ export default async function CheckinGlobalPage({
       aluno &&
       (aluno.tipo !== "MENSALISTA" || (aluno.planoId && modalidadesInternas.size > 0)),
   )
+  const plataformaCheckin = plataformaCheckinDoTipo(aluno?.tipo)
   const modalidadeIds = matriculaLiberada
     ? (aluno?.modalidades
         .filter(
@@ -258,9 +260,13 @@ export default async function CheckinGlobalPage({
                     Check-in pendente de revisão.
                   </p>
                 ) : tokenAtual ? (
-                  <FormCheckinGlobal aulaId={aula.id} token={token ?? ""} />
+                  <FormCheckinGlobal
+                    aulaId={aula.id}
+                    token={token ?? ""}
+                    plataforma={plataformaCheckin}
+                  />
                 ) : (
-                  <FormCheckinGeolocalizacao aulaId={aula.id} />
+                  <FormCheckinGeolocalizacao aulaId={aula.id} plataforma={plataformaCheckin} />
                 )}
               </CardContent>
             </Card>

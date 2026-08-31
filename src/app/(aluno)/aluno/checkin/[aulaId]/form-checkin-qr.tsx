@@ -1,22 +1,27 @@
 "use client"
 
 import { Check, QrCode, ShieldAlert } from "lucide-react"
-import { useActionState } from "react"
+import { useActionState, useState } from "react"
 import { acaoCheckinAlunoQr, type EstadoTreino } from "@/app/actions/treino"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
+import type { PlataformaCheckin } from "@/lib/checkin-plataforma"
+import { ConfirmacaoCheckinPlataforma } from "../confirmacao-checkin-plataforma"
 
 export function FormCheckinQr({
   aulaId,
   token,
   jaPresente,
   pendenteRevisao,
+  plataforma,
 }: {
   aulaId: string
   token: string
   jaPresente: boolean
   pendenteRevisao: boolean
+  plataforma: PlataformaCheckin | null
 }) {
   const [estado, acao] = useActionState<EstadoTreino, FormData>(acaoCheckinAlunoQr, undefined)
+  const [confirmada, setConfirmada] = useState(false)
 
   if (jaPresente || (estado?.ok && !estado.pendenteRevisao)) {
     return (
@@ -39,7 +44,14 @@ export function FormCheckinQr({
     <form action={acao} className="space-y-3">
       <input type="hidden" name="aulaId" value={aulaId} />
       <input type="hidden" name="token" value={token} />
-      <BotaoEnviar className="w-full">
+      {plataforma && (
+        <ConfirmacaoCheckinPlataforma
+          plataforma={plataforma}
+          confirmada={confirmada}
+          onChange={setConfirmada}
+        />
+      )}
+      <BotaoEnviar className="w-full" disabled={Boolean(plataforma && !confirmada)}>
         <QrCode className="size-4" />
         Confirmar check-in
       </BotaoEnviar>

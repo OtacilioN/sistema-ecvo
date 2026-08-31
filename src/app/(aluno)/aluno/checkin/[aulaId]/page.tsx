@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { exigirAluno } from "@/lib/auth/dal"
+import { plataformaCheckinDoTipo } from "@/lib/checkin-plataforma"
 import { db } from "@/lib/db"
 import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
 import { FormCheckinQr } from "./form-checkin-qr"
@@ -23,7 +24,7 @@ export default async function CheckinQrPage({
 
   const aluno = await db.aluno.findUnique({
     where: { id: alunoId },
-    select: { status: true },
+    select: { status: true, tipo: true },
   })
   const alunoOperacional = Boolean(aluno && alunoContaOperacionalmente(aluno.status))
 
@@ -83,6 +84,7 @@ export default async function CheckinQrPage({
               token={token ?? ""}
               jaPresente={jaPresente}
               pendenteRevisao={pendenteRevisao}
+              plataforma={plataformaCheckinDoTipo(aluno?.tipo)}
             />
           )}
         </CardContent>

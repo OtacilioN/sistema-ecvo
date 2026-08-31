@@ -27,6 +27,7 @@ const base: ContextoCheckin = {
   mensalidadeInternaNaModalidade: true,
   mensalidadeEmDia: true,
   termoResponsabilidadeAceito: true,
+  confirmouCheckinPlataforma: false,
 }
 
 describe("avaliarCheckin", () => {
@@ -66,9 +67,43 @@ describe("avaliarCheckin", () => {
           possuiPlanoPagamento: false,
           modalidadeCobertaPeloPlano: false,
           mensalidadeInternaNaModalidade: false,
+          confirmouCheckinPlataforma: tipoAluno !== "AVULSO",
         }),
       ).toEqual({ ok: true })
     }
+  })
+
+  it.each([
+    ["WELLHUB", "Wellhub"],
+    ["TOTALPASS", "TotalPass"],
+  ] as const)("bloqueia aluno %s sem confirmação do check-in no aplicativo", (tipoAluno, nome) => {
+    expect(
+      avaliarCheckin({
+        ...base,
+        tipoAluno,
+        possuiPlanoPagamento: false,
+        modalidadeCobertaPeloPlano: false,
+        mensalidadeInternaNaModalidade: false,
+        confirmouCheckinPlataforma: false,
+      }),
+    ).toEqual({
+      ok: false,
+      motivo: `Confirme que você já realizou o check-in no aplicativo ${nome} primeiro.`,
+    })
+  })
+
+  it("permite que a equipe lance check-in de aluno externo sem a confirmação do formulário", () => {
+    expect(
+      avaliarCheckin({
+        ...base,
+        tipoAluno: "WELLHUB",
+        possuiPlanoPagamento: false,
+        modalidadeCobertaPeloPlano: false,
+        mensalidadeInternaNaModalidade: false,
+        confirmouCheckinPlataforma: false,
+        lancadoPorTerceiro: true,
+      }),
+    ).toEqual({ ok: true })
   })
 
   it("bloqueia inadimplente só quando a política é BLOQUEAR_CHECKIN", () => {
@@ -96,6 +131,7 @@ describe("avaliarCheckin", () => {
         mensalidadeInternaNaModalidade: false,
         mensalidadeEmDia: false,
         bloqueioInadimplencia: "BLOQUEAR_CHECKIN",
+        confirmouCheckinPlataforma: true,
       }),
     ).toEqual({ ok: true })
   })
@@ -108,6 +144,7 @@ describe("avaliarCheckin", () => {
         mensalidadeInternaNaModalidade: true,
         mensalidadeEmDia: false,
         bloqueioInadimplencia: "BLOQUEAR_CHECKIN",
+        confirmouCheckinPlataforma: true,
       }),
     ).toMatchObject({ ok: false })
   })

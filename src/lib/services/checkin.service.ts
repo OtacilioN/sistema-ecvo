@@ -12,6 +12,10 @@ import {
   podeRealizarCheckinNaJanela,
   selecionarAulaReferenciaCheckinLivre,
 } from "@/lib/checkin-horario"
+import {
+  mensagemConfirmacaoCheckinPlataforma,
+  plataformaCheckinDoTipo,
+} from "@/lib/checkin-plataforma"
 import { db } from "@/lib/db"
 import { coordenadasGeograficasValidas, estaProximoDaAcademia } from "@/lib/geolocalizacao"
 import { registrarLog } from "@/lib/services/auditoria.service"
@@ -54,6 +58,7 @@ export type ContextoCheckin = {
   mensalidadeInternaNaModalidade: boolean
   mensalidadeEmDia: boolean
   termoResponsabilidadeAceito: boolean
+  confirmouCheckinPlataforma: boolean
 }
 
 export type AvaliacaoCheckin =
@@ -78,6 +83,14 @@ export function avaliarCheckin(ctx: ContextoCheckin): AvaliacaoCheckin {
     return {
       ok: false,
       motivo: "Matrícula pendente de aprovação e vínculo de plano.",
+    }
+  }
+
+  const plataformaCheckin = plataformaCheckinDoTipo(ctx.tipoAluno)
+  if (plataformaCheckin && !ctx.lancadoPorTerceiro && !ctx.confirmouCheckinPlataforma) {
+    return {
+      ok: false,
+      motivo: mensagemConfirmacaoCheckinPlataforma(plataformaCheckin),
     }
   }
 
@@ -409,6 +422,7 @@ export async function realizarCheckinQr(params: {
   aulaId: string
   autorId: string
   token: string
+  confirmouCheckinPlataforma: boolean
   agora?: Date
 }): Promise<ResultadoCheckin> {
   if (!(await tokenCheckinValido(params.token))) {
@@ -424,6 +438,7 @@ export async function realizarCheckinQr(params: {
     aulaId: params.aulaId,
     autorId: params.autorId,
     origem: "QR_CODE",
+    confirmouCheckinPlataforma: params.confirmouCheckinPlataforma,
     agora: params.agora ?? new Date(),
   })
 }
@@ -438,6 +453,7 @@ export async function realizarCheckinGeolocalizacao(params: {
   autorId: string
   latitude: number
   longitude: number
+  confirmouCheckinPlataforma: boolean
   agora?: Date
 }): Promise<ResultadoCheckin> {
   if (!coordenadasGeograficasValidas(params.latitude, params.longitude)) {
@@ -462,6 +478,7 @@ export async function realizarCheckinGeolocalizacao(params: {
     aulaId: params.aulaId,
     autorId: params.autorId,
     origem: "GEOLOCALIZACAO",
+    confirmouCheckinPlataforma: params.confirmouCheckinPlataforma,
     agora: params.agora ?? new Date(),
   })
 }
@@ -471,6 +488,7 @@ async function realizarCheckinComAulaReferencia(params: {
   aulaId: string
   autorId: string
   origem: OrigemCheckin
+  confirmouCheckinPlataforma: boolean
   agora: Date
 }): Promise<ResultadoCheckin> {
   const referencia = await resolverAulaReferenciaCheckinAluno(params)
@@ -483,6 +501,7 @@ async function realizarCheckinComAulaReferencia(params: {
     origem: params.origem,
     exigirJanelaCheckin: true,
     bloquearInadimplenciaSempre: true,
+    confirmouCheckinPlataforma: params.confirmouCheckinPlataforma,
     associadoAutomaticamente: referencia.associadoAutomaticamente,
     agora: params.agora,
   })
@@ -506,6 +525,7 @@ async function realizarCheckinComAulaReferencia(params: {
     origem: params.origem,
     exigirJanelaCheckin: true,
     bloquearInadimplenciaSempre: true,
+    confirmouCheckinPlataforma: params.confirmouCheckinPlataforma,
     associadoAutomaticamente: true,
     agora: params.agora,
   })
@@ -525,6 +545,7 @@ export async function realizarCheckin(params: {
   justificativa?: string
   exigirJanelaCheckin?: boolean
   bloquearInadimplenciaSempre?: boolean
+  confirmouCheckinPlataforma?: boolean
   associadoAutomaticamente?: boolean
   agora?: Date
 }): Promise<ResultadoCheckin> {
@@ -653,6 +674,7 @@ export async function realizarCheckin(params: {
     mensalidadeInternaNaModalidade: Boolean(mensalidadeInternaNaModalidade),
     mensalidadeEmDia: emDia,
     termoResponsabilidadeAceito: termoAceito,
+    confirmouCheckinPlataforma: params.confirmouCheckinPlataforma ?? false,
   })
   if (!avaliacao.ok) {
     if (!termoAceito) {

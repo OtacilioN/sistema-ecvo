@@ -4,8 +4,16 @@ import { Loader2, MapPin, ShieldAlert } from "lucide-react"
 import { useActionState, useRef, useState } from "react"
 import { acaoCheckinAlunoGeolocalizacao, type EstadoTreino } from "@/app/actions/treino"
 import { Button } from "@/components/ui/button"
+import type { PlataformaCheckin } from "@/lib/checkin-plataforma"
+import { ConfirmacaoCheckinPlataforma } from "./confirmacao-checkin-plataforma"
 
-export function FormCheckinGeolocalizacao({ aulaId }: { aulaId: string }) {
+export function FormCheckinGeolocalizacao({
+  aulaId,
+  plataforma,
+}: {
+  aulaId: string
+  plataforma: PlataformaCheckin | null
+}) {
   const formRef = useRef<HTMLFormElement>(null)
   const latitudeRef = useRef<HTMLInputElement>(null)
   const longitudeRef = useRef<HTMLInputElement>(null)
@@ -15,6 +23,8 @@ export function FormCheckinGeolocalizacao({ aulaId }: { aulaId: string }) {
   )
   const [buscandoLocalizacao, setBuscandoLocalizacao] = useState(false)
   const [erroLocalizacao, setErroLocalizacao] = useState<string | null>(null)
+  const [confirmada, setConfirmada] = useState(false)
+  const confirmacaoPendente = Boolean(plataforma && !confirmada)
 
   function solicitarLocalizacao() {
     if (!window.isSecureContext) {
@@ -49,10 +59,17 @@ export function FormCheckinGeolocalizacao({ aulaId }: { aulaId: string }) {
       <input type="hidden" name="aulaId" value={aulaId} />
       <input ref={latitudeRef} type="hidden" name="latitude" />
       <input ref={longitudeRef} type="hidden" name="longitude" />
+      {plataforma && (
+        <ConfirmacaoCheckinPlataforma
+          plataforma={plataforma}
+          confirmada={confirmada}
+          onChange={setConfirmada}
+        />
+      )}
       <Button
         type="button"
         className="w-full"
-        disabled={buscandoLocalizacao || pendente}
+        disabled={buscandoLocalizacao || pendente || confirmacaoPendente}
         onClick={solicitarLocalizacao}
       >
         {buscandoLocalizacao || pendente ? (

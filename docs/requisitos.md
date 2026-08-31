@@ -112,6 +112,7 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 ### Check-in
 - **RF-019** Realização de check-in (botão, QR Code, geolocalização a até 300 m da academia, lançamento por gestor/professor).
 - **RF-020** Validação (aluno ativo; mensalista com plano vinculado e modalidade coberta pelo plano;
+  aluno Wellhub/TotalPass confirma que já fez primeiro o check-in no aplicativo da plataforma;
   permissão; plano mensal interno adimplente se configurado; aula
   existente; há agendamento se exigido; vaga disponível). Na janela padrão, o check-in é permitido
   de 30 minutos antes do início até 30 minutos após o término da aula.
@@ -241,7 +242,8 @@ RNF-009 disponibilidade · RNF-010 usabilidade (ações principais simples e rá
 CA-001 cadastro de aluno · CA-002 tipos válidos · CA-003 agendamento na janela · CA-004 janela de 24h ·
 CA-005 check-in registra data/hora/aluno/aula · CA-006 check-in gera presença · CA-007 contagem de horas
 (1h30 → +1h30 geral e modalidade) · CA-008 invalidação remove presença e estorna horas · CA-009 auditoria da
-invalidação · CA-010 mensalista inadimplente aplica regra configurada · CA-011/012 Wellhub/TotalPass sem API ·
+invalidação · CA-010 mensalista inadimplente aplica regra configurada · CA-011/012 Wellhub/TotalPass sem API
+e check-in do aluno exige confirmação prévia no aplicativo externo ·
 CA-013/014 importação concilia com histórico · CA-015 registro não conciliado → pendente · CA-016 conciliação
 manual com log · CA-017 check-in invalidado sinaliza divergência · CA-018 graduação atualiza atual + histórico.
 
