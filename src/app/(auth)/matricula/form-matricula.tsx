@@ -11,7 +11,6 @@ import {
 } from "lucide-react"
 import { useActionState, useMemo, useState } from "react"
 import { acaoSolicitarMatricula } from "@/app/actions/matriculas"
-import { Badge } from "@/components/ui/badge"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -49,6 +48,13 @@ export function FormMatricula({
     <form action={acao} className="grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
       <input type="hidden" name="tipoPagamento" value={tipoPagamento} />
       <div className="space-y-8 p-5 sm:p-8">
+        <p className="text-xs text-muted-foreground">
+          <span aria-hidden="true" className="font-semibold text-destructive">
+            *
+          </span>{" "}
+          Campos obrigatórios
+        </p>
+
         <Secao
           numero="02"
           titulo="Seus dados"
@@ -80,7 +86,10 @@ export function FormMatricula({
               className="sm:col-span-2"
             />
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="restricoesMedicas">Restrições médicas ou cuidados importantes</Label>
+              <Label htmlFor="restricoesMedicas">
+                Restrições médicas ou cuidados importantes{" "}
+                <span className="font-normal text-muted-foreground">(opcional)</span>
+              </Label>
               <Textarea
                 id="restricoesMedicas"
                 name="restricoesMedicas"
@@ -188,6 +197,7 @@ export function FormMatricula({
               <span>
                 <span className="block font-medium">
                   Declaro ter o {parceiro} ativo a partir do plano {planoMinimo}.
+                  <IndicadorObrigatorio />
                 </span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   Não haverá pagamento de matrícula ou mensalidade à ECVO neste fluxo.
@@ -207,6 +217,7 @@ export function FormMatricula({
           <span className="text-muted-foreground">
             Confirmo que os dados são verdadeiros e autorizo seu uso para análise e efetivação da
             matrícula.
+            <IndicadorObrigatorio />
           </span>
         </label>
 
@@ -237,7 +248,10 @@ export function FormMatricula({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="modalidadeId">Modalidade</Label>
+            <Label htmlFor="modalidadeId">
+              Modalidade
+              <IndicadorObrigatorio />
+            </Label>
             <Select
               id="modalidadeId"
               name="modalidadeId"
@@ -265,9 +279,16 @@ export function FormMatricula({
 
           {modalidade && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold">Horários disponíveis</p>
-                <Badge variant="outline">{modalidade.turmas.length} opções</Badge>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Grade semanal</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Horários para consulta — não é necessário selecionar.
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                  {rotuloQuantidadeHorarios(modalidade.turmas.length)}
+                </span>
               </div>
               {modalidade.turmas.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
@@ -275,27 +296,34 @@ export function FormMatricula({
                   entrará em contato.
                 </div>
               ) : (
-                <div className="space-y-2">
+                <ul className="divide-y divide-border border-y border-border/70">
                   {modalidade.turmas.map((turma) => (
-                    <div
+                    <li
                       key={turma.id}
-                      className="rounded-lg border border-border bg-card p-4 shadow-sm"
+                      className="grid gap-1 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4"
                     >
-                      <p className="font-medium">{rotuloDias(turma.diasSemana, turma.diaSemana)}</p>
-                      <p className="mt-1 text-lg font-bold tabular-nums">
-                        {turma.horaInicio}–{turma.horaFim}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        {turma.nivel && <Badge variant="secondary">{turma.nivel}</Badge>}
-                        {turma.local && (
-                          <span className="inline-flex items-center gap-1">
-                            <MapPin className="size-3" /> {turma.local}
-                          </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {rotuloDias(turma.diasSemana, turma.diaSemana)}
+                        </p>
+                        {(turma.nivel || turma.local) && (
+                          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                            {turma.nivel && <span>{turma.nivel}</span>}
+                            {turma.nivel && turma.local && <span aria-hidden="true">·</span>}
+                            {turma.local && (
+                              <span className="inline-flex items-center gap-1">
+                                <MapPin className="size-3" /> {turma.local}
+                              </span>
+                            )}
+                          </p>
                         )}
                       </div>
-                    </div>
+                      <p className="text-base font-semibold tabular-nums sm:text-right">
+                        {turma.horaInicio}–{turma.horaFim}
+                      </p>
+                    </li>
                   ))}
-                </div>
+                </ul>
               )}
             </div>
           )}
@@ -351,17 +379,36 @@ function Campo({
   id,
   rotulo,
   className,
+  required,
   ...props
 }: React.ComponentProps<typeof Input> & { id: string; rotulo: string }) {
   return (
     <div className={`space-y-1.5 ${className ?? ""}`}>
-      <Label htmlFor={id}>{rotulo}</Label>
-      <Input id={id} name={id} {...props} />
+      <Label htmlFor={id}>
+        {rotulo}
+        {required && <IndicadorObrigatorio />}
+      </Label>
+      <Input id={id} name={id} required={required} {...props} />
     </div>
+  )
+}
+
+function IndicadorObrigatorio() {
+  return (
+    <>
+      <span aria-hidden="true" className="ml-0.5 text-destructive">
+        *
+      </span>
+      <span className="sr-only"> (obrigatório)</span>
+    </>
   )
 }
 
 function rotuloDias(diasSemana: number[], diaSemana: number | null) {
   const dias = diasSemana.length > 0 ? diasSemana : diaSemana === null ? [] : [diaSemana]
   return dias.length > 0 ? dias.map(rotuloDiaSemana).join(" · ") : "Consulte a equipe"
+}
+
+function rotuloQuantidadeHorarios(quantidade: number) {
+  return quantidade === 1 ? "1 horário" : `${quantidade} horários`
 }
