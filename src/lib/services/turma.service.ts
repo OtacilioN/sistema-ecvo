@@ -3,7 +3,7 @@ import { fromZonedTime } from "date-fns-tz"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
-import { TIMEZONE } from "@/lib/utils/datas"
+import { formatarDataHora, TIMEZONE } from "@/lib/utils/datas"
 
 // Serviço de TURMAS e AULAS (RF-010/011/012).
 // Turma = grade recorrente (diaSemana + horário) OU evento único (ehEvento).
@@ -683,7 +683,7 @@ export async function cancelarAula(params: {
             usuarioId,
             tipo: "CANCELAMENTO_AULA",
             titulo: "Aula cancelada",
-            mensagem: `${aula.turma.nome ?? aula.turma.modalidade.nome}: ${params.justificativa}`,
+            mensagem: `${aula.turma.nome ?? aula.turma.modalidade.nome}, em ${formatarDataHora(aula.inicio)}, foi cancelada. Motivo: ${params.justificativa}`,
           }),
         ),
       )

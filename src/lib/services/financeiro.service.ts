@@ -14,6 +14,7 @@ import { criarNotificacao } from "@/lib/services/notificacao.service"
 import {
   chaveCompetencia,
   fimExclusivoDoDiaAcademia,
+  formatarCompetencia,
   formatarData,
   inicioDoDiaAcademia,
 } from "@/lib/utils/datas"
@@ -438,16 +439,32 @@ export function mensagemStatusMensalidade(params: {
   competencia: string
   status: StatusMensalidade
 }): { titulo: string; mensagem: string } {
-  const rotulos: Record<StatusMensalidade, string> = {
-    EM_ABERTO: "em aberto",
-    PAGA: "paga",
-    VENCIDA: "vencida",
-    CANCELADA: "cancelada",
-    ISENTA: "isenta",
+  const conteudos: Record<StatusMensalidade, { titulo: string; mensagem: string }> = {
+    EM_ABERTO: {
+      titulo: "Mensalidade em aberto",
+      mensagem: "está em aberto",
+    },
+    PAGA: {
+      titulo: "Pagamento confirmado",
+      mensagem: "foi paga",
+    },
+    VENCIDA: {
+      titulo: "Mensalidade vencida",
+      mensagem: "está vencida",
+    },
+    CANCELADA: {
+      titulo: "Mensalidade cancelada",
+      mensagem: "foi cancelada",
+    },
+    ISENTA: {
+      titulo: "Mensalidade isenta",
+      mensagem: "foi marcada como isenta",
+    },
   }
+  const conteudo = conteudos[params.status]
   return {
-    titulo: "Mensalidade atualizada",
-    mensagem: `${params.competencia}: mensalidade ${rotulos[params.status]}.`,
+    titulo: conteudo.titulo,
+    mensagem: `A mensalidade de ${formatarCompetencia(params.competencia)} ${conteudo.mensagem}.`,
   }
 }
 
@@ -459,9 +476,7 @@ export function mensagemLembreteVencimentoMensalidade(params: {
 }): { titulo: string; mensagem: string } {
   return {
     titulo: "Mensalidade vence amanhã",
-    mensagem: `${params.alunoNome} · ${params.competencia}: vence em ${formatarData(
-      params.vencimento,
-    )}, valor ${formatarBRL(params.valor)}.`,
+    mensagem: `${params.alunoNome}: mensalidade de ${formatarCompetencia(params.competencia)}, no valor de ${formatarBRL(params.valor)}, vence em ${formatarData(params.vencimento)}.`,
   }
 }
 
@@ -471,10 +486,8 @@ export function mensagemLembretePagamentoMensalidadeAluno(params: {
   valor: number
 }): { titulo: string; mensagem: string } {
   return {
-    titulo: "Sua mensalidade vence em 5 dias",
-    mensagem: `${params.competencia}: vencimento em ${formatarData(
-      params.vencimento,
-    )}, valor ${formatarBRL(params.valor)}. Acesse o Financeiro para pagar via PIX.`,
+    titulo: "Mensalidade vence em 5 dias",
+    mensagem: `Sua mensalidade de ${formatarCompetencia(params.competencia)}, no valor de ${formatarBRL(params.valor)}, vence em ${formatarData(params.vencimento)}. O pagamento via Pix está disponível no financeiro.`,
   }
 }
 
@@ -485,10 +498,8 @@ export function mensagemInadimplenciaMensalidade(params: {
   valor: number
 }): { titulo: string; mensagem: string } {
   return {
-    titulo: "Mensalidade inadimplente",
-    mensagem: `${params.alunoNome} · ${params.competencia}: vencida desde ${formatarData(
-      params.vencimento,
-    )}, valor ${formatarBRL(params.valor)}.`,
+    titulo: "Mensalidade em atraso",
+    mensagem: `${params.alunoNome}: mensalidade de ${formatarCompetencia(params.competencia)}, no valor de ${formatarBRL(params.valor)}, vencida em ${formatarData(params.vencimento)}.`,
   }
 }
 
@@ -498,10 +509,8 @@ export function mensagemInadimplenciaMensalidadeAluno(params: {
   valor: number
 }): { titulo: string; mensagem: string } {
   return {
-    titulo: "Mensalidade vencida",
-    mensagem: `${params.competencia}: vencida desde ${formatarData(
-      params.vencimento,
-    )}, valor ${formatarBRL(params.valor)}.`,
+    titulo: "Mensalidade em atraso",
+    mensagem: `Sua mensalidade de ${formatarCompetencia(params.competencia)}, no valor de ${formatarBRL(params.valor)}, venceu em ${formatarData(params.vencimento)}. Consulte o financeiro para regularizar.`,
   }
 }
 
@@ -520,10 +529,45 @@ export function mensagemPagamentoAvulso(params: {
     PRODUTO: "produto",
   }
   const valor = formatarBRL(params.valor)
+  const rotulo = rotulos[params.tipo]
+  const descricao = params.descricao?.trim().replace(/[.!?]+$/, "")
   return {
     titulo: "Pagamento registrado",
-    mensagem: `${rotulos[params.tipo]}: ${valor}${params.descricao ? ` · ${params.descricao}` : ""}.`,
+    mensagem: `${rotulo.charAt(0).toUpperCase()}${rotulo.slice(1)}: ${valor}${descricao ? `. ${descricao}` : ""}.`,
   }
+}
+
+function conteudosFinanceirosLegados(params: {
+  contexto: "ALUNO_CINCO_DIAS" | "EQUIPE_AMANHA" | "EQUIPE_ATRASO"
+  alunoNome?: string
+  competencia: string
+  vencimento: Date
+  valor: number
+}): Array<{ titulo: string; mensagem: string }> {
+  if (params.contexto === "ALUNO_CINCO_DIAS") {
+    return [
+      {
+        titulo: "Sua mensalidade vence em 5 dias",
+        mensagem: `${params.competencia}: vencimento em ${formatarData(params.vencimento)}, valor ${formatarBRL(params.valor)}. Acesse o Financeiro para pagar via PIX.`,
+      },
+    ]
+  }
+
+  if (params.contexto === "EQUIPE_AMANHA") {
+    return [
+      {
+        titulo: "Mensalidade vence amanhã",
+        mensagem: `${params.alunoNome} · ${params.competencia}: vence em ${formatarData(params.vencimento)}, valor ${formatarBRL(params.valor)}.`,
+      },
+    ]
+  }
+
+  return [
+    {
+      titulo: "Mensalidade inadimplente",
+      mensagem: `${params.alunoNome} · ${params.competencia}: vencida desde ${formatarData(params.vencimento)}, valor ${formatarBRL(params.valor)}.`,
+    },
+  ]
 }
 
 export async function criarPlano(params: {
@@ -938,11 +982,8 @@ export async function obterOuCriarMensalidadeNaTransacao(
   await criarNotificacao(tx, {
     usuarioId: aluno.usuarioId,
     tipo: "FINANCEIRO",
-    titulo: "Mensalidade gerada",
-    mensagem: `${criada.competencia}: ${Number(criada.valor).toLocaleString("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    })}.`,
+    titulo: "Nova mensalidade disponível",
+    mensagem: `Mensalidade de ${formatarCompetencia(criada.competencia)}: ${formatarBRL(Number(criada.valor))}. Vencimento em ${formatarData(criada.vencimento)}.`,
   })
 
   return { ok: true as const, mensalidade: criada, criada: true }
@@ -1417,51 +1458,69 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
   let inadimplenciasCriadas = 0
 
   for (const mensalidade of vencemEmCincoDias) {
-    const conteudo = mensagemLembretePagamentoMensalidadeAluno({
+    const paramsConteudo = {
       competencia: mensalidade.competencia,
       vencimento: mensalidade.vencimento,
       valor: Number(mensalidade.valor),
+    }
+    const conteudo = mensagemLembretePagamentoMensalidadeAluno(paramsConteudo)
+    const legados = conteudosFinanceirosLegados({
+      contexto: "ALUNO_CINCO_DIAS",
+      ...paramsConteudo,
     })
-    if (await criarNotificacaoFinanceiraUnica(cliente, mensalidade.aluno.usuario.id, conteudo)) {
+    if (
+      await criarNotificacaoFinanceiraUnica(
+        cliente,
+        mensalidade.aluno.usuario.id,
+        conteudo,
+        legados,
+      )
+    ) {
       lembretesPagamentoCriados++
     }
   }
 
   for (const mensalidade of vencemAmanha) {
-    const conteudo = mensagemLembreteVencimentoMensalidade({
+    const paramsConteudo = {
       alunoNome: mensalidade.aluno.usuario.nome,
       competencia: mensalidade.competencia,
       vencimento: mensalidade.vencimento,
       valor: Number(mensalidade.valor),
-    })
+    }
+    const conteudo = mensagemLembreteVencimentoMensalidade(paramsConteudo)
+    const legados = conteudosFinanceirosLegados({ contexto: "EQUIPE_AMANHA", ...paramsConteudo })
     for (const gestor of gestores) {
-      if (await criarNotificacaoFinanceiraUnica(cliente, gestor.id, conteudo)) lembretesCriados++
+      if (await criarNotificacaoFinanceiraUnica(cliente, gestor.id, conteudo, legados)) {
+        lembretesCriados++
+      }
     }
     const professores = await listarUsuariosProfessoresDoAluno(cliente, mensalidade.alunoId)
     for (const professor of professores) {
       professoresNotificados.add(professor.usuarioId)
-      if (await criarNotificacaoFinanceiraUnica(cliente, professor.usuarioId, conteudo)) {
+      if (await criarNotificacaoFinanceiraUnica(cliente, professor.usuarioId, conteudo, legados)) {
         lembretesCriados++
       }
     }
   }
 
   for (const mensalidade of inadimplentes) {
-    const conteudo = mensagemInadimplenciaMensalidade({
+    const paramsConteudo = {
       alunoNome: mensalidade.aluno.usuario.nome,
       competencia: mensalidade.competencia,
       vencimento: mensalidade.vencimento,
       valor: Number(mensalidade.valor),
-    })
+    }
+    const conteudo = mensagemInadimplenciaMensalidade(paramsConteudo)
+    const legados = conteudosFinanceirosLegados({ contexto: "EQUIPE_ATRASO", ...paramsConteudo })
     for (const gestor of gestores) {
-      if (await criarNotificacaoFinanceiraUnica(cliente, gestor.id, conteudo)) {
+      if (await criarNotificacaoFinanceiraUnica(cliente, gestor.id, conteudo, legados)) {
         inadimplenciasCriadas++
       }
     }
     const professores = await listarUsuariosProfessoresDoAluno(cliente, mensalidade.alunoId)
     for (const professor of professores) {
       professoresNotificados.add(professor.usuarioId)
-      if (await criarNotificacaoFinanceiraUnica(cliente, professor.usuarioId, conteudo)) {
+      if (await criarNotificacaoFinanceiraUnica(cliente, professor.usuarioId, conteudo, legados)) {
         inadimplenciasCriadas++
       }
     }
@@ -1680,13 +1739,17 @@ async function criarNotificacaoFinanceiraUnica(
   cliente: Cliente,
   usuarioId: string,
   conteudo: { titulo: string; mensagem: string },
+  equivalentes: Array<{ titulo: string; mensagem: string }> = [],
 ): Promise<boolean> {
+  const conteudosEquivalentes = [conteudo, ...equivalentes]
   const existente = await cliente.notificacao.findFirst({
     where: {
       usuarioId,
       tipo: "FINANCEIRO",
-      titulo: conteudo.titulo,
-      mensagem: conteudo.mensagem,
+      OR: conteudosEquivalentes.map((item) => ({
+        titulo: item.titulo,
+        mensagem: item.mensagem,
+      })),
     },
     select: { id: true },
   })

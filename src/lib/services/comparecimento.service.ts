@@ -15,7 +15,7 @@ import {
   MENSAGEM_TERMO_RESPONSABILIDADE_PENDENTE,
   termoResponsabilidadeAtualAceito,
 } from "@/lib/services/termo-responsabilidade.service"
-import { inicioDoDiaAcademia } from "@/lib/utils/datas"
+import { formatarDataHora, inicioDoDiaAcademia } from "@/lib/utils/datas"
 
 // Serviço legado de Comparecimento — representa o AGENDAMENTO da aula (RN-001/RF-013..018).
 // Agendar aula NÃO gera presença nem horas; é apenas reserva/sinalização.
@@ -286,11 +286,12 @@ export async function marcarComparecimento(params: {
     await criarNotificacao(tx, {
       usuarioId: aluno.usuarioId,
       tipo: "COMPARECIMENTO",
-      titulo: novoStatus === "CONFIRMADO" ? "Agendamento confirmado" : "Lista de espera",
+      titulo:
+        novoStatus === "CONFIRMADO" ? "Agendamento confirmado" : "Você está na lista de espera",
       mensagem:
         novoStatus === "CONFIRMADO"
-          ? `${aula.turma.nome ?? aula.turma.modalidade.nome}: agendamento registrado.`
-          : `${aula.turma.nome ?? aula.turma.modalidade.nome}: você entrou na lista de espera.`,
+          ? `Sua vaga em ${aula.turma.nome ?? aula.turma.modalidade.nome} está confirmada para ${formatarDataHora(aula.inicio)}.`
+          : `${aula.turma.nome ?? aula.turma.modalidade.nome}, em ${formatarDataHora(aula.inicio)}. Avisaremos se uma vaga for liberada.`,
     })
 
     return { salvo } as const
@@ -459,8 +460,8 @@ export async function marcarNoShows(params: {
       await criarNotificacao(tx, {
         usuarioId: comparecimento.aluno.usuarioId,
         tipo: "COMPARECIMENTO",
-        titulo: "No-show registrado",
-        mensagem: `${aula.turma.nome ?? aula.turma.modalidade.nome}: agendamento sem check-in válido.`,
+        titulo: "Ausência registrada",
+        mensagem: `Não identificamos um check-in válido em ${aula.turma.nome ?? aula.turma.modalidade.nome}, em ${formatarDataHora(aula.inicio)}.`,
       })
     }
   })
@@ -479,6 +480,7 @@ async function promoverPrimeiroDaListaEspera(
       aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } },
       aula: {
         select: {
+          inicio: true,
           turma: { select: { nome: true, modalidade: { select: { nome: true } } } },
         },
       },
@@ -516,7 +518,7 @@ async function promoverPrimeiroDaListaEspera(
   await criarNotificacao(tx, {
     usuarioId: proximo.aluno.usuarioId,
     tipo: "COMPARECIMENTO",
-    titulo: "Vaga liberada",
-    mensagem: `${proximo.aula.turma.nome ?? proximo.aula.turma.modalidade.nome}: seu agendamento foi confirmado.`,
+    titulo: "Sua vaga foi confirmada",
+    mensagem: `Uma vaga foi liberada em ${proximo.aula.turma.nome ?? proximo.aula.turma.modalidade.nome}, em ${formatarDataHora(proximo.aula.inicio)}.`,
   })
 }

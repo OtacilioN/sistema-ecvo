@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
+import { formatarData } from "@/lib/utils/datas"
 
 type GraduacaoCriterio = {
   minHoras: number | null
@@ -272,8 +273,8 @@ export async function registrarGraduacao(params: {
     await criarNotificacao(tx, {
       usuarioId: novo.aluno.usuarioId,
       tipo: "GRADUACAO",
-      titulo: "Graduação registrada",
-      mensagem: `${novo.graduacao.nome} em ${novo.graduacao.modalidade.nome}.`,
+      titulo: "Nova graduação registrada",
+      mensagem: `Sua graduação em ${novo.graduacao.modalidade.nome} foi atualizada para ${novo.graduacao.nome}.`,
     })
 
     return novo
@@ -385,8 +386,8 @@ export async function inscreverAlunoExame(params: { alunoId: string; exameId: st
     await criarNotificacao(tx, {
       usuarioId: aluno.usuarioId,
       tipo: "GRADUACAO",
-      titulo: "Inscrição em exame confirmada",
-      mensagem: `Exame de ${exame.modalidade.nome}.`,
+      titulo: "Inscrição no exame confirmada",
+      mensagem: `Seu exame de ${exame.modalidade.nome} está marcado para ${formatarData(exame.data)}.`,
     })
 
     return nova
@@ -555,17 +556,26 @@ export async function registrarResultadoExame(params: {
       tx,
     )
 
+    const conteudoResultado =
+      params.aprovado === null
+        ? {
+            titulo: "Resultado do exame em revisão",
+            mensagem: `O resultado do seu exame de ${inscricao.exame.modalidade.nome} está em revisão.`,
+          }
+        : params.aprovado
+          ? {
+              titulo: "Aprovação no exame",
+              mensagem: `Seu resultado no exame de ${inscricao.exame.modalidade.nome} foi aprovado${novaGraduacao ? `. Nova graduação: ${novaGraduacao.nome}` : ""}.`,
+            }
+          : {
+              titulo: "Resultado do exame disponível",
+              mensagem: `Resultado do exame de ${inscricao.exame.modalidade.nome}: não aprovado.`,
+            }
+
     await criarNotificacao(tx, {
       usuarioId: inscricao.aluno.usuario.id,
       tipo: "GRADUACAO",
-      titulo: "Resultado de exame registrado",
-      mensagem: `${inscricao.exame.modalidade.nome}: ${
-        params.aprovado === null
-          ? "resultado em revisão"
-          : params.aprovado
-            ? `aprovado${novaGraduacao ? ` para ${novaGraduacao.nome}` : ""}`
-            : "não aprovado"
-      }.`,
+      ...conteudoResultado,
     })
 
     return novo

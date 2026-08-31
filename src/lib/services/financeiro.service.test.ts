@@ -215,8 +215,8 @@ describe("registrarMensalidadeInicialPaga", () => {
       },
     ])
     expect(notificacoes).toEqual([
-      expect.objectContaining({ titulo: "Mensalidade gerada" }),
-      expect.objectContaining({ titulo: "Mensalidade atualizada" }),
+      expect.objectContaining({ titulo: "Nova mensalidade disponível" }),
+      expect.objectContaining({ titulo: "Pagamento confirmado" }),
     ])
   })
 
@@ -432,8 +432,10 @@ describe("vencerMensalidadesAtrasadas", () => {
         data: {
           usuarioId: "usuario-aluno-1",
           tipo: "FINANCEIRO",
-          titulo: "Mensalidade vencida",
-          mensagem: expect.stringContaining("2026-06: vencida desde 10/06/2026, valor"),
+          titulo: "Mensalidade em atraso",
+          mensagem: expect.stringContaining(
+            "Sua mensalidade de junho de 2026, no valor de R$ 250,00, venceu em 10/06/2026.",
+          ),
         },
       },
     ])
@@ -508,11 +510,11 @@ describe("vencerMensalidadesAtrasadas", () => {
 describe("mensagemStatusMensalidade", () => {
   it("gera mensagem em pt-BR para atualização financeira", () => {
     expect(mensagemStatusMensalidade({ competencia: "2026-06", status: "PAGA" })).toEqual({
-      titulo: "Mensalidade atualizada",
-      mensagem: "2026-06: mensalidade paga.",
+      titulo: "Pagamento confirmado",
+      mensagem: "A mensalidade de junho de 2026 foi paga.",
     })
     expect(mensagemStatusMensalidade({ competencia: "2026-06", status: "ISENTA" }).mensagem).toBe(
-      "2026-06: mensalidade isenta.",
+      "A mensalidade de junho de 2026 foi marcada como isenta.",
     )
   })
 })
@@ -520,6 +522,9 @@ describe("mensagemStatusMensalidade", () => {
 describe("gerarLembretesFinanceiros", () => {
   it("notifica gestores e professores dos próprios alunos sobre vencimento e inadimplência", async () => {
     const notificacoes: Array<{ data: { usuarioId: string; titulo: string } }> = []
+    const buscasNotificacao: Array<{
+      where: { OR: Array<{ titulo: string; mensagem: string }> }
+    }> = []
     const professoresBuscados: unknown[] = []
     let buscaProfessores = 0
     const cliente = {
@@ -579,7 +584,12 @@ describe("gerarLembretesFinanceiros", () => {
         },
       },
       notificacao: {
-        findFirst: async () => null,
+        findFirst: async (params: {
+          where: { OR: Array<{ titulo: string; mensagem: string }> }
+        }) => {
+          buscasNotificacao.push(params)
+          return null
+        },
         create: async (params: { data: { usuarioId: string; titulo: string } }) => {
           notificacoes.push(params)
           return { id: `notificacao-${notificacoes.length}` }
@@ -607,10 +617,17 @@ describe("gerarLembretesFinanceiros", () => {
       totalCriado: 6,
     })
     expect(professoresBuscados).toHaveLength(2)
+    expect(buscasNotificacao.flatMap((busca) => busca.where.OR)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ titulo: "Sua mensalidade vence em 5 dias" }),
+        expect.objectContaining({ titulo: "Mensalidade vence amanhã" }),
+        expect.objectContaining({ titulo: "Mensalidade inadimplente" }),
+      ]),
+    )
     expect(notificacoes.map((notificacao) => notificacao.data)).toEqual([
       expect.objectContaining({
         usuarioId: "usuario-aluno-1",
-        titulo: "Sua mensalidade vence em 5 dias",
+        titulo: "Mensalidade vence em 5 dias",
       }),
       expect.objectContaining({
         usuarioId: "usuario-gestor-1",
@@ -622,15 +639,15 @@ describe("gerarLembretesFinanceiros", () => {
       }),
       expect.objectContaining({
         usuarioId: "usuario-gestor-1",
-        titulo: "Mensalidade inadimplente",
+        titulo: "Mensalidade em atraso",
       }),
       expect.objectContaining({
         usuarioId: "usuario-professor-1",
-        titulo: "Mensalidade inadimplente",
+        titulo: "Mensalidade em atraso",
       }),
       expect.objectContaining({
         usuarioId: "usuario-professor-2",
-        titulo: "Mensalidade inadimplente",
+        titulo: "Mensalidade em atraso",
       }),
     ])
   })
@@ -643,10 +660,11 @@ describe("mensagens de lembrete financeiro", () => {
       vencimento: new Date("2026-06-16T12:00:00Z"),
       valor: 275,
     })
-    expect(mensagem.titulo).toBe("Sua mensalidade vence em 5 dias")
-    expect(mensagem.mensagem).toContain("2026-06: vencimento em 16/06/2026")
+    expect(mensagem.titulo).toBe("Mensalidade vence em 5 dias")
+    expect(mensagem.mensagem).toContain("mensalidade de junho de 2026")
+    expect(mensagem.mensagem).toContain("vence em 16/06/2026")
     expect(mensagem.mensagem).toContain("275,00")
-    expect(mensagem.mensagem).toContain("Acesse o Financeiro para pagar via PIX.")
+    expect(mensagem.mensagem).toContain("O pagamento via Pix está disponível no financeiro.")
   })
 
   it("gera lembrete de vencimento no padrão pt-BR", () => {
@@ -657,7 +675,7 @@ describe("mensagens de lembrete financeiro", () => {
       valor: 250,
     })
     expect(mensagem.titulo).toBe("Mensalidade vence amanhã")
-    expect(mensagem.mensagem).toContain("Ana Silva · 2026-06")
+    expect(mensagem.mensagem).toContain("Ana Silva: mensalidade de junho de 2026")
     expect(mensagem.mensagem).toContain("vence em 10/06/2026")
     expect(mensagem.mensagem).toContain("250,00")
   })
@@ -669,9 +687,9 @@ describe("mensagens de lembrete financeiro", () => {
       vencimento: new Date("2026-06-10T12:00:00Z"),
       valor: 250,
     })
-    expect(mensagem.titulo).toBe("Mensalidade inadimplente")
-    expect(mensagem.mensagem).toContain("Ana Silva · 2026-06")
-    expect(mensagem.mensagem).toContain("vencida desde 10/06/2026")
+    expect(mensagem.titulo).toBe("Mensalidade em atraso")
+    expect(mensagem.mensagem).toContain("Ana Silva: mensalidade de junho de 2026")
+    expect(mensagem.mensagem).toContain("vencida em 10/06/2026")
     expect(mensagem.mensagem).toContain("250,00")
   })
 
@@ -682,8 +700,10 @@ describe("mensagens de lembrete financeiro", () => {
       valor: 250,
     })
     expect(mensagem).toEqual({
-      titulo: "Mensalidade vencida",
-      mensagem: expect.stringContaining("2026-06: vencida desde 10/06/2026, valor"),
+      titulo: "Mensalidade em atraso",
+      mensagem: expect.stringContaining(
+        "Sua mensalidade de junho de 2026, no valor de R$ 250,00, venceu em 10/06/2026.",
+      ),
     })
     expect(mensagem.mensagem).toContain("250,00")
   })
@@ -693,7 +713,7 @@ describe("mensagemPagamentoAvulso", () => {
   it("gera mensagem financeira para pagamento avulso", () => {
     const mensagem = mensagemPagamentoAvulso({ tipo: "EXAME", valor: 150, descricao: "Faixa azul" })
     expect(mensagem.titulo).toBe("Pagamento registrado")
-    expect(mensagem.mensagem).toContain("exame:")
+    expect(mensagem.mensagem).toContain("Exame:")
     expect(mensagem.mensagem).toContain("150,00")
     expect(mensagem.mensagem).toContain("Faixa azul")
   })

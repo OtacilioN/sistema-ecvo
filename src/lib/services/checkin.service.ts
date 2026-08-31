@@ -151,15 +151,15 @@ export function conteudoNotificacaoCheckinRealizado(params: {
   inicioAula: Date
   pendenteRevisao: boolean
 }): { titulo: string; mensagem: string } {
-  const contexto = `${params.alunoNome} fez check-in em ${params.nomeAula} (${formatarDataHora(
+  const contexto = `${params.alunoNome} fez check-in na aula ${params.nomeAula}, em ${formatarDataHora(
     params.inicioAula,
-  )}).`
+  )}.`
   return params.pendenteRevisao
     ? {
-        titulo: "Check-in pendente de revisão",
-        mensagem: `${contexto} Aguarda sua aprovação.`,
+        titulo: "Check-in para revisar",
+        mensagem: `${contexto} Revise o registro no sistema.`,
       }
-    : { titulo: "Check-in realizado", mensagem: contexto }
+    : { titulo: "Novo check-in", mensagem: contexto }
 }
 
 type ProfessorParaNotificacao = {
@@ -402,15 +402,13 @@ async function registrarTentativaInadimplente(params: {
     if (aula.turma.professor?.usuarioId) destinatarios.add(aula.turma.professor.usuarioId)
 
     const nomeAula = aula.turma.nome ?? aula.turma.modalidade.nome
-    const mensagem = `${aluno.usuario.nome} tentou fazer check-in em ${nomeAula} (${formatarDataHora(
-      aula.inicio,
-    )}) e foi bloqueado por inadimplência.`
+    const mensagem = `${aluno.usuario.nome} tentou fazer check-in na aula ${nomeAula}, em ${formatarDataHora(aula.inicio)}, mas a mensalidade está em atraso.`
 
     for (const usuarioId of destinatarios) {
       await criarNotificacao(tx, {
         usuarioId,
         tipo: "FINANCEIRO",
-        titulo: "Check-in bloqueado por inadimplência",
+        titulo: "Check-in bloqueado",
         mensagem,
       })
     }
@@ -883,7 +881,18 @@ export async function invalidarCheckin(params: {
 }): Promise<ResultadoCheckin> {
   const checkin = await db.checkin.findUnique({
     where: { id: params.checkinId },
-    select: { id: true, status: true, alunoId: true, aluno: { select: { usuarioId: true } } },
+    select: {
+      id: true,
+      status: true,
+      alunoId: true,
+      aluno: { select: { usuarioId: true } },
+      aula: {
+        select: {
+          inicio: true,
+          turma: { select: { nome: true, modalidade: { select: { nome: true } } } },
+        },
+      },
+    },
   })
   if (!checkin) return { ok: false, motivo: "Check-in não encontrado." }
   if (checkin.status !== "VALIDO") return { ok: false, motivo: "Check-in já não está válido." }
@@ -928,8 +937,8 @@ export async function invalidarCheckin(params: {
     await criarNotificacao(tx, {
       usuarioId: checkin.aluno.usuarioId,
       tipo: "CHECKIN_INVALIDADO",
-      titulo: params.excluir ? "Check-in excluído" : "Check-in invalidado",
-      mensagem: params.justificativa,
+      titulo: params.excluir ? "Seu check-in foi removido" : "Seu check-in foi invalidado",
+      mensagem: `${checkin.aula.turma.nome ?? checkin.aula.turma.modalidade.nome}, em ${formatarDataHora(checkin.aula.inicio)}. Motivo: ${params.justificativa}`,
     })
 
     return true

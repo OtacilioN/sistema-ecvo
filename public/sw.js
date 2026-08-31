@@ -86,7 +86,7 @@ self.addEventListener("fetch", (event) => {
 self.addEventListener("push", (event) => {
   const dados = dadosPush(event)
   const titulo = dados.titulo || "ECVO"
-  const mensagem = dados.mensagem || "Nova notificação."
+  const mensagem = dados.mensagem || "Você tem uma nova notificação."
   const url = typeof dados.url === "string" ? dados.url : URL_NOTIFICACOES_PADRAO
 
   event.waitUntil(

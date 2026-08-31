@@ -24,6 +24,18 @@ export function formatarData(data: Date): string {
   return formatInTimeZone(data, TIMEZONE, "dd/MM/yyyy", { locale: ptBR })
 }
 
+export function formatarCompetencia(competencia: string): string {
+  const correspondencia = /^(\d{4})-(\d{2})$/.exec(competencia)
+  if (!correspondencia) return competencia
+
+  const ano = Number(correspondencia[1])
+  const mes = Number(correspondencia[2])
+  if (mes < 1 || mes > 12) return competencia
+
+  const data = new Date(Date.UTC(ano, mes - 1, 15, 12))
+  return formatInTimeZone(data, TIMEZONE, "MMMM 'de' yyyy", { locale: ptBR })
+}
+
 export function formatarDataInput(data: Date): string {
   return formatInTimeZone(data, TIMEZONE, "yyyy-MM-dd")
 }

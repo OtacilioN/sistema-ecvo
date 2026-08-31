@@ -161,8 +161,8 @@ export async function solicitarMatricula(
       )
 
       const notificacoes = await notificarGestoresSobreMatricula(tx, {
-        titulo: "Nova solicitação de matrícula",
-        mensagem: `${params.nome} solicitou matrícula em ${modalidade.nome} como ${ROTULO_TIPO_PAGAMENTO[params.tipoPagamento]}.`,
+        titulo: "Matrícula aguardando análise",
+        mensagem: `${params.nome} solicitou matrícula em ${modalidade.nome}. Tipo de pagamento: ${ROTULO_TIPO_PAGAMENTO[params.tipoPagamento]}.`,
       })
 
       return { solicitacao: criada, notificacoes }
@@ -449,7 +449,7 @@ export async function aprovarMatricula(
 
       const notificacoes = await notificarGestoresSobreMatricula(tx, {
         titulo: "Matrícula aprovada",
-        mensagem: `A matrícula de ${solicitacao.nome} em ${solicitacao.modalidade.nome} foi aprovada e o acesso do aluno foi liberado.`,
+        mensagem: `A matrícula de ${solicitacao.nome} em ${solicitacao.modalidade.nome} está concluída. O acesso ao sistema está liberado.`,
       })
 
       return { ok: true as const, alunoId: usuario.aluno.id, notificacoes }

@@ -24,8 +24,8 @@ export async function POST(request: Request) {
     timeStyle: "short",
   }).format(new Date())
 
-  const titulo = "Teste de push"
-  const mensagem = `Teste de push enviado em produção em ${quando}. Se chegou no celular, o canal Web Push está funcionando.`
+  const titulo = "Teste de notificações"
+  const mensagem = `Enviado em ${quando}. Se você recebeu esta mensagem, as notificações estão funcionando neste dispositivo.`
 
   const gestores = await db.usuario.findMany({
     where: { papel: "GESTOR", ativo: true },

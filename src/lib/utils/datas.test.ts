@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest"
-import { formatarMinutos, minutosParaHoras, rotuloDiaSemana } from "./datas"
+import { formatarCompetencia, formatarMinutos, minutosParaHoras, rotuloDiaSemana } from "./datas"
+
+describe("formatarCompetencia", () => {
+  it("transforma a chave técnica em mês e ano legíveis", () => {
+    expect(formatarCompetencia("2026-06")).toBe("junho de 2026")
+    expect(formatarCompetencia("2026-12")).toBe("dezembro de 2026")
+  })
+
+  it("preserva valores fora do formato esperado", () => {
+    expect(formatarCompetencia("2026-13")).toBe("2026-13")
+    expect(formatarCompetencia("junho de 2026")).toBe("junho de 2026")
+  })
+})
 
 describe("formatarMinutos", () => {
   it("formata horas e minutos", () => {

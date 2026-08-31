@@ -114,7 +114,7 @@ describe("mensagemLembreteAniversario", () => {
       }),
     ).toEqual({
       titulo: "Aniversário amanhã",
-      mensagem: "Ana Silva faz aniversário amanhã (10/06).",
+      mensagem: "Ana Silva faz aniversário em 10/06.",
     })
   })
 })
@@ -137,9 +137,9 @@ describe("mensagemLembreteAgendamentoAmanha", () => {
         ],
       }),
     ).toEqual({
-      titulo: "Agende sua aula de amanhã",
+      titulo: "Aulas de amanhã",
       mensagem:
-        "17/06/2026: Kickboxing às 19:00; Jiu-jitsu às 20:00. Faça seu agendamento pelo sistema.",
+        "Em 17/06/2026: Kickboxing às 19:00; Jiu-jitsu às 20:00. Agende sua vaga no sistema.",
     })
   })
 })
@@ -221,7 +221,8 @@ describe("gerarLembretesTreino", () => {
       data: expect.objectContaining({
         usuarioId: "usuario-aluno",
         tipo: "LEMBRETE_TREINO",
-        titulo: "Lembrete de treino",
+        titulo: "Treino em breve",
+        mensagem: "Kickboxing começa em 17/06/2026 às 17:00.",
       }),
     })
     expect(enviarPushParaNotificacao).toHaveBeenCalledWith(
@@ -296,8 +297,8 @@ describe("gerarLembretesAgendamentoAulasAmanha", () => {
       data: {
         usuarioId: "usuario-sem-agendamento",
         tipo: "LEMBRETE_AGENDAMENTO",
-        titulo: "Agende sua aula de amanhã",
-        mensagem: "17/06/2026: Kickboxing às 19:00. Faça seu agendamento pelo sistema.",
+        titulo: "Aulas de amanhã",
+        mensagem: "Em 17/06/2026: Kickboxing às 19:00. Agende sua vaga no sistema.",
       },
     })
     expect(enviarPushParaNotificacao).toHaveBeenCalledWith(

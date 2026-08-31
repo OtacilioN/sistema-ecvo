@@ -120,8 +120,8 @@ describe("solicitarMatricula", () => {
       {
         usuarioId: "gestor-1",
         tipo: "MATRICULA",
-        titulo: "Nova solicitação de matrícula",
-        mensagem: "Aluno Parceiro solicitou matrícula em Jiu-Jitsu como mensalista.",
+        titulo: "Matrícula aguardando análise",
+        mensagem: "Aluno Parceiro solicitou matrícula em Jiu-Jitsu. Tipo de pagamento: mensalista.",
       },
       { enviarPush: false },
     )
@@ -131,8 +131,8 @@ describe("solicitarMatricula", () => {
       {
         usuarioId: "gestor-2",
         tipo: "MATRICULA",
-        titulo: "Nova solicitação de matrícula",
-        mensagem: "Aluno Parceiro solicitou matrícula em Jiu-Jitsu como mensalista.",
+        titulo: "Matrícula aguardando análise",
+        mensagem: "Aluno Parceiro solicitou matrícula em Jiu-Jitsu. Tipo de pagamento: mensalista.",
       },
       { enviarPush: false },
     )
@@ -291,7 +291,7 @@ describe("aprovarMatricula", () => {
         tipo: "MATRICULA",
         titulo: "Matrícula aprovada",
         mensagem:
-          "A matrícula de Aluno Parceiro em Jiu-Jitsu foi aprovada e o acesso do aluno foi liberado.",
+          "A matrícula de Aluno Parceiro em Jiu-Jitsu está concluída. O acesso ao sistema está liberado.",
       },
       { enviarPush: false },
     )
@@ -302,7 +302,7 @@ describe("aprovarMatricula", () => {
         tipo: "MATRICULA",
         titulo: "Matrícula aprovada",
         mensagem:
-          "A matrícula de Aluno Parceiro em Jiu-Jitsu foi aprovada e o acesso do aluno foi liberado.",
+          "A matrícula de Aluno Parceiro em Jiu-Jitsu está concluída. O acesso ao sistema está liberado.",
       },
       { enviarPush: false },
     )

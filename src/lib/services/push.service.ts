@@ -2,6 +2,7 @@ import "server-only"
 import type { Papel, TipoNotificacao } from "@prisma/client"
 import webPush from "web-push"
 import { db } from "@/lib/db"
+import { LIMITE_MENSAGEM_PUSH, LIMITE_TITULO_PUSH, resumirTextoPush } from "@/lib/push/texto"
 import type { InscricaoPushInput } from "@/lib/validations/push"
 
 type NotificacaoPush = {
@@ -160,8 +161,8 @@ export async function enviarPushParaNotificacao(
   const payload = JSON.stringify({
     notificacaoId: notificacao.id,
     tipo: notificacao.tipo,
-    titulo: notificacao.titulo,
-    mensagem: notificacao.mensagem,
+    titulo: resumirTextoPush(notificacao.titulo, LIMITE_TITULO_PUSH),
+    mensagem: resumirTextoPush(notificacao.mensagem, LIMITE_MENSAGEM_PUSH),
     url,
   })
 

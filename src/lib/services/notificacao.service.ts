@@ -160,10 +160,10 @@ export async function gerarLembretesTreino(
     )
     if (jaFezCheckin) continue
 
-    const titulo = "Lembrete de treino"
+    const titulo = "Treino em breve"
     const mensagem = `${
       comparecimento.aula.turma.nome ?? comparecimento.aula.turma.modalidade.nome
-    }: aula em ${formatarDataHora(comparecimento.aula.inicio)}.`
+    } começa em ${formatarDataHora(comparecimento.aula.inicio)}.`
     const existente = await cliente.notificacao.findFirst({
       where: {
         usuarioId: comparecimento.aluno.usuarioId,
@@ -197,8 +197,8 @@ export function mensagemLembreteAgendamentoAmanha(params: {
     .join("; ")
 
   return {
-    titulo: "Agende sua aula de amanhã",
-    mensagem: `${data}: ${resumo}. Faça seu agendamento pelo sistema.`,
+    titulo: "Aulas de amanhã",
+    mensagem: `Em ${data}: ${resumo}. Agende sua vaga no sistema.`,
   }
 }
 
@@ -290,11 +290,11 @@ export function mensagemLembreteAniversario(params: { alunoNome: string; dataNas
 } {
   return {
     titulo: "Aniversário amanhã",
-    mensagem: `${params.alunoNome} faz aniversário amanhã (${formatInTimeZone(
+    mensagem: `${params.alunoNome} faz aniversário em ${formatInTimeZone(
       params.dataNascimento,
       TIMEZONE,
       "dd/MM",
-    )}).`,
+    )}.`,
   }
 }
 

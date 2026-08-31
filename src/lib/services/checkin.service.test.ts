@@ -222,8 +222,8 @@ describe("conteudoNotificacaoCheckinRealizado", () => {
         pendenteRevisao: false,
       }),
     ).toEqual({
-      titulo: "Check-in realizado",
-      mensagem: "Ana Silva fez check-in em Turma avançada (10/06/2026 às 19:00).",
+      titulo: "Novo check-in",
+      mensagem: "Ana Silva fez check-in na aula Turma avançada, em 10/06/2026 às 19:00.",
     })
   })
 
@@ -236,9 +236,9 @@ describe("conteudoNotificacaoCheckinRealizado", () => {
         pendenteRevisao: true,
       }),
     ).toEqual({
-      titulo: "Check-in pendente de revisão",
+      titulo: "Check-in para revisar",
       mensagem:
-        "Ana Silva fez check-in em Turma avançada (10/06/2026 às 19:00). Aguarda sua aprovação.",
+        "Ana Silva fez check-in na aula Turma avançada, em 10/06/2026 às 19:00. Revise o registro no sistema.",
     })
   })
 })
