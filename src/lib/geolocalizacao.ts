@@ -1,6 +1,6 @@
 export const LOCALIZACAO_ACADEMIA = {
-  latitude: -7.2061939,
-  longitude: -34.8450226,
+  latitude: -7.2093974,
+  longitude: -34.8507941,
 } as const
 
 export const RAIO_CHECKIN_GEOLOCALIZACAO_METROS = 300
