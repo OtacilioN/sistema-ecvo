@@ -3,6 +3,7 @@ import {
   eventoPagamentoParaStatusAsaas,
   proximoStatusCobrancaAsaas,
   proximoStatusContratoPixAutomatico,
+  statusCobrancaMatriculaPorStatusAsaas,
 } from "@/lib/asaas/estado"
 
 describe("precedência dos estados Asaas", () => {
@@ -25,5 +26,18 @@ describe("precedência dos estados Asaas", () => {
   it("mapeia apenas estados financeiros conciliáveis", () => {
     expect(eventoPagamentoParaStatusAsaas("RECEIVED")).toBe("PAYMENT_RECEIVED")
     expect(eventoPagamentoParaStatusAsaas("PENDING")).toBeNull()
+  })
+
+  it.each([
+    ["PENDING", "PENDENTE"],
+    ["CONFIRMED", "PENDENTE"],
+    ["RECEIVED", "RECEBIDA"],
+    ["OVERDUE", "VENCIDA"],
+    ["DELETED", "CANCELADA"],
+    ["REFUNDED", "ESTORNADA"],
+    ["PARTIALLY_REFUNDED", "ERRO"],
+    ["AWAITING_RISK_ANALYSIS", "ERRO"],
+  ] as const)("mapeia matrícula remota %s para %s", (remoto, local) => {
+    expect(statusCobrancaMatriculaPorStatusAsaas(remoto)).toBe(local)
   })
 })

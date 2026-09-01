@@ -27,6 +27,7 @@ import {
   obterCobrancaAsaas,
   obterQrCodePixAsaas,
 } from "@/lib/asaas/client"
+import { interpretarDataAsaas } from "@/lib/asaas/datas"
 import {
   eventoPagamentoParaStatusAsaas,
   proximoStatusCobrancaAsaas,
@@ -75,15 +76,6 @@ function dataAsaas(data: Date) {
 function vencimentoAceitoPeloAsaas(vencimento: Date, hoje = new Date()) {
   const dataHoje = formatarDataInput(hoje)
   return formatarDataInput(vencimento) < dataHoje ? dataCivilParaDate(dataHoje) : vencimento
-}
-
-function dataValida(valor?: string | null) {
-  if (!valor) return null
-  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return dataCivilParaDate(valor)
-  const normalizado = valor.includes("T") ? valor : valor.replace(" ", "T")
-  const temFuso = /(?:Z|[+-]\d{2}:\d{2})$/.test(normalizado)
-  const data = new Date(temFuso ? normalizado : `${normalizado}Z`)
-  return Number.isNaN(data.getTime()) ? null : data
 }
 
 function cobrancaRemotaContinuaAtiva(status: CobrancaRemotaAsaas["status"]) {
@@ -421,11 +413,13 @@ async function persistirCobrancaRemota(
         status: remota.status === "RECEIVED" ? "RECEBIDA" : "PENDENTE",
         ativa: cobrancaRemotaContinuaAtiva(remota.status) && !outraAtiva,
         recebidaEmAsaas:
-          remota.status === "RECEIVED" ? (dataValida(remota.paymentDate) ?? new Date()) : undefined,
+          remota.status === "RECEIVED"
+            ? (interpretarDataAsaas(remota.paymentDate) ?? new Date())
+            : undefined,
         statusAsaas: remota.status,
         invoiceUrl: remota.invoiceUrl ?? null,
         pixCopiaECola: qrCode?.payload ?? null,
-        qrCodeExpiraEm: dataValida(qrCode?.expirationDate),
+        qrCodeExpiraEm: interpretarDataAsaas(qrCode?.expirationDate),
         ultimoErro: null,
       },
     })
@@ -918,7 +912,7 @@ export async function configurarTipoCobrancaPix(params: {
           asaasConciliationId: autorizacao.immediateQrCode.conciliationIdentifier,
           status: statusContrato(autorizacao),
           pixCopiaECola: autorizacao.payload ?? null,
-          qrCodeExpiraEm: dataValida(autorizacao.immediateQrCode.expirationDate),
+          qrCodeExpiraEm: interpretarDataAsaas(autorizacao.immediateQrCode.expirationDate),
           ultimoErro: null,
         },
       })
@@ -932,7 +926,7 @@ export async function configurarTipoCobrancaPix(params: {
         data: {
           status: "PENDENTE",
           pixCopiaECola: autorizacao.payload ?? null,
-          qrCodeExpiraEm: dataValida(autorizacao.immediateQrCode.expirationDate),
+          qrCodeExpiraEm: interpretarDataAsaas(autorizacao.immediateQrCode.expirationDate),
         },
       })
       await tx.aluno.update({
@@ -1419,7 +1413,7 @@ async function baixarMensalidadePeloAsaas(
   }
 
   const dataInformada = webhook.payment?.paymentDate ?? webhook.dateCreated
-  const dataRecebimento = dataValida(dataInformada) ?? new Date()
+  const dataRecebimento = interpretarDataAsaas(dataInformada) ?? new Date()
   const origemData = webhook.payment?.paymentDate
     ? "payment.paymentDate"
     : webhook.dateCreated
@@ -2209,6 +2203,7 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
         },
         select: {
           id: true,
+          solicitacaoId: true,
           status: true,
           asaasPaymentId: true,
           asaasCustomerId: true,
@@ -2331,7 +2326,8 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
             : !["CANCELADA", "ESTORNADA"].includes(statusAplicado) && !outraAtiva
         const recebidaEmAsaas =
           statusAplicado === "RECEBIDA"
-            ? (dataValida(webhook.payment.paymentDate ?? webhook.dateCreated) ?? new Date())
+            ? (interpretarDataAsaas(webhook.payment.paymentDate ?? webhook.dateCreated) ??
+              new Date())
             : undefined
         await tx.cobrancaAsaas.update({
           where: { id: cobranca.id },
@@ -2497,7 +2493,8 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
                 status: statusCobrancaAplicado,
                 ativa: true,
                 recebidaEmAsaas:
-                  dataValida(webhook.payment?.paymentDate ?? webhook.dateCreated) ?? new Date(),
+                  interpretarDataAsaas(webhook.payment?.paymentDate ?? webhook.dateCreated) ??
+                  new Date(),
                 ultimoEventoAsaas: webhook.event,
               },
             })

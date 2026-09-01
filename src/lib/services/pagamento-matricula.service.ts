@@ -4,12 +4,18 @@ import {
   type CobrancaAsaas as CobrancaRemotaAsaas,
   criarClienteAsaas,
   criarCobrancaAsaas,
+  excluirCobrancaAsaas,
   listarClientesAsaas,
   listarCobrancasAsaas,
   obterCobrancaAsaas,
   obterQrCodePixAsaas,
+  type QrCodePixAsaas,
 } from "@/lib/asaas/client"
-import { proximoStatusCobrancaAsaas } from "@/lib/asaas/estado"
+import { interpretarDataAsaas } from "@/lib/asaas/datas"
+import {
+  proximoStatusCobrancaAsaas,
+  statusCobrancaMatriculaPorStatusAsaas,
+} from "@/lib/asaas/estado"
 import { mensagemErroAsaasSegura } from "@/lib/asaas/seguranca"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
@@ -17,7 +23,15 @@ import { chaveCompetencia, dataCivilParaDate, formatarDataInput } from "@/lib/ut
 import type { WebhookAsaas } from "@/lib/validations/asaas"
 
 const TEMPO_RESERVA_MS = 2 * 60 * 1_000
-const STATUS_TERMINAIS: StatusCobrancaAsaas[] = ["RECEBIDA", "CANCELADA", "ESTORNADA"]
+const STATUS_SEM_PIX: StatusCobrancaAsaas[] = [
+  "RECEBIDA",
+  "CANCELANDO",
+  "VENCIDA",
+  "CANCELADA",
+  "RECUSADA",
+  "ESTORNADA",
+  "ERRO",
+]
 
 function somenteDigitos(valor?: string | null) {
   return valor?.replace(/\D/g, "") || undefined
@@ -25,15 +39,6 @@ function somenteDigitos(valor?: string | null) {
 
 function dataAsaas(data: Date) {
   return formatarDataInput(data)
-}
-
-function dataValida(valor?: string | null) {
-  if (!valor) return null
-  if (/^\d{4}-\d{2}-\d{2}$/.test(valor)) return dataCivilParaDate(valor)
-  const normalizado = valor.includes("T") ? valor : valor.replace(" ", "T")
-  const temFuso = /(?:Z|[+-]\d{2}:\d{2})$/.test(normalizado)
-  const data = new Date(temFuso ? normalizado : `${normalizado}Z`)
-  return Number.isNaN(data.getTime()) ? null : data
 }
 
 function referenciaCliente(solicitacaoId: string) {
@@ -49,17 +54,36 @@ function reservaEmAndamento(atualizadoEm: Date) {
   return Date.now() - atualizadoEm.getTime() < TEMPO_RESERVA_MS
 }
 
-function qrCodeValido(cobranca: {
-  status: StatusCobrancaAsaas
-  pixCopiaECola: string | null
-  qrCodeExpiraEm: Date | null
-}) {
+export function pixCobrancaMatriculaDisponivel(
+  cobranca: {
+    status: StatusCobrancaAsaas
+    statusAsaas?: string | null
+    pixCopiaECola: string | null
+    qrCodeExpiraEm: Date | null
+  },
+  agora = new Date(),
+) {
   return Boolean(
-    !STATUS_TERMINAIS.includes(cobranca.status) &&
+    cobranca.status === "PENDENTE" &&
+      (!cobranca.statusAsaas || cobranca.statusAsaas === "PENDING") &&
       cobranca.pixCopiaECola &&
       cobranca.qrCodeExpiraEm &&
-      cobranca.qrCodeExpiraEm.getTime() > Date.now(),
+      cobranca.qrCodeExpiraEm.getTime() > agora.getTime(),
   )
+}
+
+function motivoStatusRemoto(status: CobrancaRemotaAsaas["status"]) {
+  if (status === "CONFIRMED") return "Pagamento confirmado; aguardando o recebimento pelo Asaas."
+  if (status === "OVERDUE") return "A cobrança PIX venceu e precisa ser reemitida."
+  if (status === "DELETED") return "A cobrança PIX foi cancelada e precisa ser reemitida."
+  if (status === "REFUNDED") return "O pagamento foi estornado; gere uma nova cobrança PIX."
+  if (status === "PARTIALLY_REFUNDED") {
+    return "O pagamento teve estorno parcial e requer conciliação manual."
+  }
+  if (status !== "PENDING" && status !== "RECEIVED") {
+    return `A cobrança está no estado ${status} e requer conciliação.`
+  }
+  return null
 }
 
 export function obterPlanoPadraoMatricula() {
@@ -85,6 +109,7 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
         take: 1,
         select: {
           status: true,
+          statusAsaas: true,
           valor: true,
           pixCopiaECola: true,
           qrCodeExpiraEm: true,
@@ -99,8 +124,16 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
 
 async function reservarCobranca(tokenAcompanhamento: string) {
   return db.$transaction(async (tx) => {
-    const solicitacao = await tx.solicitacaoMatricula.findUnique({
+    const identificada = await tx.solicitacaoMatricula.findUnique({
       where: { tokenAcompanhamento },
+      select: { id: true },
+    })
+    if (!identificada) {
+      return { ok: false as const, motivo: "Solicitação de matrícula não encontrada." }
+    }
+    await tx.$queryRaw`SELECT "id" FROM "SolicitacaoMatricula" WHERE "id" = ${identificada.id} FOR UPDATE`
+    const solicitacao = await tx.solicitacaoMatricula.findUnique({
+      where: { id: identificada.id },
       include: { plano: true },
     })
     if (solicitacao?.status !== "PENDENTE") {
@@ -116,13 +149,16 @@ async function reservarCobranca(tokenAcompanhamento: string) {
       return { ok: false as const, motivo: "Informe um CPF válido para gerar o pagamento." }
     }
 
-    await tx.$queryRaw`SELECT "id" FROM "SolicitacaoMatricula" WHERE "id" = ${solicitacao.id} FOR UPDATE`
     const ultima = await tx.cobrancaMatriculaAsaas.findFirst({
       where: { solicitacaoId: solicitacao.id },
       orderBy: { geracao: "desc" },
     })
-    if (ultima && !STATUS_TERMINAIS.includes(ultima.status)) {
-      if (ultima.asaasPaymentId || qrCodeValido(ultima)) {
+    if (ultima) {
+      if (
+        ultima.asaasPaymentId ||
+        pixCobrancaMatriculaDisponivel(ultima) ||
+        !["CRIANDO", "ERRO"].includes(ultima.status)
+      ) {
         return { ok: true as const, proprietaria: false as const, solicitacao, cobranca: ultima }
       }
       if (ultima.status !== "ERRO" && reservaEmAndamento(ultima.atualizadoEm)) {
@@ -134,14 +170,8 @@ async function reservarCobranca(tokenAcompanhamento: string) {
       })
       return { ok: true as const, proprietaria: true as const, solicitacao, cobranca: retomada }
     }
-    if (ultima?.status === "RECEBIDA") {
-      return { ok: true as const, proprietaria: false as const, solicitacao, cobranca: ultima }
-    }
-    if (ultima) {
-      await tx.cobrancaMatriculaAsaas.update({ where: { id: ultima.id }, data: { ativa: false } })
-    }
 
-    const geracao = (ultima?.geracao ?? 0) + 1
+    const geracao = 1
     const hoje = dataCivilParaDate(formatarDataInput(new Date()))
     const cobranca = await tx.cobrancaMatriculaAsaas.create({
       data: {
@@ -205,23 +235,45 @@ async function criarOuRecuperarCobranca(params: {
   })
 }
 
-async function persistirCobranca(id: string, customerId: string, remota: CobrancaRemotaAsaas) {
-  const qrCode = remota.status === "RECEIVED" ? null : await obterQrCodePixAsaas(remota.id)
-  const recebida = remota.status === "RECEIVED"
+async function persistirCobranca(
+  id: string,
+  customerId: string,
+  remota: CobrancaRemotaAsaas,
+  qrCodeInformado?: QrCodePixAsaas | null,
+) {
+  const status = statusCobrancaMatriculaPorStatusAsaas(remota.status)
+  const qrCode =
+    remota.status === "PENDING"
+      ? qrCodeInformado === undefined
+        ? await obterQrCodePixAsaas(remota.id)
+        : qrCodeInformado
+      : null
+  const qrCodeExpiraEm = interpretarDataAsaas(qrCode?.expirationDate)
+  const qrValido = Boolean(qrCode?.payload && qrCodeExpiraEm && qrCodeExpiraEm > new Date())
+  const recebida = status === "RECEBIDA"
+  const ultimoErro =
+    remota.status === "PENDING" && !qrValido
+      ? "O QR Code PIX retornado pelo Asaas está vencido ou inválido."
+      : motivoStatusRemoto(remota.status)
   return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "CobrancaMatriculaAsaas" WHERE "id" = ${id} FOR UPDATE`
     const anterior = await tx.cobrancaMatriculaAsaas.findUniqueOrThrow({ where: { id } })
+    if (anterior.status === "RECEBIDA" && !recebida) return anterior
     const atualizada = await tx.cobrancaMatriculaAsaas.update({
       where: { id },
       data: {
         asaasCustomerId: customerId,
         asaasPaymentId: remota.id,
-        status: recebida ? "RECEBIDA" : "PENDENTE",
+        status,
+        ativa: !STATUS_SEM_PIX.includes(status),
         statusAsaas: remota.status,
-        pixCopiaECola: qrCode?.payload ?? anterior.pixCopiaECola,
-        qrCodeExpiraEm: dataValida(qrCode?.expirationDate) ?? anterior.qrCodeExpiraEm,
+        pixCopiaECola: qrValido ? qrCode?.payload : recebida ? anterior.pixCopiaECola : null,
+        qrCodeExpiraEm: qrValido ? qrCodeExpiraEm : recebida ? anterior.qrCodeExpiraEm : null,
         invoiceUrl: remota.invoiceUrl ?? null,
-        recebidaEmAsaas: recebida ? (dataValida(remota.paymentDate) ?? new Date()) : null,
-        ultimoErro: null,
+        recebidaEmAsaas: recebida
+          ? (interpretarDataAsaas(remota.paymentDate) ?? new Date())
+          : undefined,
+        ultimoErro,
       },
     })
     await registrarLog(
@@ -247,9 +299,18 @@ export async function gerarCobrancaMatriculaAsaas(
   if (!reserva.ok) return reserva
   if (
     reserva.cobranca.status === "RECEBIDA" ||
-    (!opcoes.verificar && qrCodeValido(reserva.cobranca))
+    (!opcoes.verificar && pixCobrancaMatriculaDisponivel(reserva.cobranca))
   ) {
     return { ok: true as const, cobranca: reserva.cobranca }
+  }
+  if (reserva.cobranca.status === "CANCELANDO") {
+    return { ok: false as const, motivo: "A cobrança está sendo substituída." }
+  }
+  if (
+    !reserva.cobranca.asaasPaymentId &&
+    ["VENCIDA", "CANCELADA", "RECUSADA", "ESTORNADA"].includes(reserva.cobranca.status)
+  ) {
+    return { ok: false as const, motivo: "Esta cobrança precisa ser reemitida." }
   }
   if (
     opcoes.verificar &&
@@ -280,9 +341,293 @@ export async function gerarCobrancaMatriculaAsaas(
     return { ok: true as const, cobranca }
   } catch (erro) {
     const motivo = mensagemErroAsaasSegura(erro)
-    await db.cobrancaMatriculaAsaas.update({
-      where: { id: reserva.cobranca.id },
-      data: { status: "ERRO", ultimoErro: motivo },
+    await db.cobrancaMatriculaAsaas.updateMany({
+      where: {
+        id: reserva.cobranca.id,
+        status: { notIn: ["RECEBIDA", "ESTORNADA"] },
+      },
+      data: {
+        status: "ERRO",
+        ativa: false,
+        pixCopiaECola: null,
+        qrCodeExpiraEm: null,
+        ultimoErro: motivo,
+      },
+    })
+    return { ok: false as const, motivo }
+  }
+}
+
+async function reservarReemissao(tokenAcompanhamento: string) {
+  return db.$transaction(async (tx) => {
+    const identificada = await tx.solicitacaoMatricula.findUnique({
+      where: { tokenAcompanhamento },
+      select: { id: true },
+    })
+    if (!identificada) {
+      return { ok: false as const, motivo: "Solicitação de matrícula não encontrada." }
+    }
+    await tx.$queryRaw`SELECT "id" FROM "SolicitacaoMatricula" WHERE "id" = ${identificada.id} FOR UPDATE`
+    const solicitacao = await tx.solicitacaoMatricula.findUnique({
+      where: { id: identificada.id },
+      include: { plano: true },
+    })
+    if (solicitacao?.status !== "PENDENTE" || solicitacao.tipoPagamento !== "MENSALISTA") {
+      return { ok: false as const, motivo: "Esta solicitação não aceita uma nova cobrança." }
+    }
+    if (!solicitacao.plano || !solicitacao.cpf) {
+      return {
+        ok: false as const,
+        motivo: "Os dados financeiros da solicitação estão incompletos.",
+      }
+    }
+    const cobranca = await tx.cobrancaMatriculaAsaas.findFirst({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { geracao: "desc" },
+    })
+    if (!cobranca) return { ok: true as const, retomar: true as const, solicitacao }
+    if (cobranca.status === "RECEBIDA") {
+      return { ok: false as const, motivo: "O pagamento já foi recebido pelo Asaas." }
+    }
+    if (cobranca.statusAsaas === "CONFIRMED") {
+      return {
+        ok: false as const,
+        motivo: "O pagamento já foi confirmado e aguarda recebimento pelo Asaas.",
+      }
+    }
+    if (cobranca.statusAsaas === "PARTIALLY_REFUNDED") {
+      return { ok: false as const, motivo: "O pagamento requer conciliação manual." }
+    }
+    if (!cobranca.asaasPaymentId) {
+      return { ok: true as const, retomar: true as const, solicitacao }
+    }
+    if (cobranca.status === "CANCELANDO" && reservaEmAndamento(cobranca.atualizadoEm)) {
+      return { ok: false as const, motivo: "A cobrança já está sendo substituída." }
+    }
+    const reservada = await tx.cobrancaMatriculaAsaas.update({
+      where: { id: cobranca.id },
+      data: { status: "CANCELANDO", ativa: false, ultimoErro: null },
+    })
+    return {
+      ok: true as const,
+      retomar: false as const,
+      solicitacao,
+      cobranca: reservada,
+    }
+  })
+}
+
+type EncerramentoCobrancaRemota = {
+  status: Extract<StatusCobrancaAsaas, "CANCELADA" | "ESTORNADA">
+  statusAsaas: "DELETED" | "REFUNDED"
+  justificativa: string
+}
+
+async function criarNovaGeracaoAposEncerramento(params: {
+  solicitacaoId: string
+  cobrancaId: string
+  asaasPaymentId: string
+  encerramento: EncerramentoCobrancaRemota
+}) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "SolicitacaoMatricula" WHERE "id" = ${params.solicitacaoId} FOR UPDATE`
+    const solicitacao = await tx.solicitacaoMatricula.findUnique({
+      where: { id: params.solicitacaoId },
+      include: { plano: true },
+    })
+    if (solicitacao?.status !== "PENDENTE" || !solicitacao.plano) {
+      return { ok: false as const, motivo: "Esta solicitação não aceita uma nova cobrança." }
+    }
+    const atual = await tx.cobrancaMatriculaAsaas.findUniqueOrThrow({
+      where: { id: params.cobrancaId },
+    })
+    if (atual.status === "RECEBIDA") {
+      return { ok: false as const, motivo: "O pagamento já foi recebido pelo Asaas." }
+    }
+    const ultima = await tx.cobrancaMatriculaAsaas.findFirst({
+      where: { solicitacaoId: solicitacao.id },
+      orderBy: { geracao: "desc" },
+    })
+    if (ultima?.id !== atual.id) {
+      return { ok: false as const, motivo: "A cobrança foi alterada por outra operação." }
+    }
+    await tx.cobrancaMatriculaAsaas.update({
+      where: { id: atual.id },
+      data: {
+        status: params.encerramento.status,
+        ativa: false,
+        statusAsaas: params.encerramento.statusAsaas,
+        pixCopiaECola: null,
+        qrCodeExpiraEm: null,
+        ultimoErro: null,
+      },
+    })
+    const geracao = atual.geracao + 1
+    const hoje = dataCivilParaDate(formatarDataInput(new Date()))
+    const nova = await tx.cobrancaMatriculaAsaas.create({
+      data: {
+        solicitacaoId: solicitacao.id,
+        geracao,
+        externalReference: referenciaCobranca(solicitacao.id, geracao),
+        competencia: chaveCompetencia(),
+        valor: solicitacao.plano.valor,
+        vencimentoAsaas: hoje,
+      },
+    })
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaMatriculaAsaas",
+        entidadeId: atual.id,
+        valorAntigo: { status: atual.status, ativa: atual.ativa },
+        valorNovo: {
+          status: params.encerramento.status,
+          statusAsaas: params.encerramento.statusAsaas,
+          ativa: false,
+          substituidaPor: nova.id,
+        },
+        justificativa: params.encerramento.justificativa,
+      },
+      tx,
+    )
+    return { ok: true as const, cobranca: nova, solicitacao }
+  })
+}
+
+async function registrarFalhaReemissao(params: {
+  cobrancaId: string
+  asaasPaymentId: string
+  motivo: string
+  encerramento: EncerramentoCobrancaRemota | null
+}) {
+  return db.$transaction(async (tx) => {
+    const status = params.encerramento?.status ?? "ERRO"
+    const atualizada = await tx.cobrancaMatriculaAsaas.updateMany({
+      where: { id: params.cobrancaId, status: "CANCELANDO" },
+      data: {
+        status,
+        ativa: false,
+        statusAsaas: params.encerramento?.statusAsaas,
+        pixCopiaECola: null,
+        qrCodeExpiraEm: null,
+        ultimoErro: params.motivo,
+      },
+    })
+    if (atualizada.count === 0) return
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaMatriculaAsaas",
+        entidadeId: params.cobrancaId,
+        valorAntigo: { status: "CANCELANDO", ativa: false },
+        valorNovo: {
+          status,
+          statusAsaas: params.encerramento?.statusAsaas ?? null,
+          ativa: false,
+          erro: params.motivo,
+        },
+        justificativa: params.encerramento
+          ? `Cobrança remota ${params.asaasPaymentId} encerrada, mas a reemissão local falhou.`
+          : "Falha ao reemitir a cobrança PIX de matrícula.",
+      },
+      tx,
+    )
+  })
+}
+
+export async function reemitirCobrancaMatriculaAsaas(tokenAcompanhamento: string) {
+  const reserva = await reservarReemissao(tokenAcompanhamento)
+  if (!reserva.ok) return reserva
+  if (reserva.retomar) {
+    return gerarCobrancaMatriculaAsaas(tokenAcompanhamento, { verificar: true })
+  }
+
+  const { cobranca, solicitacao } = reserva
+  let encerramento: EncerramentoCobrancaRemota | null = null
+  try {
+    const remota = await obterCobrancaAsaas(cobranca.asaasPaymentId!)
+    const divergencia = divergenciaWebhook(cobranca, {
+      id: remota.id,
+      customer: remota.customer,
+      externalReference: remota.externalReference,
+      billingType: remota.billingType,
+      value: remota.value,
+      dueDate: remota.dueDate,
+      status: remota.status,
+    })
+    if (divergencia) throw new Error(divergencia)
+
+    if (remota.status === "PENDING") {
+      const qrCode = await obterQrCodePixAsaas(remota.id)
+      const expiraEm = interpretarDataAsaas(qrCode.expirationDate)
+      if (qrCode.payload && expiraEm && expiraEm > new Date()) {
+        const sincronizada = await persistirCobranca(cobranca.id, remota.customer, remota, qrCode)
+        return { ok: true as const, cobranca: sincronizada, reemitida: false as const }
+      }
+    } else if (!["OVERDUE", "DELETED", "REFUNDED"].includes(remota.status)) {
+      const sincronizada = await persistirCobranca(cobranca.id, remota.customer, remota, null)
+      const motivo = motivoStatusRemoto(remota.status)
+      return sincronizada.status === "RECEBIDA"
+        ? { ok: true as const, cobranca: sincronizada, reemitida: false as const }
+        : { ok: false as const, motivo: motivo ?? "A cobrança requer conciliação manual." }
+    }
+
+    if (remota.status === "PENDING" || remota.status === "OVERDUE") {
+      const excluida = await excluirCobrancaAsaas(remota.id)
+      if (!excluida.deleted || excluida.id !== remota.id) {
+        throw new Error("O Asaas não confirmou o cancelamento da cobrança anterior.")
+      }
+      encerramento = {
+        status: "CANCELADA",
+        statusAsaas: "DELETED",
+        justificativa: `Cobrança remota ${remota.id} cancelada antes da reemissão.`,
+      }
+    } else if (remota.status === "DELETED") {
+      encerramento = {
+        status: "CANCELADA",
+        statusAsaas: "DELETED",
+        justificativa: `Cobrança remota ${remota.id} já estava cancelada antes da reemissão.`,
+      }
+    } else if (remota.status === "REFUNDED") {
+      encerramento = {
+        status: "ESTORNADA",
+        statusAsaas: "REFUNDED",
+        justificativa: `Cobrança remota ${remota.id} estava estornada antes da reemissão.`,
+      }
+    }
+
+    if (!encerramento) throw new Error("A cobrança anterior não foi encerrada para reemissão.")
+    const novaReserva = await criarNovaGeracaoAposEncerramento({
+      solicitacaoId: solicitacao.id,
+      cobrancaId: cobranca.id,
+      asaasPaymentId: remota.id,
+      encerramento,
+    })
+    if (!novaReserva.ok) throw new Error(novaReserva.motivo)
+    const cliente = await garantirClienteAsaas({
+      solicitacaoId: solicitacao.id,
+      nome: solicitacao.nome,
+      email: solicitacao.email,
+      cpf: solicitacao.cpf!,
+      telefone: solicitacao.telefone,
+    })
+    const novaRemota = await criarOuRecuperarCobranca({
+      customerId: cliente.id,
+      externalReference: novaReserva.cobranca.externalReference,
+      valor: Number(novaReserva.cobranca.valor),
+      vencimento: novaReserva.cobranca.vencimentoAsaas,
+    })
+    const nova = await persistirCobranca(novaReserva.cobranca.id, cliente.id, novaRemota)
+    return { ok: true as const, cobranca: nova, reemitida: true as const }
+  } catch (erro) {
+    const motivo = mensagemErroAsaasSegura(erro)
+    await registrarFalhaReemissao({
+      cobrancaId: cobranca.id,
+      asaasPaymentId: cobranca.asaasPaymentId!,
+      motivo,
+      encerramento,
     })
     return { ok: false as const, motivo }
   }
@@ -322,6 +667,7 @@ function divergenciaWebhook(
 function statusMatriculaPorEvento(evento: string): StatusCobrancaAsaas | null {
   const mapa: Record<string, StatusCobrancaAsaas> = {
     PAYMENT_RECEIVED: "RECEBIDA",
+    PAYMENT_CONFIRMED: "PENDENTE",
     PAYMENT_OVERDUE: "VENCIDA",
     PAYMENT_DELETED: "CANCELADA",
     PAYMENT_REFUNDED: "ESTORNADA",
@@ -334,6 +680,7 @@ export async function aplicarWebhookPagamentoMatricula(
   tx: Prisma.TransactionClient,
   cobranca: {
     id: string
+    solicitacaoId: string
     status: StatusCobrancaAsaas
     asaasPaymentId: string | null
     asaasCustomerId: string | null
@@ -350,17 +697,53 @@ export async function aplicarWebhookPagamentoMatricula(
   const recebido = statusMatriculaPorEvento(webhook.event)
   const status = recebido ? proximoStatusCobrancaAsaas(cobranca.status, recebido) : cobranca.status
   const pagamentoRecebido = webhook.event === "PAYMENT_RECEIVED"
+  const pagamentoPriorizado = pagamentoRecebido || webhook.event === "PAYMENT_CONFIRMED"
+  const outraAtiva = pagamentoPriorizado
+    ? await tx.cobrancaMatriculaAsaas.findFirst({
+        where: {
+          solicitacaoId: cobranca.solicitacaoId,
+          id: { not: cobranca.id },
+          ativa: true,
+        },
+        select: { id: true, status: true },
+      })
+    : null
+  if (outraAtiva) {
+    await tx.cobrancaMatriculaAsaas.update({
+      where: { id: outraAtiva.id },
+      data: {
+        ativa: false,
+        pixCopiaECola: null,
+        qrCodeExpiraEm: null,
+        ultimoErro: "Outra tentativa foi confirmada; concilie a cobrança remota substituída.",
+      },
+    })
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaMatriculaAsaas",
+        entidadeId: outraAtiva.id,
+        valorAntigo: { ativa: true, status: outraAtiva.status },
+        valorNovo: { ativa: false, status: outraAtiva.status },
+        justificativa: `Outra tentativa foi priorizada pelo evento Asaas ${webhook.id}.`,
+      },
+      tx,
+    )
+  }
   await tx.cobrancaMatriculaAsaas.update({
     where: { id: cobranca.id },
     data: {
       status,
       asaasPaymentId: webhook.payment.id,
       asaasCustomerId: webhook.payment.customer,
-      ativa: !["CANCELADA", "ESTORNADA"].includes(status),
+      ativa: pagamentoPriorizado || (!STATUS_SEM_PIX.includes(status) && !outraAtiva),
       statusAsaas: webhook.payment.status ?? null,
+      pixCopiaECola: !pagamentoRecebido ? null : undefined,
+      qrCodeExpiraEm: !pagamentoRecebido ? null : undefined,
       ultimoEventoAsaas: webhook.event,
       recebidaEmAsaas: pagamentoRecebido
-        ? (dataValida(webhook.payment.paymentDate ?? webhook.dateCreated) ?? new Date())
+        ? (interpretarDataAsaas(webhook.payment.paymentDate ?? webhook.dateCreated) ?? new Date())
         : undefined,
       estornoParcialPendenteEm:
         webhook.event === "PAYMENT_PARTIALLY_REFUNDED" ? new Date() : undefined,

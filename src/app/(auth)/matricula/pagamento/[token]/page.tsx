@@ -2,11 +2,17 @@ import { CheckCircle2, Clock3, QrCode, RefreshCw, ShieldCheck } from "lucide-rea
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import QRCode from "qrcode"
-import { acaoGerarPagamentoMatricula } from "@/app/actions/matriculas"
+import {
+  acaoGerarPagamentoMatricula,
+  acaoReemitirPagamentoMatricula,
+} from "@/app/actions/matriculas"
 import { Marca } from "@/components/marca"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Card, CardContent } from "@/components/ui/card"
-import { obterPagamentoMatriculaPublico } from "@/lib/services/pagamento-matricula.service"
+import {
+  obterPagamentoMatriculaPublico,
+  pixCobrancaMatriculaDisponivel,
+} from "@/lib/services/pagamento-matricula.service"
 import { formatarBRL } from "@/lib/utils/formato"
 import { AtualizadorPagamento, CopiarPix } from "./atualizador-pagamento"
 
@@ -23,9 +29,11 @@ export default async function PagamentoMatriculaPage({
   if (!solicitacao?.plano || solicitacao.tipoPagamento !== "MENSALISTA") notFound()
   const cobranca = solicitacao.cobrancasAsaas[0] ?? null
   const pagamentoConfirmado = cobranca?.status === "RECEBIDA"
-  const qrCodeDataUrl = cobranca?.pixCopiaECola
-    ? await QRCode.toDataURL(cobranca.pixCopiaECola, { margin: 1 })
-    : null
+  const pixDisponivel = cobranca ? pixCobrancaMatriculaDisponivel(cobranca) : false
+  const qrCodeDataUrl =
+    pixDisponivel && cobranca?.pixCopiaECola
+      ? await QRCode.toDataURL(cobranca.pixCopiaECola, { margin: 1 })
+      : null
 
   return (
     <main className="w-full max-w-2xl py-4">
@@ -58,7 +66,7 @@ export default async function PagamentoMatriculaPage({
                 opcional.
               </p>
             </div>
-          ) : qrCodeDataUrl && cobranca?.pixCopiaECola ? (
+          ) : pixDisponivel && qrCodeDataUrl && cobranca?.pixCopiaECola ? (
             <div className="grid gap-5 sm:grid-cols-[210px_1fr] sm:items-center">
               {/* biome-ignore lint/performance/noImgElement: data URL não é otimizada pelo Next Image */}
               <img
@@ -94,10 +102,10 @@ export default async function PagamentoMatriculaPage({
               <p className="text-sm text-muted-foreground">
                 {cobranca?.ultimoErro ?? "O QR Code ainda não está disponível."}
               </p>
-              <form action={acaoGerarPagamentoMatricula}>
+              <form action={acaoReemitirPagamentoMatricula}>
                 <input type="hidden" name="token" value={token} />
                 <BotaoEnviar>
-                  <RefreshCw className="size-4" /> Tentar gerar novamente
+                  <RefreshCw className="size-4" /> Atualizar cobrança PIX
                 </BotaoEnviar>
               </form>
             </div>

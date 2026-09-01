@@ -8,7 +8,10 @@ import {
   validarComprovanteMatricula,
 } from "@/lib/comprovantes-matricula"
 import { aprovarMatricula, solicitarMatricula } from "@/lib/services/matricula.service"
-import { gerarCobrancaMatriculaAsaas } from "@/lib/services/pagamento-matricula.service"
+import {
+  gerarCobrancaMatriculaAsaas,
+  reemitirCobrancaMatriculaAsaas,
+} from "@/lib/services/pagamento-matricula.service"
 import {
   excluirComprovanteMatriculaSeExistir,
   salvarComprovanteMatricula,
@@ -90,6 +93,13 @@ export async function acaoGerarPagamentoMatricula(formData: FormData) {
   const token = formData.get("token")
   if (typeof token !== "string" || token.length < 10) return
   await gerarCobrancaMatriculaAsaas(token, { verificar: true })
+  revalidatePath(`/matricula/pagamento/${token}`)
+}
+
+export async function acaoReemitirPagamentoMatricula(formData: FormData) {
+  const token = formData.get("token")
+  if (typeof token !== "string" || token.length < 10) return
+  await reemitirCobrancaMatriculaAsaas(token)
   revalidatePath(`/matricula/pagamento/${token}`)
 }
 

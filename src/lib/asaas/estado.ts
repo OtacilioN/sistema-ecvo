@@ -1,4 +1,19 @@
 import type { StatusCobrancaAsaas, StatusContratoPixAutomatico } from "@prisma/client"
+import type { StatusCobrancaAsaas as StatusCobrancaRemotaAsaas } from "@/lib/asaas/client"
+
+export function statusCobrancaMatriculaPorStatusAsaas(
+  status: StatusCobrancaRemotaAsaas,
+): StatusCobrancaAsaas {
+  const mapa: Partial<Record<StatusCobrancaRemotaAsaas, StatusCobrancaAsaas>> = {
+    RECEIVED: "RECEBIDA",
+    OVERDUE: "VENCIDA",
+    DELETED: "CANCELADA",
+    REFUNDED: "ESTORNADA",
+    PARTIALLY_REFUNDED: "ERRO",
+  }
+  if (status === "PENDING" || status === "CONFIRMED") return "PENDENTE"
+  return mapa[status] ?? "ERRO"
+}
 
 export function proximoStatusCobrancaAsaas(
   atual: StatusCobrancaAsaas,
