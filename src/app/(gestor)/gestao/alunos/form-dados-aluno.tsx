@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { STATUS_ALUNO, type StatusAlunoDominio } from "@/lib/alunos/status"
-import { formatarDataInput } from "@/lib/utils/datas"
+import { formatarDataCivilInput } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
@@ -352,7 +352,7 @@ export function FormDadosAluno({
 }
 
 function paraDataInput(valor?: Date | null) {
-  return valor ? formatarDataInput(valor) : ""
+  return valor ? formatarDataCivilInput(valor) : ""
 }
 
 function rotuloPlano(plano: Plano) {

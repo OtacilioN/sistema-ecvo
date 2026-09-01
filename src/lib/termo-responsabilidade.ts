@@ -1,3 +1,5 @@
+import { paraFusoAcademia, partesDataCivil } from "@/lib/utils/datas"
+
 export const TERMO_RESPONSABILIDADE_VERSAO = "2026-06-18"
 export const TERMO_RESPONSABILIDADE_CIDADE = "João Pessoa"
 
@@ -45,15 +47,15 @@ export const DECLARACAO_RESPONSAVEL_MENOR_ID = "responsavel_menor"
 export function menorDeIdade(dataNascimento: Date | null | undefined, referencia = new Date()) {
   if (!dataNascimento) return false
 
-  const aniversarioNesteAno = new Date(
-    referencia.getFullYear(),
-    dataNascimento.getMonth(),
-    dataNascimento.getDate(),
-  )
-  const idade =
-    referencia.getFullYear() -
-    dataNascimento.getFullYear() -
-    (referencia < aniversarioNesteAno ? 1 : 0)
+  const nascimento = partesDataCivil(dataNascimento)
+  const referenciaNoFuso = paraFusoAcademia(referencia)
+  const anoReferencia = referenciaNoFuso.getFullYear()
+  const mesReferencia = referenciaNoFuso.getMonth() + 1
+  const diaReferencia = referenciaNoFuso.getDate()
+  const aindaNaoFezAniversario =
+    mesReferencia < nascimento.mes ||
+    (mesReferencia === nascimento.mes && diaReferencia < nascimento.dia)
+  const idade = anoReferencia - nascimento.ano - (aindaNaoFezAniversario ? 1 : 0)
 
   return idade < 18
 }

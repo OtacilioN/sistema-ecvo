@@ -117,6 +117,18 @@ describe("mensagemLembreteAniversario", () => {
       mensagem: "Ana Silva faz aniversário em 10/06.",
     })
   })
+
+  it("preserva a data civil de nascimento legada à meia-noite UTC", () => {
+    expect(
+      mensagemLembreteAniversario({
+        alunoNome: "Ronaldy Ribeiro",
+        dataNascimento: new Date("2007-02-25T00:00:00.000Z"),
+      }),
+    ).toEqual({
+      titulo: "Aniversário amanhã",
+      mensagem: "Ronaldy Ribeiro faz aniversário em 25/02.",
+    })
+  })
 })
 
 describe("mensagemLembreteAgendamentoAmanha", () => {

@@ -4,7 +4,14 @@ import { formatInTimeZone, fromZonedTime } from "date-fns-tz"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { enviarPushParaNotificacao } from "@/lib/services/push.service"
-import { formatarData, formatarDataHora, formatarHora, TIMEZONE } from "@/lib/utils/datas"
+import {
+  chaveMesDiaDataCivil,
+  formatarData,
+  formatarDataHora,
+  formatarDiaMesDataCivil,
+  formatarHora,
+  TIMEZONE,
+} from "@/lib/utils/datas"
 
 type Cliente = Prisma.TransactionClient | typeof db
 
@@ -290,10 +297,8 @@ export function mensagemLembreteAniversario(params: { alunoNome: string; dataNas
 } {
   return {
     titulo: "Aniversário amanhã",
-    mensagem: `${params.alunoNome} faz aniversário em ${formatInTimeZone(
+    mensagem: `${params.alunoNome} faz aniversário em ${formatarDiaMesDataCivil(
       params.dataNascimento,
-      TIMEZONE,
-      "dd/MM",
     )}.`,
   }
 }
@@ -334,7 +339,7 @@ export async function gerarLembretesAniversario(cliente: Cliente = db, params?: 
   let total = 0
   for (const aluno of alunos) {
     if (!aluno.dataNascimento) continue
-    if (formatInTimeZone(aluno.dataNascimento, TIMEZONE, "MM-dd") !== chaveAlvo) continue
+    if (chaveMesDiaDataCivil(aluno.dataNascimento) !== chaveAlvo) continue
 
     const destinatarios = new Set(gestores.map((gestor) => gestor.id))
     for (const modalidade of aluno.modalidades) {

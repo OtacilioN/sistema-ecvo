@@ -17,7 +17,12 @@ import { db } from "@/lib/db"
 import { obterHistoricoObservacoesTecnicas } from "@/lib/services/aluno.service"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { resumoHoras } from "@/lib/services/horas.service"
-import { formatarData, formatarDataHora, minutosParaHoras } from "@/lib/utils/datas"
+import {
+  formatarData,
+  formatarDataCivil,
+  formatarDataHora,
+  minutosParaHoras,
+} from "@/lib/utils/datas"
 import { formatarBRL, formatarCPF } from "@/lib/utils/formato"
 import { AcoesPerfilAluno } from "./acoes-perfil-aluno"
 
@@ -302,7 +307,7 @@ export default async function Page() {
               <Campo rotulo="Telefone" valor={aluno.telefone} />
               <Campo
                 rotulo="Data de nascimento"
-                valor={aluno.dataNascimento ? formatarData(aluno.dataNascimento) : null}
+                valor={aluno.dataNascimento ? formatarDataCivil(aluno.dataNascimento) : null}
               />
               <Campo rotulo="Contato de emergência" valor={aluno.contatoEmergencia} />
               <Campo rotulo="Endereço" valor={aluno.endereco} className="sm:col-span-2" />

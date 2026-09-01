@@ -7,7 +7,7 @@ import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { formatarDataInput } from "@/lib/utils/datas"
+import { formatarDataCivilInput } from "@/lib/utils/datas"
 
 type AlunoPerfil = {
   usuario: {
@@ -171,5 +171,5 @@ export function FormMeusDadosAluno({ aluno }: { aluno: AlunoPerfil }) {
 }
 
 function paraDataInput(valor?: Date | null) {
-  return valor ? formatarDataInput(valor) : ""
+  return valor ? formatarDataCivilInput(valor) : ""
 }

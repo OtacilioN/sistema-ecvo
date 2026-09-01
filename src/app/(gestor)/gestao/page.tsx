@@ -27,8 +27,10 @@ import {
   chaveCompetencia,
   dataCivilParaDate,
   formatarData,
+  formatarDiaMesDataCivil,
   inicioDoDiaAcademia,
   paraFusoAcademia,
+  partesDataCivil,
   TIMEZONE,
 } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
@@ -103,14 +105,12 @@ function indiceSemanaMes(data: Date, inicioMes: Date) {
 }
 
 function dataAniversarioNoAno(dataNascimento: Date, ano: number) {
-  const nascimentoNoFuso = paraFusoAcademia(dataNascimento)
-  const mes = nascimentoNoFuso.getMonth()
-  const dia = nascimentoNoFuso.getDate()
+  const { mes, dia } = partesDataCivil(dataNascimento)
   const aniversario = dataCivilParaDate(
-    `${ano}-${String(mes + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`,
+    `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`,
   )
 
-  return paraFusoAcademia(aniversario).getMonth() === mes
+  return paraFusoAcademia(aniversario).getMonth() === mes - 1
     ? aniversario
     : dataCivilParaDate(`${ano}-02-28`)
 }
@@ -875,7 +875,7 @@ function LinhaAniversariante({
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{nome}</p>
         <p className="text-xs text-muted-foreground">
-          {rotulosPapelAniversario[papel]} · {formatarDiaMes(dataNascimento)}
+          {rotulosPapelAniversario[papel]} · {formatarDiaMesDataCivil(dataNascimento)}
         </p>
       </div>
       <Badge variant={diasAte <= 7 ? "success" : "outline"} className="shrink-0">

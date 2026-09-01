@@ -40,6 +40,61 @@ export function formatarDataInput(data: Date): string {
   return formatInTimeZone(data, TIMEZONE, "yyyy-MM-dd")
 }
 
+/**
+ * Extrai uma data civil persistida sem deixar o fuso alterar o dia.
+ *
+ * Cadastros anteriores a junho de 2026 foram gravados por `new Date("YYYY-MM-DD")`,
+ * portanto ficaram à meia-noite UTC. Para esses valores legados, os componentes UTC
+ * representam a data originalmente informada. Os valores atuais são gravados ao meio-dia
+ * da academia e devem ser interpretados em `TIMEZONE`.
+ */
+export function partesDataCivil(data: Date): { ano: number; mes: number; dia: number } {
+  const ehLegadaEmMeiaNoiteUtc =
+    data.getUTCHours() === 0 &&
+    data.getUTCMinutes() === 0 &&
+    data.getUTCSeconds() === 0 &&
+    data.getUTCMilliseconds() === 0
+
+  if (ehLegadaEmMeiaNoiteUtc) {
+    return {
+      ano: data.getUTCFullYear(),
+      mes: data.getUTCMonth() + 1,
+      dia: data.getUTCDate(),
+    }
+  }
+
+  const dataNoFuso = paraFusoAcademia(data)
+  return {
+    ano: dataNoFuso.getFullYear(),
+    mes: dataNoFuso.getMonth() + 1,
+    dia: dataNoFuso.getDate(),
+  }
+}
+
+export function formatarDataCivilInput(data: Date): string {
+  const { ano, mes, dia } = partesDataCivil(data)
+  return `${ano.toString().padStart(4, "0")}-${mes.toString().padStart(2, "0")}-${dia
+    .toString()
+    .padStart(2, "0")}`
+}
+
+export function formatarDataCivil(data: Date): string {
+  const { ano, mes, dia } = partesDataCivil(data)
+  return `${dia.toString().padStart(2, "0")}/${mes.toString().padStart(2, "0")}/${ano
+    .toString()
+    .padStart(4, "0")}`
+}
+
+export function formatarDiaMesDataCivil(data: Date): string {
+  const { mes, dia } = partesDataCivil(data)
+  return `${dia.toString().padStart(2, "0")}/${mes.toString().padStart(2, "0")}`
+}
+
+export function chaveMesDiaDataCivil(data: Date): string {
+  const { mes, dia } = partesDataCivil(data)
+  return `${mes.toString().padStart(2, "0")}-${dia.toString().padStart(2, "0")}`
+}
+
 export function dataCivilParaDate(valor: string): Date {
   const data = valor.trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(data)) {

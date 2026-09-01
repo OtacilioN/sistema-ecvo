@@ -1,5 +1,32 @@
 import { describe, expect, it } from "vitest"
-import { formatarCompetencia, formatarMinutos, minutosParaHoras, rotuloDiaSemana } from "./datas"
+import {
+  dataCivilParaDate,
+  formatarCompetencia,
+  formatarDataCivil,
+  formatarDataCivilInput,
+  formatarMinutos,
+  minutosParaHoras,
+  partesDataCivil,
+  rotuloDiaSemana,
+} from "./datas"
+
+describe("datas civis", () => {
+  it("preserva o dia de um cadastro legado gravado à meia-noite UTC", () => {
+    const nascimentoLegado = new Date("2007-02-25T00:00:00.000Z")
+
+    expect(partesDataCivil(nascimentoLegado)).toEqual({ ano: 2007, mes: 2, dia: 25 })
+    expect(formatarDataCivilInput(nascimentoLegado)).toBe("2007-02-25")
+    expect(formatarDataCivil(nascimentoLegado)).toBe("25/02/2007")
+  })
+
+  it("mantém o round-trip de uma data civil atual no fuso da academia", () => {
+    const nascimento = dataCivilParaDate("2007-02-25")
+
+    expect(nascimento.toISOString()).toBe("2007-02-25T15:00:00.000Z")
+    expect(formatarDataCivilInput(nascimento)).toBe("2007-02-25")
+    expect(formatarDataCivil(nascimento)).toBe("25/02/2007")
+  })
+})
 
 describe("formatarCompetencia", () => {
   it("transforma a chave técnica em mês e ano legíveis", () => {
