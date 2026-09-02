@@ -127,20 +127,28 @@ export function calcularOfensivas(
   return resultados
 }
 
+export function modalidadeOfensivaEfetiva(params: {
+  modalidadeOfensivaId: string | null
+  movimentos: Array<{ modalidadeId: string }>
+}): string | null {
+  return params.modalidadeOfensivaId ?? params.movimentos[0]?.modalidadeId ?? null
+}
+
 function presencasDosCheckins(
   checkins: Array<{
     alunoId: string
+    modalidadeOfensivaId: string | null
     aula: { inicio: Date }
     movimentos: Array<{ modalidadeId: string }>
   }>,
 ): PresencaOfensiva[] {
   return checkins.flatMap((checkin) => {
-    const movimento = checkin.movimentos[0]
-    return movimento
+    const modalidadeId = modalidadeOfensivaEfetiva(checkin)
+    return modalidadeId
       ? [
           {
             alunoId: checkin.alunoId,
-            modalidadeId: movimento.modalidadeId,
+            modalidadeId,
             dia: formatarDataInput(checkin.aula.inicio),
           },
         ]
@@ -163,21 +171,24 @@ async function buscarPresencas(
             },
           }
         : {}),
-      movimentos: {
-        some: {
-          tipo: "CREDITO",
-          ...(params.modalidadeId ? { modalidadeId: params.modalidadeId } : {}),
-        },
-      },
+      ...(params.modalidadeId
+        ? {
+            OR: [
+              { modalidadeOfensivaId: params.modalidadeId },
+              {
+                modalidadeOfensivaId: null,
+                movimentos: { some: { tipo: "CREDITO", modalidadeId: params.modalidadeId } },
+              },
+            ],
+          }
+        : { movimentos: { some: { tipo: "CREDITO" } } }),
     },
     select: {
       alunoId: true,
+      modalidadeOfensivaId: true,
       aula: { select: { inicio: true } },
       movimentos: {
-        where: {
-          tipo: "CREDITO",
-          ...(params.modalidadeId ? { modalidadeId: params.modalidadeId } : {}),
-        },
+        where: { tipo: "CREDITO" },
         orderBy: { criadoEm: "asc" },
         take: 1,
         select: { modalidadeId: true },

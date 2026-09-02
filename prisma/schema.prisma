@@ -385,6 +385,7 @@ model Modalidade {
   listaEsperaAtiva                 Boolean?
   professores                      Professor[]                       @relation("ProfessorModalidade")
   alunos                           Aluno[]                           @relation("AlunoModalidade")
+  checkinsOfensiva                 Checkin[]                         @relation("ModalidadeOfensivaCheckin")
   graduacoes                       Graduacao[]
   turmas                           Turma[]
   movimentosHoras                  MovimentoHoras[]
@@ -477,6 +478,9 @@ model Checkin {
   // Lançamento por terceiro (gestor/professor) e registro retroativo (RF-019/031)
   lancadoPorId             String?
   retroativo               Boolean             @default(false)
+  // Exceção auditável para a ofensiva: preserva aula e horas na modalidade histórica.
+  modalidadeOfensiva       Modalidade?         @relation("ModalidadeOfensivaCheckin", fields: [modalidadeOfensivaId], references: [id], onDelete: SetNull)
+  modalidadeOfensivaId     String?
   // Invalidação/exclusão (RF-027/028)
   invalidadoPorId          String?
   invalidadoEm             DateTime?
@@ -491,6 +495,7 @@ model Checkin {
   @@index([status])
   @@index([aulaId])
   @@index([alunoId, realizadoEm])
+  @@index([modalidadeOfensivaId])
 }
 
 // Tentativa bloqueada de check-in por inadimplência. Não gera presença nem horas.

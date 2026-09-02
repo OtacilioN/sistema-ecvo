@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   calcularOfensivas,
+  modalidadeOfensivaEfetiva,
   montarRankingOfensivas,
   type PresencaOfensiva,
 } from "./ofensiva.service"
@@ -139,6 +140,26 @@ describe("calcularOfensivas", () => {
     )
 
     expect(resultado.diasAtuais).toBe(3)
+  })
+})
+
+describe("modalidadeOfensivaEfetiva", () => {
+  it("prioriza a exceção de ofensiva sem alterar o crédito histórico de horas", () => {
+    expect(
+      modalidadeOfensivaEfetiva({
+        modalidadeOfensivaId: "kickboxing",
+        movimentos: [{ modalidadeId: "muay-thai-oyama" }],
+      }),
+    ).toBe("kickboxing")
+  })
+
+  it("usa a modalidade do crédito quando não há exceção", () => {
+    expect(
+      modalidadeOfensivaEfetiva({
+        modalidadeOfensivaId: null,
+        movimentos: [{ modalidadeId: "muay-thai-oyama" }],
+      }),
+    ).toBe("muay-thai-oyama")
   })
 })
 
