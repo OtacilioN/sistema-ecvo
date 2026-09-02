@@ -85,6 +85,7 @@ vi.mock("@/lib/services/financeiro.service", () => ({
 }))
 
 import {
+  cancelarCobrancaAsaasAntesDeBaixaManual,
   cancelarCobrancaAsaasPendente,
   cancelarPixAutomatico,
   gerarCobrancaPixMensal,
@@ -1314,6 +1315,41 @@ describe("cancelamento operacional Asaas", () => {
       where: { id: cobrancaOperacional.id },
       data: expect.objectContaining({ status: "CANCELADA", statusAsaas: "DELETED" }),
     })
+  })
+
+  it("permite cancelar a cobrança da competência antes de encerrar o PIX Automático", async () => {
+    vi.clearAllMocks()
+    const cobrancaAutomatica = {
+      ...cobrancaOperacional,
+      tipo: "PIX_AUTOMATICO_RECORRENTE" as const,
+      contratoPixAutomaticoId: "contrato-1",
+      contratoPixAutomatico: {
+        asaasAuthorizationId: "autorizacao-1",
+        asaasConciliationId: "conciliacao-1",
+      },
+    }
+    mocks.db.cobrancaAsaas.findUnique.mockResolvedValue(cobrancaAutomatica)
+    mocks.db.cobrancaAsaas.updateMany.mockResolvedValue({ count: 1 })
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      pixAutomaticAuthorizationId: "autorizacao-1",
+      status: "PENDING",
+      paymentDate: null,
+    })
+    mocks.excluirCobrancaAsaas.mockResolvedValue({ deleted: true, id: "pay_1" })
+    mocks.tx.cobrancaAsaas.findUnique.mockResolvedValue({
+      ...cobrancaAutomatica,
+      status: "CANCELANDO",
+    })
+    mocks.tx.cobrancaAsaas.update.mockResolvedValue({ id: cobrancaAutomatica.id })
+
+    const resultado = await cancelarCobrancaAsaasAntesDeBaixaManual({
+      cobrancaId: cobrancaAutomatica.id,
+      autorId: "gestor-1",
+    })
+
+    expect(resultado).toEqual({ ok: true })
+    expect(mocks.excluirCobrancaAsaas).toHaveBeenCalledWith("pay_1")
   })
 
   it("cancela localmente um contrato interrompido sem autorização remota", async () => {

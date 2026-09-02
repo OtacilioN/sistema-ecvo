@@ -1952,16 +1952,19 @@ async function cancelarCobrancaRemotaPendente(cobranca: CobrancaOperacional, aut
   return { estado: "CANCELADA" as const, asaasPaymentId: remota.id }
 }
 
-export async function cancelarCobrancaAsaasPendente(params: {
-  cobrancaId: string
-  autorId: string
-}) {
+async function cancelarCobrancaAsaasOperacional(
+  params: {
+    cobrancaId: string
+    autorId: string
+  },
+  opcoes: { permitirVinculadaAoPixAutomatico: boolean },
+) {
   const cobranca = await db.cobrancaAsaas.findUnique({
     where: { id: params.cobrancaId },
     select: selecaoCobrancaOperacional,
   })
   if (!cobranca) return { ok: false as const, motivo: "Cobrança Asaas não encontrada." }
-  if (cobranca.tipo !== "PIX_MENSAL") {
+  if (cobranca.tipo !== "PIX_MENSAL" && !opcoes.permitirVinculadaAoPixAutomatico) {
     return {
       ok: false as const,
       motivo: "Cancele o PIX Automático para encerrar uma cobrança vinculada ao contrato.",
@@ -2040,6 +2043,21 @@ export async function cancelarCobrancaAsaasPendente(params: {
     })
     return { ok: false as const, motivo }
   }
+}
+
+export function cancelarCobrancaAsaasPendente(params: { cobrancaId: string; autorId: string }) {
+  return cancelarCobrancaAsaasOperacional(params, {
+    permitirVinculadaAoPixAutomatico: false,
+  })
+}
+
+export function cancelarCobrancaAsaasAntesDeBaixaManual(params: {
+  cobrancaId: string
+  autorId: string
+}) {
+  return cancelarCobrancaAsaasOperacional(params, {
+    permitirVinculadaAoPixAutomatico: true,
+  })
 }
 
 export async function cancelarPixAutomatico(params: { alunoId: string; autorId: string }) {

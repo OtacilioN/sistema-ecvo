@@ -9,11 +9,13 @@ import {
   gerarCobrancaPixMensal,
 } from "@/lib/services/asaas.service"
 import {
+  baixarMensalidadeManual,
+  darBaixaMensalidadeAlunoManual,
+} from "@/lib/services/baixa-manual.service"
+import {
   atualizarPlano,
   atualizarStatusMensalidade,
-  baixarMensalidade,
   criarPlano,
-  darBaixaMensalidadeAluno,
   excluirPlano,
   registrarPagamentoAvulso,
   vincularPlanoMensalista,
@@ -143,7 +145,7 @@ export async function acaoBaixarMensalidade(
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
-  const resultado = await baixarMensalidade({ ...parsed.data, autorId: usuario.id })
+  const resultado = await baixarMensalidadeManual({ ...parsed.data, autorId: usuario.id })
   revalidatePath("/gestao/financeiro")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")
@@ -165,7 +167,10 @@ export async function acaoDarBaixaMensalidadeAluno(
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
-  const resultado = await darBaixaMensalidadeAluno({ ...parsed.data, autorId: usuario.id })
+  const resultado = await darBaixaMensalidadeAlunoManual({
+    ...parsed.data,
+    autorId: usuario.id,
+  })
   revalidatePath("/gestao/financeiro")
   revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/auditoria")

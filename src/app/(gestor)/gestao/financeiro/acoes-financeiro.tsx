@@ -179,7 +179,11 @@ export function AcoesMensalidade({
         aoFechar={fechar}
         variante="centro"
         titulo="Baixar pagamento"
-        descricao="Marca a mensalidade como paga."
+        descricao={
+          cobrancaAsaas?.ativa
+            ? "Marca a mensalidade como paga e cancela antes a cobrança pendente no Asaas."
+            : "Marca a mensalidade como paga."
+        }
       >
         <FormBaixarMensalidade mensalidadeId={mensalidadeId} aoConcluir={fechar} />
       </Dialog>
