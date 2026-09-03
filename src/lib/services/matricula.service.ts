@@ -7,6 +7,7 @@ import { registrarMensalidadeInicialPagaAsaas } from "@/lib/services/financeiro.
 import { criarNotificacao, enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
 import type {
   AprovacaoMatriculaInput,
+  RejeicaoMatriculaInput,
   SolicitacaoMatriculaInput,
 } from "@/lib/validations/matricula"
 
@@ -468,6 +469,68 @@ export async function aprovarMatricula(
     }
     throw erro
   }
+}
+
+export async function rejeitarMatricula(
+  params: RejeicaoMatriculaInput & { autorId: string; agora?: Date },
+) {
+  const agora = params.agora ?? new Date()
+
+  return db.$transaction(async (tx) => {
+    const solicitacao = await tx.solicitacaoMatricula.findUnique({
+      where: { id: params.solicitacaoId },
+      select: {
+        id: true,
+        nome: true,
+        status: true,
+        tipoPagamento: true,
+        cobrancasAsaas: {
+          where: { status: "RECEBIDA" },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    })
+    if (solicitacao?.status !== "PENDENTE") {
+      return { ok: false as const, motivo: "Esta matrícula já foi analisada ou não existe." }
+    }
+    if (solicitacao.tipoPagamento === "MENSALISTA" && solicitacao.cobrancasAsaas.length > 0) {
+      return {
+        ok: false as const,
+        motivo:
+          "Esta matrícula possui pagamento confirmado. Concilie o pagamento antes de rejeitar a solicitação.",
+      }
+    }
+
+    const rejeitada = await tx.solicitacaoMatricula.updateMany({
+      where: { id: solicitacao.id, status: "PENDENTE" },
+      data: {
+        status: "REJEITADA",
+        justificativa: params.justificativa,
+        analisadoPorId: params.autorId,
+        analisadoEm: agora,
+        senhaHash: null,
+      },
+    })
+    if (rejeitada.count !== 1) {
+      return { ok: false as const, motivo: "Esta matrícula acabou de ser analisada." }
+    }
+
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "MATRICULA_REJEITADA",
+        entidade: "SolicitacaoMatricula",
+        entidadeId: solicitacao.id,
+        valorAntigo: { status: "PENDENTE" },
+        valorNovo: { status: "REJEITADA", tipoPagamento: solicitacao.tipoPagamento },
+        justificativa: params.justificativa,
+      },
+      tx,
+    )
+
+    return { ok: true as const }
+  })
 }
 
 class ErroMatricula extends Error {}

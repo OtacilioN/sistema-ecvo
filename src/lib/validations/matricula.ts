@@ -88,3 +88,14 @@ export const aprovacaoMatriculaSchema = z.object({
 })
 
 export type AprovacaoMatriculaInput = z.infer<typeof aprovacaoMatriculaSchema>
+
+export const rejeicaoMatriculaSchema = z.object({
+  solicitacaoId: z.string().min(1, "Matrícula inválida"),
+  justificativa: z
+    .string()
+    .trim()
+    .min(5, "Informe uma justificativa de pelo menos 5 caracteres")
+    .max(1000, "Use no máximo 1000 caracteres"),
+})
+
+export type RejeicaoMatriculaInput = z.infer<typeof rejeicaoMatriculaSchema>

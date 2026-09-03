@@ -7,7 +7,11 @@ import {
   assinaturaArquivoComprovanteValida,
   validarComprovanteMatricula,
 } from "@/lib/comprovantes-matricula"
-import { aprovarMatricula, solicitarMatricula } from "@/lib/services/matricula.service"
+import {
+  aprovarMatricula,
+  rejeitarMatricula,
+  solicitarMatricula,
+} from "@/lib/services/matricula.service"
 import {
   gerarCobrancaMatriculaAsaas,
   reemitirCobrancaMatriculaAsaas,
@@ -16,7 +20,11 @@ import {
   excluirComprovanteMatriculaSeExistir,
   salvarComprovanteMatricula,
 } from "@/lib/storage/blob-comprovantes-matricula"
-import { aprovacaoMatriculaSchema, solicitacaoMatriculaSchema } from "@/lib/validations/matricula"
+import {
+  aprovacaoMatriculaSchema,
+  rejeicaoMatriculaSchema,
+  solicitacaoMatriculaSchema,
+} from "@/lib/validations/matricula"
 
 export type EstadoMatricula = { erro?: string; ok?: boolean } | undefined
 
@@ -120,6 +128,25 @@ export async function acaoAprovarMatricula(
   revalidatePath("/gestao/matriculas-pendentes")
   revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/auditoria")
+  return { ok: true }
+}
+
+export async function acaoRejeitarMatricula(
+  _: EstadoMatricula,
+  formData: FormData,
+): Promise<EstadoMatricula> {
+  const gestor = await exigirPapel("GESTOR")
+  const parsed = rejeicaoMatriculaSchema.safeParse({
+    solicitacaoId: formData.get("solicitacaoId"),
+    justificativa: formData.get("justificativa"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await rejeitarMatricula({ ...parsed.data, autorId: gestor.id })
+  if (!resultado.ok) return { erro: resultado.motivo }
+
+  revalidatePath("/gestao/matriculas-pendentes")
   revalidatePath("/gestao/auditoria")
   return { ok: true }
 }

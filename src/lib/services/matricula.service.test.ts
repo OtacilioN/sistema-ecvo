@@ -46,6 +46,7 @@ vi.mock("@/lib/services/notificacao.service", () => ({
 import {
   aprovarMatricula,
   listarMatriculasPendentes,
+  rejeitarMatricula,
   solicitarMatricula,
 } from "./matricula.service"
 
@@ -310,5 +311,66 @@ describe("aprovarMatricula", () => {
       expect.objectContaining({ id: "notificacao-gestor-1", usuarioId: "gestor-1" }),
       expect.objectContaining({ id: "notificacao-gestor-2", usuarioId: "gestor-2" }),
     ])
+  })
+})
+
+describe("rejeitarMatricula", () => {
+  it("rejeita solicitação externa pendente com justificativa e auditoria", async () => {
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "solicitacao-1",
+      nome: "Aluno Parceiro",
+      status: "PENDENTE",
+      tipoPagamento: "WELLHUB",
+      cobrancasAsaas: [],
+    })
+
+    const resultado = await rejeitarMatricula({
+      solicitacaoId: "solicitacao-1",
+      justificativa: "Pedido duplicado; aluna já possui matrícula ativa.",
+      autorId: "gestor-1",
+      agora: new Date("2026-09-02T12:00:00.000Z"),
+    })
+
+    expect(resultado).toEqual({ ok: true })
+    expect(mocks.tx.solicitacaoMatricula.updateMany).toHaveBeenCalledWith({
+      where: { id: "solicitacao-1", status: "PENDENTE" },
+      data: expect.objectContaining({
+        status: "REJEITADA",
+        justificativa: "Pedido duplicado; aluna já possui matrícula ativa.",
+        analisadoPorId: "gestor-1",
+        senhaHash: null,
+      }),
+    })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        acao: "MATRICULA_REJEITADA",
+        entidadeId: "solicitacao-1",
+        justificativa: "Pedido duplicado; aluna já possui matrícula ativa.",
+      }),
+      mocks.tx,
+    )
+  })
+
+  it("bloqueia rejeição de mensalista com pagamento confirmado", async () => {
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "solicitacao-1",
+      nome: "Aluno Mensalista",
+      status: "PENDENTE",
+      tipoPagamento: "MENSALISTA",
+      cobrancasAsaas: [{ id: "cobranca-1" }],
+    })
+
+    await expect(
+      rejeitarMatricula({
+        solicitacaoId: "solicitacao-1",
+        justificativa: "Pedido duplicado; aluno já possui matrícula ativa.",
+        autorId: "gestor-1",
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      motivo:
+        "Esta matrícula possui pagamento confirmado. Concilie o pagamento antes de rejeitar a solicitação.",
+    })
+    expect(mocks.tx.solicitacaoMatricula.updateMany).not.toHaveBeenCalled()
   })
 })

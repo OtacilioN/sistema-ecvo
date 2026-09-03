@@ -1,27 +1,28 @@
 "use client"
 
-import { ExternalLink, ShieldCheck, UserRoundCheck } from "lucide-react"
+import { ExternalLink, ShieldCheck, UserRoundCheck, XCircle } from "lucide-react"
 import { useActionState, useEffect, useState } from "react"
-import { acaoAprovarMatricula } from "@/app/actions/matriculas"
+import { acaoAprovarMatricula, acaoRejeitarMatricula } from "@/app/actions/matriculas"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { formatarBRL, formatarCPF } from "@/lib/utils/formato"
 import type { SolicitacaoPendente } from "./lista-matriculas-pendentes"
 
 export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPendente }) {
-  const [aberto, setAberto] = useState(false)
+  const [acaoAberta, setAcaoAberta] = useState<"aprovar" | "rejeitar" | null>(null)
   const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
   return (
     <>
-      <Button type="button" onClick={() => setAberto(true)} className="w-full lg:w-auto">
+      <Button type="button" onClick={() => setAcaoAberta("aprovar")} className="w-full lg:w-auto">
         <UserRoundCheck className="size-4" /> Analisar
       </Button>
       <Dialog
-        aberto={aberto}
-        aoFechar={() => setAberto(false)}
+        aberto={acaoAberta === "aprovar"}
+        aoFechar={() => setAcaoAberta(null)}
         variante="lateral"
         titulo="Aprovar matrícula"
         descricao={
@@ -30,9 +31,87 @@ export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPenden
             : "Confira os dados e a declaração do benefício antes de liberar o acesso."
         }
       >
-        <FormAprovacao solicitacao={solicitacao} aoConcluir={() => setAberto(false)} />
+        <FormAprovacao solicitacao={solicitacao} aoConcluir={() => setAcaoAberta(null)} />
+      </Dialog>
+      <Button
+        type="button"
+        variant="ghost"
+        className="w-full text-destructive hover:text-destructive lg:w-auto"
+        onClick={() => setAcaoAberta("rejeitar")}
+      >
+        <XCircle className="size-4" /> Rejeitar pedido
+      </Button>
+      <Dialog
+        aberto={acaoAberta === "rejeitar"}
+        aoFechar={() => setAcaoAberta(null)}
+        variante="lateral"
+        titulo="Rejeitar matrícula"
+        descricao="A solicitação será retirada desta lista e permanecerá registrada na auditoria."
+      >
+        <FormRejeicao solicitacao={solicitacao} aoConcluir={() => setAcaoAberta(null)} />
       </Dialog>
     </>
+  )
+}
+
+function FormRejeicao({
+  solicitacao,
+  aoConcluir,
+}: {
+  solicitacao: SolicitacaoPendente
+  aoConcluir: () => void
+}) {
+  const [estado, acao] = useActionState(acaoRejeitarMatricula, undefined)
+  const pagamentoConfirmado =
+    solicitacao.tipoPagamento === "MENSALISTA" && solicitacao.cobrancasAsaas.length > 0
+
+  useEffect(() => {
+    if (estado?.ok) aoConcluir()
+  }, [aoConcluir, estado?.ok])
+
+  return (
+    <form action={acao} className="space-y-6">
+      <input type="hidden" name="solicitacaoId" value={solicitacao.id} />
+      <div className="rounded-lg border border-border bg-muted/25 p-4 text-sm">
+        <p className="font-semibold">{solicitacao.nome}</p>
+        <p className="mt-1 text-muted-foreground">{solicitacao.email}</p>
+      </div>
+      {pagamentoConfirmado ? (
+        <p className="rounded-lg border border-warning/30 bg-warning/5 p-4 text-sm text-warning-foreground">
+          Esta matrícula tem pagamento confirmado pelo Asaas e não pode ser rejeitada até que o
+          valor seja conciliado.
+        </p>
+      ) : (
+        <p className="text-sm text-muted-foreground">
+          Use esta ação para pedidos duplicados, desistências ou solicitações inválidas. A conta de
+          acesso não será alterada.
+        </p>
+      )}
+      <div className="space-y-1.5">
+        <Label htmlFor={`justificativa-rejeicao-${solicitacao.id}`}>Justificativa</Label>
+        <Textarea
+          id={`justificativa-rejeicao-${solicitacao.id}`}
+          name="justificativa"
+          minLength={5}
+          maxLength={1000}
+          required
+          placeholder="Ex.: pedido duplicado; a aluna já possui matrícula ativa."
+        />
+      </div>
+      {estado?.erro && (
+        <p className="text-sm text-destructive" role="alert">
+          {estado.erro}
+        </p>
+      )}
+      <BotaoEnviar
+        size="lg"
+        variant="destructive"
+        className="w-full"
+        disabled={pagamentoConfirmado}
+      >
+        <XCircle className="size-4" /> Rejeitar solicitação
+      </BotaoEnviar>
+    </form>
   )
 }
 
