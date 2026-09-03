@@ -1,9 +1,7 @@
 import { z } from "zod"
 
 const textoOpcional = z
-  .string()
-  .trim()
-  .optional()
+  .preprocess((v) => (v === null ? undefined : v), z.string().trim().optional())
   .transform((v) => (v && v.length > 0 ? v : null))
 
 const diaVencimentoSchema = z.preprocess(
