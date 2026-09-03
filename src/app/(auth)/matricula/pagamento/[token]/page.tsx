@@ -13,6 +13,7 @@ import {
   obterPagamentoMatriculaPublico,
   pixCobrancaMatriculaDisponivel,
 } from "@/lib/services/pagamento-matricula.service"
+import { formatarDataHora } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 import { AtualizadorPagamento, CopiarPix } from "./atualizador-pagamento"
 
@@ -26,7 +27,12 @@ export default async function PagamentoMatriculaPage({
 }) {
   const { token } = await params
   const solicitacao = await obterPagamentoMatriculaPublico(token)
-  if (!solicitacao?.plano || solicitacao.tipoPagamento !== "MENSALISTA") notFound()
+  if (
+    !solicitacao?.plano ||
+    (solicitacao.tipoPagamento !== "MENSALISTA" && solicitacao.tipoPagamento !== "AULA_AVULSA")
+  )
+    notFound()
+  const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
   const cobranca = solicitacao.cobrancasAsaas[0] ?? null
   const pagamentoConfirmado = cobranca?.status === "RECEBIDA"
   const pixDisponivel = cobranca ? pixCobrancaMatriculaDisponivel(cobranca) : false
@@ -46,14 +52,18 @@ export default async function PagamentoMatriculaPage({
         <CardContent className="space-y-6 py-8 sm:px-8">
           <div className="text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-              Primeira mensalidade
+              {aulaAvulsa ? "Aula avulsa" : "Primeira mensalidade"}
             </p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight">
               {pagamentoConfirmado ? "Pagamento confirmado" : "Conclua o pagamento PIX"}
             </h1>
             <p className="mt-3 text-sm text-muted-foreground">
-              {solicitacao.plano.nome} ·{" "}
-              {formatarBRL(Number(cobranca?.valor ?? solicitacao.plano.valor))}
+              {aulaAvulsa
+                ? solicitacao.aulaAvulsa
+                  ? `${solicitacao.aulaAvulsa.turma.modalidade.nome} · ${formatarDataHora(solicitacao.aulaAvulsa.inicio)}`
+                  : "Aula avulsa"
+                : solicitacao.plano.nome}{" "}
+              · {formatarBRL(Number(cobranca?.valor ?? solicitacao.plano.valor))}
             </p>
           </div>
 
@@ -61,9 +71,9 @@ export default async function PagamentoMatriculaPage({
             <div className="space-y-4 text-center">
               <CheckCircle2 className="mx-auto size-14 text-success" />
               <p className="text-sm leading-relaxed text-muted-foreground">
-                O Asaas confirmou a primeira mensalidade. Sua solicitação já está na fila de análise
-                da ECVO; o comprovante anexado, quando informado, permanece apenas como evidência
-                opcional.
+                {aulaAvulsa
+                  ? "O Asaas confirmou os R$ 20,00 da aula avulsa. Sua solicitação já está na fila de análise da ECVO. Após a aprovação, o acesso e o check-in da aula escolhida serão liberados."
+                  : "O Asaas confirmou a primeira mensalidade. Sua solicitação já está na fila de análise da ECVO; o comprovante anexado, quando informado, permanece apenas como evidência opcional."}
               </p>
             </div>
           ) : pixDisponivel && qrCodeDataUrl && cobranca?.pixCopiaECola ? (
@@ -71,7 +81,9 @@ export default async function PagamentoMatriculaPage({
               {/* biome-ignore lint/performance/noImgElement: data URL não é otimizada pelo Next Image */}
               <img
                 src={qrCodeDataUrl}
-                alt="QR Code PIX da primeira mensalidade"
+                alt={
+                  aulaAvulsa ? "QR Code PIX da aula avulsa" : "QR Code PIX da primeira mensalidade"
+                }
                 width={210}
                 height={210}
                 className="mx-auto rounded-xl border border-border bg-white p-2"

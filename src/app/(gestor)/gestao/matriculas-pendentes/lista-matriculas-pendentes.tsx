@@ -18,13 +18,19 @@ export type SolicitacaoPendente = {
   endereco: string | null
   contatoEmergencia: string | null
   restricoesMedicas: string | null
-  tipoPagamento: "MENSALISTA" | "WELLHUB" | "TOTALPASS"
+  tipoPagamento: "MENSALISTA" | "AULA_AVULSA" | "WELLHUB" | "TOTALPASS"
   beneficioAtivoDeclarado: boolean
   comprovantePagamentoUrl: string | null
   comprovanteContentType: string | null
   comprovanteNomeOriginal: string | null
   criadoEm: string
   modalidade: { id: string; nome: string }
+  aulaAvulsa: {
+    id: string
+    inicio: string
+    fim: string
+    turma: { nome: string | null; local: string | null }
+  } | null
   plano: { id: string; nome: string; valor: number; periodicidade: string } | null
   cobrancasAsaas: Array<{
     asaasPaymentId: string | null
@@ -118,6 +124,11 @@ export function ListaMatriculasPendentes({
                       <FileCheck2 className="size-3.5" />{" "}
                       {item.comprovantePagamentoUrl ? "Comprovante anexado" : "Sem comprovante"}
                     </p>
+                  ) : item.tipoPagamento === "AULA_AVULSA" && item.aulaAvulsa ? (
+                    <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CalendarClock className="size-3.5" />
+                      {formatarDataHora(new Date(item.aulaAvulsa.inicio))}
+                    </p>
                   ) : (
                     <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <BadgeCheck className="size-3.5" /> Benefício ativo declarado
@@ -135,6 +146,7 @@ export function ListaMatriculasPendentes({
 }
 
 function rotuloTipo(tipo: SolicitacaoPendente["tipoPagamento"]) {
+  if (tipo === "AULA_AVULSA") return "Aula avulsa"
   if (tipo === "WELLHUB") return "Wellhub"
   if (tipo === "TOTALPASS") return "TotalPass"
   return "Mensalista"

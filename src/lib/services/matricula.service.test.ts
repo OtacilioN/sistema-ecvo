@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => {
   const tx = {
+    $queryRaw: vi.fn(),
     modalidade: { findFirst: vi.fn() },
+    aula: { findFirst: vi.fn(), findUnique: vi.fn() },
     plano: { findFirst: vi.fn() },
     solicitacaoMatricula: {
       create: vi.fn(),
@@ -15,6 +17,9 @@ const mocks = vi.hoisted(() => {
     cobrancaAsaas: { create: vi.fn() },
     mensalidade: { update: vi.fn() },
     cobrancaMatriculaAsaas: { update: vi.fn() },
+    acessoAulaAvulsa: { create: vi.fn() },
+    comparecimento: { findMany: vi.fn(), create: vi.fn() },
+    checkin: { findMany: vi.fn() },
   }
   const db = {
     usuario: { findUnique: vi.fn() },
@@ -76,6 +81,8 @@ beforeEach(() => {
     ...data,
   }))
   mocks.tx.solicitacaoMatricula.updateMany.mockResolvedValue({ count: 1 })
+  mocks.tx.comparecimento.findMany.mockResolvedValue([])
+  mocks.tx.checkin.findMany.mockResolvedValue([])
   mocks.tx.usuario.create.mockResolvedValue({
     id: "usuario-1",
     aluno: { id: "aluno-1" },
@@ -179,14 +186,53 @@ describe("solicitarMatricula", () => {
 
     expect(resultado).toEqual({
       ok: false,
-      motivo: "Matrículas Wellhub e TotalPass não recebem comprovante de pagamento.",
+      motivo: "Este tipo de matrícula não recebe comprovante de pagamento.",
     })
     expect(mocks.db.usuario.findUnique).not.toHaveBeenCalled()
+  })
+
+  it("vincula a aula real e preserva o plano de R$ 100 como alvo da conversão", async () => {
+    mocks.tx.aula.findFirst.mockResolvedValue({
+      id: "aula-1",
+      inicio: new Date("2026-09-05T12:00:00.000Z"),
+      fim: new Date("2026-09-05T13:00:00.000Z"),
+      turma: { nome: "Turma manhã", local: "Unidade Centro", capacidade: 20 },
+    })
+    mocks.tx.plano.findFirst.mockResolvedValue({
+      id: "plano-padrao",
+      nome: "Plano mensal",
+      valor: 100,
+    })
+
+    const resultado = await solicitarMatricula({
+      ...dadosBase,
+      tipoPagamento: "AULA_AVULSA",
+      aulaAvulsaId: "aula-1",
+      beneficioAtivoDeclarado: false,
+    })
+
+    expect(resultado.ok).toBe(true)
+    expect(mocks.tx.aula.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: "aula-1",
+          cancelada: false,
+          turma: expect.objectContaining({ modalidadeId: "modalidade-1", ehEvento: false }),
+        }),
+      }),
+    )
+    expect(mocks.tx.solicitacaoMatricula.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tipoPagamento: "AULA_AVULSA",
+        aulaAvulsaId: "aula-1",
+        planoId: "plano-padrao",
+      }),
+    })
   })
 })
 
 describe("listarMatriculasPendentes", () => {
-  it("lista externos declarados sem cobrança e mensalistas somente após recebimento", () => {
+  it("lista externos declarados e pagamentos diretos somente após recebimento", () => {
     listarMatriculasPendentes()
 
     expect(mocks.db.solicitacaoMatricula.findMany).toHaveBeenCalledWith(
@@ -200,6 +246,10 @@ describe("listarMatriculasPendentes", () => {
             },
             {
               tipoPagamento: "MENSALISTA",
+              cobrancasAsaas: { some: { status: "RECEBIDA" } },
+            },
+            {
+              tipoPagamento: "AULA_AVULSA",
               cobrancasAsaas: { some: { status: "RECEBIDA" } },
             },
           ],
@@ -221,7 +271,6 @@ describe("aprovarMatricula", () => {
       plano: { id: "plano-padrao" },
       cobrancasAsaas: [],
     })
-
     const resultado = await aprovarMatricula({
       solicitacaoId: "solicitacao-1",
       autorId: "gestor-1",
@@ -311,6 +360,82 @@ describe("aprovarMatricula", () => {
       expect.objectContaining({ id: "notificacao-gestor-1", usuarioId: "gestor-1" }),
       expect.objectContaining({ id: "notificacao-gestor-2", usuarioId: "gestor-2" }),
     ])
+  })
+
+  it("aprova aula avulsa sem vincular plano e reserva somente a aula paga", async () => {
+    const inicio = new Date("2026-09-05T12:00:00.000Z")
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "solicitacao-1",
+      status: "PENDENTE",
+      senhaHash: "senha-hash",
+      nome: "Aluno Avulso",
+      email: "avulso@exemplo.com",
+      cpf: "52998224725",
+      telefone: null,
+      dataNascimento: null,
+      endereco: null,
+      contatoEmergencia: null,
+      restricoesMedicas: null,
+      tipoPagamento: "AULA_AVULSA",
+      beneficioAtivoDeclarado: false,
+      modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
+      aulaAvulsa: {
+        id: "aula-1",
+        inicio,
+        fim: new Date("2026-09-05T13:00:00.000Z"),
+        cancelada: false,
+        turma: { ativa: true, ehEvento: false, modalidadeId: "modalidade-1", capacidade: 20 },
+      },
+      plano: { id: "plano-padrao", ativo: true, periodicidade: "MENSAL", valor: 100 },
+      cobrancasAsaas: [
+        {
+          id: "cobranca-1",
+          status: "RECEBIDA",
+          finalidade: "AULA_AVULSA",
+          recebidaEmAsaas: new Date("2026-09-03T15:00:00.000Z"),
+          asaasPaymentId: "pay-1",
+          asaasCustomerId: "cus-1",
+          valor: 20,
+        },
+      ],
+    })
+    mocks.tx.aula.findUnique.mockResolvedValue({
+      inicio,
+      fim: new Date("2026-09-05T13:00:00.000Z"),
+      cancelada: false,
+      turma: { ativa: true, ehEvento: false, modalidadeId: "modalidade-1", capacidade: 20 },
+    })
+
+    const resultado = await aprovarMatricula({
+      solicitacaoId: "solicitacao-1",
+      autorId: "gestor-1",
+      agora: new Date("2026-09-03T16:00:00.000Z"),
+    })
+
+    expect(resultado).toEqual({ ok: true, alunoId: "aluno-1" })
+    expect(mocks.tx.usuario.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          aluno: {
+            create: expect.objectContaining({ tipo: "AVULSO", planoId: null }),
+          },
+        }),
+      }),
+    )
+    expect(mocks.tx.acessoAulaAvulsa.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        solicitacaoId: "solicitacao-1",
+        alunoId: "aluno-1",
+        aulaId: "aula-1",
+        valorPago: 20,
+        valorPlanoSnapshot: 100,
+        valorComplemento: 80,
+      }),
+    })
+    expect(mocks.tx.comparecimento.create).toHaveBeenCalledWith({
+      data: { alunoId: "aluno-1", aulaId: "aula-1", status: "CONFIRMADO" },
+    })
+    expect(mocks.registrarMensalidadeInicialPagaAsaas).not.toHaveBeenCalled()
   })
 })
 

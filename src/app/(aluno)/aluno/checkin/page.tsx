@@ -44,12 +44,17 @@ export default async function CheckinGlobalPage({
       status: true,
       tipo: true,
       planoId: true,
+      solicitacaoMatricula: { select: { tipoPagamento: true } },
       modalidades: {
         where: { ativa: true },
         select: { id: true, checkinSemRestricaoHorario: true },
       },
       modalidadesPlano: {
         select: { modalidadeId: true, plataformaExterna: true },
+      },
+      acessosAulaAvulsa: {
+        where: { status: "ATIVO" },
+        select: { aulaId: true },
       },
     },
   })
@@ -62,9 +67,14 @@ export default async function CheckinGlobalPage({
   const matriculaLiberada = Boolean(
     alunoOperacional &&
       aluno &&
-      (aluno.tipo !== "MENSALISTA" || (aluno.planoId && modalidadesInternas.size > 0)),
+      (aluno.tipo === "AVULSO" && aluno.solicitacaoMatricula?.tipoPagamento === "AULA_AVULSA"
+        ? aluno.acessosAulaAvulsa.length > 0
+        : aluno.tipo !== "MENSALISTA" || (aluno.planoId && modalidadesInternas.size > 0)),
   )
   const plataformaCheckin = plataformaCheckinDoTipo(aluno?.tipo)
+  const aulaIdsAvulsas = aluno?.acessosAulaAvulsa.map((acesso) => acesso.aulaId) ?? []
+  const acessoAvulsoControlado =
+    aluno?.tipo === "AVULSO" && aluno.solicitacaoMatricula?.tipoPagamento === "AULA_AVULSA"
   const modalidadeIds = matriculaLiberada
     ? (aluno?.modalidades
         .filter(
@@ -80,6 +90,7 @@ export default async function CheckinGlobalPage({
   const aulasCandidatas = matriculaLiberada
     ? await db.aula.findMany({
         where: {
+          ...(acessoAvulsoControlado ? { id: { in: aulaIdsAvulsas } } : {}),
           cancelada: false,
           OR: [
             { inicio: { gte: inicioDia, lt: fimDia } },
@@ -183,7 +194,9 @@ export default async function CheckinGlobalPage({
             <div>
               <p className="font-medium text-foreground">Check-in ainda não liberado.</p>
               <p className="mt-1">
-                Sua matrícula precisa estar ativa e vinculada a um plano de pagamento.
+                {acessoAvulsoControlado
+                  ? "O check-in fica disponível somente na aula avulsa escolhida."
+                  : "Sua matrícula precisa estar ativa e vinculada a um plano de pagamento."}
               </p>
             </div>
           </CardContent>

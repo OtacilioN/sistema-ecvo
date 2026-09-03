@@ -490,6 +490,36 @@ async function realizarCheckinComAulaReferencia(params: {
   confirmouCheckinPlataforma: boolean
   agora: Date
 }): Promise<ResultadoCheckin> {
+  const alunoAvulso = await db.aluno.findUnique({
+    where: { id: params.alunoId },
+    select: {
+      tipo: true,
+      solicitacaoMatricula: { select: { tipoPagamento: true } },
+    },
+  })
+  if (
+    alunoAvulso?.tipo === "AVULSO" &&
+    alunoAvulso.solicitacaoMatricula?.tipoPagamento === "AULA_AVULSA"
+  ) {
+    const acesso = await db.acessoAulaAvulsa.findFirst({
+      where: { alunoId: params.alunoId, aulaId: params.aulaId, status: "ATIVO" },
+      select: { id: true },
+    })
+    if (!acesso) {
+      return { ok: false, motivo: "Esta aula não está incluída no seu acesso avulso." }
+    }
+    return realizarCheckin({
+      alunoId: params.alunoId,
+      aulaId: params.aulaId,
+      autorId: params.autorId,
+      origem: params.origem,
+      exigirJanelaCheckin: true,
+      bloquearInadimplenciaSempre: true,
+      confirmouCheckinPlataforma: false,
+      associadoAutomaticamente: false,
+      agora: params.agora,
+    })
+  }
   const referencia = await resolverAulaReferenciaCheckinAluno(params)
   if (!referencia.ok) return referencia
 
@@ -551,13 +581,14 @@ export async function realizarCheckin(params: {
   const agora = params.agora ?? new Date()
   const config = await configuracao()
 
-  const [aluno, aula, jaCheckin, comparecimento] = await Promise.all([
+  const [aluno, aula, jaCheckin, comparecimento, acessoAvulso] = await Promise.all([
     db.aluno.findUnique({
       where: { id: params.alunoId },
       select: {
         status: true,
         tipo: true,
         planoId: true,
+        solicitacaoMatricula: { select: { tipoPagamento: true } },
         usuario: { select: { nome: true } },
         modalidades: { select: { id: true } },
         modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
@@ -610,10 +641,19 @@ export async function realizarCheckin(params: {
       where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: params.aulaId } },
       select: { id: true, status: true },
     }),
+    db.acessoAulaAvulsa.findFirst({
+      where: { alunoId: params.alunoId, aulaId: params.aulaId, status: "ATIVO" },
+      select: { id: true },
+    }),
   ])
 
   if (!aluno) return { ok: false, motivo: "Aluno não encontrado." }
   if (!aula) return { ok: false, motivo: "Aula não encontrada." }
+  const acessoAvulsoControlado =
+    aluno.tipo === "AVULSO" && aluno.solicitacaoMatricula?.tipoPagamento === "AULA_AVULSA"
+  if (acessoAvulsoControlado && !acessoAvulso) {
+    return { ok: false, motivo: "Esta aula não está incluída no seu acesso avulso." }
+  }
   if (
     params.exigirJanelaCheckin &&
     !aula.turma.modalidade.checkinSemRestricaoHorario &&
@@ -710,40 +750,61 @@ export async function realizarCheckin(params: {
       await tx.$queryRaw`SELECT "id" FROM "Modalidade" WHERE "id" = ${aula.turma.modalidadeId} FOR UPDATE`
       // Serializa check-ins da mesma aula para revalidar duplicidade e capacidade sem corrida.
       await tx.$queryRaw`SELECT "id" FROM "Aula" WHERE "id" = ${aula.id} FOR UPDATE`
-      const [aulaAtual, checkinAtual, comparecimentoAtual, comparecimentosAtivos, checkinsValidos] =
-        await Promise.all([
-          tx.aula.findUnique({
-            where: { id: aula.id },
-            select: {
-              inicio: true,
-              cancelada: true,
-              duracaoMin: true,
-              turma: { select: { capacidade: true, modalidadeId: true } },
-            },
-          }),
-          tx.checkin.findUnique({
-            where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: aula.id } },
-            select: { id: true, status: true },
-          }),
-          tx.comparecimento.findUnique({
-            where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: aula.id } },
-            select: { id: true, status: true },
-          }),
-          tx.comparecimento.findMany({
-            where: {
-              aulaId: aula.id,
-              status: { in: ["CONFIRMADO", "CONVERTIDO_CHECKIN"] },
-            },
-            select: { alunoId: true },
-          }),
-          tx.checkin.findMany({
-            where: { aulaId: aula.id, status: "VALIDO" },
-            select: { alunoId: true },
-          }),
-        ])
+      if (acessoAvulsoControlado && acessoAvulso) {
+        await tx.$queryRaw`SELECT "id" FROM "AcessoAulaAvulsa" WHERE "id" = ${acessoAvulso.id} FOR UPDATE`
+      }
+      const [
+        aulaAtual,
+        checkinAtual,
+        comparecimentoAtual,
+        comparecimentosAtivos,
+        checkinsValidos,
+        acessoAvulsoAtual,
+      ] = await Promise.all([
+        tx.aula.findUnique({
+          where: { id: aula.id },
+          select: {
+            inicio: true,
+            cancelada: true,
+            duracaoMin: true,
+            turma: { select: { capacidade: true, modalidadeId: true } },
+          },
+        }),
+        tx.checkin.findUnique({
+          where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: aula.id } },
+          select: { id: true, status: true },
+        }),
+        tx.comparecimento.findUnique({
+          where: { alunoId_aulaId: { alunoId: params.alunoId, aulaId: aula.id } },
+          select: { id: true, status: true },
+        }),
+        tx.comparecimento.findMany({
+          where: {
+            aulaId: aula.id,
+            status: { in: ["CONFIRMADO", "CONVERTIDO_CHECKIN"] },
+          },
+          select: { alunoId: true },
+        }),
+        tx.checkin.findMany({
+          where: { aulaId: aula.id, status: "VALIDO" },
+          select: { alunoId: true },
+        }),
+        acessoAvulsoControlado && acessoAvulso
+          ? tx.acessoAulaAvulsa.findUnique({
+              where: { id: acessoAvulso.id },
+              select: { status: true, aulaId: true },
+            })
+          : Promise.resolve(null),
+      ])
 
       if (!aulaAtual || aulaAtual.cancelada) {
         throw new ErroConcorrenciaCheckin("Aula cancelada ou indisponível.")
+      }
+      if (
+        acessoAvulsoControlado &&
+        (acessoAvulsoAtual?.status !== "ATIVO" || acessoAvulsoAtual?.aulaId !== aula.id)
+      ) {
+        throw new ErroConcorrenciaCheckin("O acesso avulso não está disponível para esta aula.")
       }
 
       if (checkinImpedeNovoRegistro(checkinAtual?.status, lancadoPorTerceiro)) {
@@ -818,6 +879,12 @@ export async function realizarCheckin(params: {
           checkinId: checkin.id,
           minutos: aulaAtual.duracaoMin,
         })
+        if (acessoAvulsoControlado && acessoAvulso) {
+          await tx.acessoAulaAvulsa.update({
+            where: { id: acessoAvulso.id },
+            data: { status: "USADO", checkinId: checkin.id },
+          })
+        }
       }
 
       await registrarLog(

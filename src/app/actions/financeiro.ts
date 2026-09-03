@@ -20,6 +20,7 @@ import {
   registrarPagamentoAvulso,
   vincularPlanoMensalista,
 } from "@/lib/services/financeiro.service"
+import { gerarCobrancaComplementoAulaAvulsaAsaas } from "@/lib/services/pagamento-matricula.service"
 import {
   cancelarCobrancaAsaasSchema,
   gerarCobrancaPixSchema,
@@ -258,6 +259,34 @@ export async function acaoGerarCobrancaPixAluno(
   })
   revalidatePath("/aluno/financeiro")
   revalidatePath("/gestao/financeiro")
+  if (!resultado.ok) return { erro: resultado.motivo }
+  return { ok: true }
+}
+
+export async function acaoFecharMensalidadeAulaAvulsa(
+  _: EstadoFinanceiro,
+  _formData: FormData,
+): Promise<EstadoFinanceiro> {
+  const { alunoId } = await exigirAluno()
+  const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas(alunoId)
+  revalidatePath("/aluno/financeiro")
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/auditoria")
+  if (!resultado.ok) return { erro: resultado.motivo }
+  return { ok: true }
+}
+
+export async function acaoVerificarComplementoAulaAvulsa(
+  _: EstadoFinanceiro,
+  _formData: FormData,
+): Promise<EstadoFinanceiro> {
+  const { alunoId } = await exigirAluno()
+  const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas(alunoId, { verificar: true })
+  revalidatePath("/aluno/financeiro")
+  revalidatePath("/aluno")
+  revalidatePath("/aluno/checkin")
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/auditoria")
   if (!resultado.ok) return { erro: resultado.motivo }
   return { ok: true }
 }

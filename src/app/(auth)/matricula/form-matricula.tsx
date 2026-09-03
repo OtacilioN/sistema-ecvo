@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { rotuloDiaSemana } from "@/lib/utils/datas"
+import { formatarDataExtenso, formatarHora, rotuloDiaSemana } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 import type { TipoPagamentoMatriculaPublica } from "./page"
 
@@ -37,14 +37,23 @@ export function FormMatricula({
 }) {
   const [estado, acao] = useActionState(acaoSolicitarMatricula, undefined)
   const [modalidadeId, setModalidadeId] = useState("")
+  const [aulaAvulsaId, setAulaAvulsaId] = useState("")
   const [arquivo, setArquivo] = useState<File | null>(null)
   const modalidade = useMemo(
     () => modalidades.find((item) => item.id === modalidadeId),
     [modalidadeId, modalidades],
   )
+  const aulaAvulsa = tipoPagamento === "AULA_AVULSA"
+  const matriculaExterna = tipoPagamento === "WELLHUB" || tipoPagamento === "TOTALPASS"
   const parceiro = tipoPagamento === "WELLHUB" ? "Wellhub" : "TotalPass"
   const planoMinimo = tipoPagamento === "WELLHUB" ? "Basic" : "TP1+"
-  const matriculaExterna = tipoPagamento !== "MENSALISTA"
+  const aulasDisponiveis = useMemo(
+    () =>
+      (
+        modalidade?.turmas.flatMap((turma) => turma.aulas.map((aula) => ({ ...aula, turma }))) ?? []
+      ).sort((a, b) => a.inicio.getTime() - b.inicio.getTime()),
+    [modalidade],
+  )
 
   return (
     <form action={acao} className="grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
@@ -167,18 +176,30 @@ export function FormMatricula({
           </Secao>
         )}
 
-        {tipoPagamento === "MENSALISTA" && planoPadrao && (
+        {(tipoPagamento === "MENSALISTA" || aulaAvulsa) && planoPadrao && (
           <Secao
             numero="05"
-            titulo="Primeira mensalidade"
-            descricao="Ao enviar os dados, você receberá o QR Code PIX para concluir a solicitação."
+            titulo={aulaAvulsa ? "Pagamento da aula" : "Primeira mensalidade"}
+            descricao={
+              aulaAvulsa
+                ? "Ao enviar os dados, você receberá o QR Code PIX de R$ 20,00."
+                : "Ao enviar os dados, você receberá o QR Code PIX para concluir a solicitação."
+            }
           >
             <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
-              <p className="font-medium">{planoPadrao.nome}</p>
+              <p className="font-medium">{aulaAvulsa ? "Aula avulsa" : planoPadrao.nome}</p>
               <p className="mt-1 text-2xl font-bold text-primary">
-                {formatarBRL(planoPadrao.valor)}
-                <span className="text-sm font-normal text-muted-foreground"> / mês</span>
+                {formatarBRL(aulaAvulsa ? 20 : planoPadrao.valor)}
+                {!aulaAvulsa && (
+                  <span className="text-sm font-normal text-muted-foreground"> / mês</span>
+                )}
               </p>
+              {aulaAvulsa && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Na semana da aula, feche o plano mensal de R$ 100,00 pagando somente o complemento
+                  de R$ 80,00.
+                </p>
+              )}
             </div>
           </Secao>
         )}
@@ -228,7 +249,11 @@ export function FormMatricula({
         )}
 
         <BotaoEnviar size="lg" className="w-full sm:w-auto">
-          {matriculaExterna ? `Enviar matrícula ${parceiro}` : "Continuar para o pagamento PIX"}
+          {matriculaExterna
+            ? `Enviar matrícula ${parceiro}`
+            : aulaAvulsa
+              ? "Pagar R$ 20,00 por PIX"
+              : "Continuar para o pagamento PIX"}
         </BotaoEnviar>
       </div>
 
@@ -236,7 +261,11 @@ export function FormMatricula({
         <div className="sticky top-6 space-y-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-              {matriculaExterna ? `Acesso por ${parceiro}` : "Plano mensalista"}
+              {matriculaExterna
+                ? `Acesso por ${parceiro}`
+                : aulaAvulsa
+                  ? "Aula avulsa"
+                  : "Plano mensalista"}
             </p>
             <h2 className="mt-2 text-xl font-bold tracking-tight">Escolha sua modalidade</h2>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -253,7 +282,10 @@ export function FormMatricula({
               id="modalidadeId"
               name="modalidadeId"
               value={modalidadeId}
-              onChange={(evento) => setModalidadeId(evento.currentTarget.value)}
+              onChange={(evento) => {
+                setModalidadeId(evento.currentTarget.value)
+                setAulaAvulsaId("")
+              }}
               required
             >
               <option value="">Selecione uma modalidade</option>
@@ -264,6 +296,39 @@ export function FormMatricula({
               ))}
             </Select>
           </div>
+
+          {aulaAvulsa && modalidade && (
+            <div className="space-y-1.5">
+              <Label htmlFor="aulaAvulsaId">
+                Dia e horário da aula
+                <IndicadorObrigatorio />
+              </Label>
+              <Select
+                id="aulaAvulsaId"
+                name="aulaAvulsaId"
+                value={aulaAvulsaId}
+                onChange={(evento) => setAulaAvulsaId(evento.currentTarget.value)}
+                required
+                disabled={aulasDisponiveis.length === 0}
+              >
+                <option value="">
+                  {aulasDisponiveis.length === 0
+                    ? "Nenhuma aula futura disponível"
+                    : "Selecione no calendário"}
+                </option>
+                {aulasDisponiveis.map((aula) => (
+                  <option key={aula.id} value={aula.id}>
+                    {formatarDataExtenso(aula.inicio)} · {formatarHora(aula.inicio)}–
+                    {formatarHora(aula.fim)}
+                    {aula.turma.local ? ` · ${aula.turma.local}` : ""}
+                  </option>
+                ))}
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                São exibidas somente ocorrências reais, futuras e não canceladas desta modalidade.
+              </p>
+            </div>
+          )}
 
           {!modalidade && (
             <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center">
@@ -334,7 +399,9 @@ export function FormMatricula({
             <p>
               {matriculaExterna
                 ? `O check-in será liberado após a análise da matrícula ${parceiro}.`
-                : "O check-in só é liberado depois da aprovação e do vínculo do plano."}
+                : aulaAvulsa
+                  ? "Após o pagamento e a aprovação, o check-in ficará restrito à aula escolhida."
+                  : "O check-in só é liberado depois da aprovação e do vínculo do plano."}
             </p>
           </div>
         </div>

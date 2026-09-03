@@ -70,6 +70,34 @@ describe("solicitacaoMatriculaSchema", () => {
     ).toBe(false)
   })
 
+  it("exige uma ocorrência real no cadastro de aula avulsa", () => {
+    expect(
+      solicitacaoMatriculaSchema.safeParse({
+        ...solicitacaoValida,
+        tipoPagamento: "AULA_AVULSA",
+      }).success,
+    ).toBe(false)
+
+    expect(
+      solicitacaoMatriculaSchema.safeParse({
+        ...solicitacaoValida,
+        tipoPagamento: "AULA_AVULSA",
+        aulaAvulsaId: "aula-1",
+      }).success,
+    ).toBe(true)
+  })
+
+  it("rejeita declaração de benefício no fluxo de aula avulsa", () => {
+    expect(
+      solicitacaoMatriculaSchema.safeParse({
+        ...solicitacaoValida,
+        tipoPagamento: "AULA_AVULSA",
+        aulaAvulsaId: "aula-1",
+        beneficioAtivoDeclarado: "on",
+      }).success,
+    ).toBe(false)
+  })
+
   it("rejeita tipo de pagamento desconhecido", () => {
     expect(
       solicitacaoMatriculaSchema.safeParse({

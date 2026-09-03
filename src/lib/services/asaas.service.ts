@@ -1765,6 +1765,7 @@ async function auditarEstadoCobranca(
 type CobrancaParaValidacaoWebhook = {
   asaasPaymentId: string | null
   externalReference: string
+  valorCobrado: Prisma.Decimal | null
   tipo:
     | "PIX_MENSAL"
     | "PIX_AUTOMATICO_INICIAL"
@@ -1788,6 +1789,7 @@ const selecaoCobrancaWebhook = {
   contratoPixAutomaticoId: true,
   asaasPaymentId: true,
   externalReference: true,
+  valorCobrado: true,
   tipo: true,
   status: true,
   vencimentoAsaas: true,
@@ -1869,7 +1871,7 @@ function divergenciaPagamentoWebhook(
   if (pagamento.billingType !== "PIX") return "Meio de pagamento divergente no webhook."
   if (
     pagamento.value === undefined ||
-    Math.abs(pagamento.value - Number(cobranca.mensalidade.valor)) > 0.001
+    Math.abs(pagamento.value - Number(cobranca.valorCobrado ?? cobranca.mensalidade.valor)) > 0.001
   ) {
     return "Valor divergente no webhook."
   }
@@ -2226,6 +2228,7 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
           asaasPaymentId: true,
           asaasCustomerId: true,
           externalReference: true,
+          finalidade: true,
           valor: true,
           vencimentoAsaas: true,
         },

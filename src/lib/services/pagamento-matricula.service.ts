@@ -1,5 +1,5 @@
 import "server-only"
-import type { Prisma, StatusCobrancaAsaas } from "@prisma/client"
+import type { FinalidadeCobrancaMatriculaAsaas, Prisma, StatusCobrancaAsaas } from "@prisma/client"
 import {
   type CobrancaAsaas as CobrancaRemotaAsaas,
   criarClienteAsaas,
@@ -17,9 +17,22 @@ import {
   statusCobrancaMatriculaPorStatusAsaas,
 } from "@/lib/asaas/estado"
 import { mensagemErroAsaasSegura } from "@/lib/asaas/seguranca"
+import {
+  planoCompativelComAulaAvulsa,
+  situacaoConversaoAulaAvulsa,
+  VALOR_AULA_AVULSA,
+  VALOR_COMPLEMENTO_AULA_AVULSA,
+} from "@/lib/aula-avulsa"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
-import { chaveCompetencia, dataCivilParaDate, formatarDataInput } from "@/lib/utils/datas"
+import { obterOuCriarMensalidadeNaTransacao } from "@/lib/services/financeiro.service"
+import { criarNotificacao } from "@/lib/services/notificacao.service"
+import {
+  chaveCompetencia,
+  dataCivilParaDate,
+  formatarDataInput,
+  inicioDaSemanaAcademia,
+} from "@/lib/utils/datas"
 import type { WebhookAsaas } from "@/lib/validations/asaas"
 
 const TEMPO_RESERVA_MS = 2 * 60 * 1_000
@@ -48,6 +61,10 @@ function referenciaCliente(solicitacaoId: string) {
 function referenciaCobranca(solicitacaoId: string, geracao = 1) {
   const base = `matricula:${solicitacaoId}`
   return geracao === 1 ? base : `${base}:tentativa:${geracao}`
+}
+
+function finalidadeInicial(tipoPagamento: "MENSALISTA" | "AULA_AVULSA") {
+  return tipoPagamento === "AULA_AVULSA" ? "AULA_AVULSA" : "PRIMEIRA_MENSALIDADE"
 }
 
 function reservaEmAndamento(atualizadoEm: Date) {
@@ -102,6 +119,13 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
       tipoPagamento: true,
       status: true,
       criadoEm: true,
+      aulaAvulsa: {
+        select: {
+          inicio: true,
+          fim: true,
+          turma: { select: { nome: true, local: true, modalidade: { select: { nome: true } } } },
+        },
+      },
       plano: { select: { nome: true, valor: true, periodicidade: true } },
       cobrancasAsaas: {
         where: { ativa: true },
@@ -139,18 +163,27 @@ async function reservarCobranca(tokenAcompanhamento: string) {
     if (solicitacao?.status !== "PENDENTE") {
       return { ok: false as const, motivo: "Esta solicitação não aceita uma nova cobrança." }
     }
-    if (solicitacao.tipoPagamento !== "MENSALISTA") {
+    if (solicitacao.tipoPagamento !== "MENSALISTA" && solicitacao.tipoPagamento !== "AULA_AVULSA") {
       return { ok: false as const, motivo: "Esta modalidade de matrícula não possui cobrança." }
     }
     if (!solicitacao.plano) {
       return { ok: false as const, motivo: "A solicitação não possui um plano vinculado." }
+    }
+    if (
+      solicitacao.tipoPagamento === "AULA_AVULSA" &&
+      !planoCompativelComAulaAvulsa(Number(solicitacao.plano.valor))
+    ) {
+      return { ok: false as const, motivo: "O plano mensal padrão não está em R$ 100,00." }
     }
     if (!solicitacao.cpf) {
       return { ok: false as const, motivo: "Informe um CPF válido para gerar o pagamento." }
     }
 
     const ultima = await tx.cobrancaMatriculaAsaas.findFirst({
-      where: { solicitacaoId: solicitacao.id },
+      where: {
+        solicitacaoId: solicitacao.id,
+        finalidade: finalidadeInicial(solicitacao.tipoPagamento),
+      },
       orderBy: { geracao: "desc" },
     })
     if (ultima) {
@@ -176,10 +209,12 @@ async function reservarCobranca(tokenAcompanhamento: string) {
     const cobranca = await tx.cobrancaMatriculaAsaas.create({
       data: {
         solicitacaoId: solicitacao.id,
+        finalidade: finalidadeInicial(solicitacao.tipoPagamento),
         geracao,
         externalReference: referenciaCobranca(solicitacao.id, geracao),
         competencia: chaveCompetencia(),
-        valor: solicitacao.plano.valor,
+        valor:
+          solicitacao.tipoPagamento === "AULA_AVULSA" ? VALOR_AULA_AVULSA : solicitacao.plano.valor,
         vencimentoAsaas: hoje,
       },
     })
@@ -216,6 +251,7 @@ async function criarOuRecuperarCobranca(params: {
   externalReference: string
   valor: number
   vencimento: Date
+  descricao: string
 }) {
   const encontradas = await listarCobrancasAsaas({
     externalReference: params.externalReference,
@@ -230,7 +266,7 @@ async function criarOuRecuperarCobranca(params: {
     billingType: "PIX",
     value: params.valor,
     dueDate: dataAsaas(params.vencimento),
-    description: "Primeira mensalidade ECVO",
+    description: params.descricao,
     externalReference: params.externalReference,
   })
 }
@@ -336,6 +372,10 @@ export async function gerarCobrancaMatriculaAsaas(
           externalReference: reserva.cobranca.externalReference,
           valor: Number(reserva.cobranca.valor),
           vencimento: reserva.cobranca.vencimentoAsaas,
+          descricao:
+            reserva.cobranca.finalidade === "AULA_AVULSA"
+              ? "Aula avulsa ECVO"
+              : "Primeira mensalidade ECVO",
         })
     const cobranca = await persistirCobranca(reserva.cobranca.id, cliente.id, remota)
     return { ok: true as const, cobranca }
@@ -346,6 +386,179 @@ export async function gerarCobrancaMatriculaAsaas(
         id: reserva.cobranca.id,
         status: { notIn: ["RECEBIDA", "ESTORNADA"] },
       },
+      data: {
+        status: "ERRO",
+        ativa: false,
+        pixCopiaECola: null,
+        qrCodeExpiraEm: null,
+        ultimoErro: motivo,
+      },
+    })
+    return { ok: false as const, motivo }
+  }
+}
+
+export function obterConversaoAulaAvulsa(alunoId: string) {
+  return db.acessoAulaAvulsa.findFirst({
+    where: { alunoId },
+    orderBy: { criadoEm: "desc" },
+    include: {
+      aula: {
+        select: {
+          inicio: true,
+          fim: true,
+          turma: { select: { nome: true, local: true, modalidade: { select: { nome: true } } } },
+        },
+      },
+      solicitacao: {
+        select: {
+          plano: { select: { nome: true, valor: true, ativo: true, periodicidade: true } },
+          cobrancasAsaas: {
+            where: { finalidade: "COMPLEMENTO_MENSALIDADE" },
+            orderBy: { geracao: "desc" },
+            take: 1,
+          },
+        },
+      },
+    },
+  })
+}
+
+async function reservarComplementoAulaAvulsa(alunoId: string, agora: Date) {
+  return db.$transaction(async (tx) => {
+    const acessoIdentificado = await tx.acessoAulaAvulsa.findFirst({
+      where: { alunoId },
+      orderBy: { criadoEm: "desc" },
+      select: { id: true },
+    })
+    if (!acessoIdentificado) {
+      return { ok: false as const, motivo: "Aula avulsa não encontrada para este aluno." }
+    }
+    await tx.$queryRaw`SELECT "id" FROM "AcessoAulaAvulsa" WHERE "id" = ${acessoIdentificado.id} FOR UPDATE`
+    const acesso = await tx.acessoAulaAvulsa.findUnique({
+      where: { id: acessoIdentificado.id },
+      include: {
+        aluno: {
+          select: {
+            id: true,
+            tipo: true,
+            planoId: true,
+            usuario: { select: { id: true, nome: true, email: true } },
+            cpf: true,
+            telefone: true,
+          },
+        },
+        aula: { select: { inicio: true } },
+        solicitacao: { include: { plano: true } },
+      },
+    })
+    if (!acesso || !["ATIVO", "USADO"].includes(acesso.status) || acesso.aluno.tipo !== "AVULSO") {
+      return { ok: false as const, motivo: "A mensalidade desta aula avulsa já foi fechada." }
+    }
+    if (acesso.aluno.planoId) {
+      return { ok: false as const, motivo: "O aluno já possui um plano mensal vinculado." }
+    }
+    const situacao = situacaoConversaoAulaAvulsa({ inicioAula: acesso.aula.inicio, agora })
+    if (situacao === "AGUARDANDO_SEMANA") {
+      return {
+        ok: false as const,
+        motivo: "O complemento fica disponível a partir da segunda-feira da semana da aula.",
+      }
+    }
+    if (situacao === "EXPIRADA" || agora.getTime() >= acesso.prazoConversao.getTime()) {
+      return {
+        ok: false as const,
+        motivo: "O prazo para fechar a mensalidade por R$ 80,00 terminou.",
+      }
+    }
+    if (
+      !acesso.solicitacao.plano?.ativo ||
+      acesso.solicitacao.plano.periodicidade !== "MENSAL" ||
+      !planoCompativelComAulaAvulsa(Number(acesso.solicitacao.plano.valor))
+    ) {
+      return { ok: false as const, motivo: "O plano mensal de R$ 100,00 não está disponível." }
+    }
+    if (!acesso.aluno.cpf) {
+      return { ok: false as const, motivo: "O CPF do aluno é necessário para gerar o PIX." }
+    }
+
+    const existente = await tx.cobrancaMatriculaAsaas.findFirst({
+      where: {
+        solicitacaoId: acesso.solicitacaoId,
+        finalidade: "COMPLEMENTO_MENSALIDADE",
+      },
+      orderBy: { geracao: "desc" },
+    })
+    if (existente) {
+      return { ok: true as const, proprietaria: false as const, acesso, cobranca: existente }
+    }
+
+    const ultima = await tx.cobrancaMatriculaAsaas.findFirst({
+      where: { solicitacaoId: acesso.solicitacaoId },
+      orderBy: { geracao: "desc" },
+      select: { geracao: true },
+    })
+    const geracao = (ultima?.geracao ?? 0) + 1
+    const cobranca = await tx.cobrancaMatriculaAsaas.create({
+      data: {
+        solicitacaoId: acesso.solicitacaoId,
+        finalidade: "COMPLEMENTO_MENSALIDADE",
+        geracao,
+        externalReference: `matricula:${acesso.solicitacaoId}:complemento:${geracao}`,
+        competencia: chaveCompetencia(acesso.aula.inicio),
+        valor: acesso.valorComplemento,
+        vencimentoAsaas: new Date(acesso.prazoConversao.getTime() - 1),
+      },
+    })
+    return { ok: true as const, proprietaria: true as const, acesso, cobranca }
+  })
+}
+
+export async function gerarCobrancaComplementoAulaAvulsaAsaas(
+  alunoId: string,
+  opcoes: { verificar?: boolean; agora?: Date } = {},
+) {
+  const reserva = await reservarComplementoAulaAvulsa(alunoId, opcoes.agora ?? new Date())
+  if (!reserva.ok) return reserva
+  if (
+    reserva.cobranca.status === "RECEBIDA" ||
+    (!opcoes.verificar && pixCobrancaMatriculaDisponivel(reserva.cobranca))
+  ) {
+    return { ok: true as const, cobranca: reserva.cobranca }
+  }
+  if (reserva.cobranca.status === "CANCELANDO") {
+    return { ok: false as const, motivo: "A cobrança está sendo substituída." }
+  }
+  if (
+    reserva.cobranca.asaasPaymentId &&
+    ["VENCIDA", "CANCELADA", "RECUSADA", "ESTORNADA"].includes(reserva.cobranca.status)
+  ) {
+    return { ok: false as const, motivo: "A cobrança precisa ser reemitida." }
+  }
+
+  try {
+    const cliente = await garantirClienteAsaas({
+      solicitacaoId: reserva.acesso.solicitacaoId,
+      nome: reserva.acesso.aluno.usuario.nome,
+      email: reserva.acesso.aluno.usuario.email,
+      cpf: reserva.acesso.aluno.cpf!,
+      telefone: reserva.acesso.aluno.telefone,
+    })
+    const remota = reserva.cobranca.asaasPaymentId
+      ? await obterCobrancaAsaas(reserva.cobranca.asaasPaymentId)
+      : await criarOuRecuperarCobranca({
+          customerId: cliente.id,
+          externalReference: reserva.cobranca.externalReference,
+          valor: VALOR_COMPLEMENTO_AULA_AVULSA,
+          vencimento: reserva.cobranca.vencimentoAsaas,
+          descricao: "Complemento da mensalidade ECVO",
+        })
+    const cobranca = await persistirCobranca(reserva.cobranca.id, cliente.id, remota)
+    return { ok: true as const, cobranca }
+  } catch (erro) {
+    const motivo = mensagemErroAsaasSegura(erro)
+    await db.cobrancaMatriculaAsaas.updateMany({
+      where: { id: reserva.cobranca.id, status: { notIn: ["RECEBIDA", "ESTORNADA"] } },
       data: {
         status: "ERRO",
         ativa: false,
@@ -372,7 +585,10 @@ async function reservarReemissao(tokenAcompanhamento: string) {
       where: { id: identificada.id },
       include: { plano: true },
     })
-    if (solicitacao?.status !== "PENDENTE" || solicitacao.tipoPagamento !== "MENSALISTA") {
+    if (
+      solicitacao?.status !== "PENDENTE" ||
+      (solicitacao.tipoPagamento !== "MENSALISTA" && solicitacao.tipoPagamento !== "AULA_AVULSA")
+    ) {
       return { ok: false as const, motivo: "Esta solicitação não aceita uma nova cobrança." }
     }
     if (!solicitacao.plano || !solicitacao.cpf) {
@@ -382,7 +598,10 @@ async function reservarReemissao(tokenAcompanhamento: string) {
       }
     }
     const cobranca = await tx.cobrancaMatriculaAsaas.findFirst({
-      where: { solicitacaoId: solicitacao.id },
+      where: {
+        solicitacaoId: solicitacao.id,
+        finalidade: finalidadeInicial(solicitacao.tipoPagamento),
+      },
       orderBy: { geracao: "desc" },
     })
     if (!cobranca) return { ok: true as const, retomar: true as const, solicitacao }
@@ -467,10 +686,11 @@ async function criarNovaGeracaoAposEncerramento(params: {
     const nova = await tx.cobrancaMatriculaAsaas.create({
       data: {
         solicitacaoId: solicitacao.id,
+        finalidade: atual.finalidade,
         geracao,
         externalReference: referenciaCobranca(solicitacao.id, geracao),
         competencia: chaveCompetencia(),
-        valor: solicitacao.plano.valor,
+        valor: atual.valor,
         vencimentoAsaas: hoje,
       },
     })
@@ -618,6 +838,10 @@ export async function reemitirCobrancaMatriculaAsaas(tokenAcompanhamento: string
       externalReference: novaReserva.cobranca.externalReference,
       valor: Number(novaReserva.cobranca.valor),
       vencimento: novaReserva.cobranca.vencimentoAsaas,
+      descricao:
+        novaReserva.cobranca.finalidade === "AULA_AVULSA"
+          ? "Aula avulsa ECVO"
+          : "Primeira mensalidade ECVO",
     })
     const nova = await persistirCobranca(novaReserva.cobranca.id, cliente.id, novaRemota)
     return { ok: true as const, cobranca: nova, reemitida: true as const }
@@ -676,6 +900,237 @@ function statusMatriculaPorEvento(evento: string): StatusCobrancaAsaas | null {
   return mapa[evento] ?? null
 }
 
+async function concluirConversaoAulaAvulsa(
+  tx: Prisma.TransactionClient,
+  params: { cobrancaId: string; recebidaEm: Date },
+) {
+  const cobranca = await tx.cobrancaMatriculaAsaas.findUnique({
+    where: { id: params.cobrancaId },
+    include: {
+      solicitacao: {
+        include: {
+          plano: true,
+          aluno: { select: { id: true, usuarioId: true, tipo: true, planoId: true } },
+          acessoAulaAvulsa: {
+            include: {
+              aula: { select: { inicio: true, turma: { select: { modalidadeId: true } } } },
+            },
+          },
+        },
+      },
+    },
+  })
+  if (cobranca?.finalidade !== "COMPLEMENTO_MENSALIDADE") return
+  const { solicitacao } = cobranca
+  const acesso = solicitacao.acessoAulaAvulsa
+  const aluno = solicitacao.aluno
+  const plano = solicitacao.plano
+  if (!acesso || !aluno || !plano) {
+    throw new Error("Dados da conversão da aula avulsa estão incompletos.")
+  }
+
+  await tx.$queryRaw`SELECT "id" FROM "AcessoAulaAvulsa" WHERE "id" = ${acesso.id} FOR UPDATE`
+  await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${aluno.id} FOR UPDATE`
+  const [acessoAtual, alunoAtual] = await Promise.all([
+    tx.acessoAulaAvulsa.findUnique({ where: { id: acesso.id }, select: { status: true } }),
+    tx.aluno.findUnique({ where: { id: aluno.id }, select: { tipo: true, planoId: true } }),
+  ])
+  if (acessoAtual?.status === "CONVERTIDO") return
+  if (!acessoAtual || !["ATIVO", "USADO"].includes(acessoAtual.status)) {
+    throw new Error("O acesso avulso não está elegível para conversão.")
+  }
+  const inicioSemana = inicioDaSemanaAcademia(acesso.aula.inicio)
+  if (
+    params.recebidaEm.getTime() < inicioSemana.getTime() ||
+    params.recebidaEm.getTime() >= acesso.prazoConversao.getTime()
+  ) {
+    throw new Error("O complemento foi recebido fora da semana elegível e requer conciliação.")
+  }
+  if (alunoAtual?.tipo !== "AVULSO" || alunoAtual.planoId) {
+    throw new Error("O aluno não está mais elegível para a conversão da aula avulsa.")
+  }
+  if (
+    !plano.ativo ||
+    plano.periodicidade !== "MENSAL" ||
+    !planoCompativelComAulaAvulsa(Number(plano.valor)) ||
+    Number(acesso.valorPlanoSnapshot) !== 100 ||
+    Number(acesso.valorPago) !== VALOR_AULA_AVULSA ||
+    Number(acesso.valorComplemento) !== VALOR_COMPLEMENTO_AULA_AVULSA
+  ) {
+    throw new Error(
+      "Os valores ou o plano da conversão não correspondem ao acordo de R$ 20 + R$ 80.",
+    )
+  }
+
+  const diaVencimento = Math.min(28, Number(formatarDataInput(params.recebidaEm).slice(-2)))
+  await tx.aluno.update({
+    where: { id: aluno.id },
+    data: { tipo: "MENSALISTA", planoId: plano.id, diaVencimento },
+  })
+  await tx.alunoPlanoModalidade.upsert({
+    where: {
+      alunoId_modalidadeId: { alunoId: aluno.id, modalidadeId: acesso.aula.turma.modalidadeId },
+    },
+    update: { plataformaExterna: null },
+    create: {
+      alunoId: aluno.id,
+      modalidadeId: acesso.aula.turma.modalidadeId,
+      plataformaExterna: null,
+    },
+  })
+
+  const mensalidade = await obterOuCriarMensalidadeNaTransacao(tx, {
+    alunoId: aluno.id,
+    competencia: cobranca.competencia,
+  })
+  if (!mensalidade.ok) throw new Error(mensalidade.motivo)
+  if (!mensalidade.criada) {
+    throw new Error("Já existe mensalidade para a competência da conversão.")
+  }
+  const mensalidadePaga = await tx.mensalidade.update({
+    where: { id: mensalidade.mensalidade.id },
+    data: {
+      valor: acesso.valorPlanoSnapshot,
+      status: "PAGA",
+      pagoEm: params.recebidaEm,
+      formaPagamento: "PIX_ASAAS_COMPLEMENTO_AULA_AVULSA",
+      observacao:
+        "Mensalidade de R$ 100,00 quitada com crédito da aula avulsa de R$ 20,00 e complemento Asaas de R$ 80,00.",
+    },
+  })
+  const cobrancaCanonica = await tx.cobrancaAsaas.create({
+    data: {
+      mensalidadeId: mensalidadePaga.id,
+      tipo: "PIX_MENSAL",
+      status: "RECEBIDA",
+      valorCobrado: acesso.valorComplemento,
+      ativa: true,
+      asaasPaymentId: cobranca.asaasPaymentId,
+      externalReference: cobranca.externalReference,
+      vencimentoAsaas: cobranca.vencimentoAsaas,
+      statusAsaas: cobranca.statusAsaas,
+      pixCopiaECola: cobranca.pixCopiaECola,
+      qrCodeExpiraEm: cobranca.qrCodeExpiraEm,
+      invoiceUrl: cobranca.invoiceUrl,
+      ultimoEventoAsaas: cobranca.ultimoEventoAsaas,
+      recebidaEmAsaas: params.recebidaEm,
+    },
+  })
+  await tx.mensalidade.update({
+    where: { id: mensalidadePaga.id },
+    data: { cobrancaQuitacaoAsaasId: cobrancaCanonica.id },
+  })
+  await tx.cobrancaMatriculaAsaas.update({
+    where: { id: cobranca.id },
+    data: { mensalidadeId: mensalidadePaga.id, ativa: false },
+  })
+  await tx.acessoAulaAvulsa.update({
+    where: { id: acesso.id },
+    data: { status: "CONVERTIDO", convertidoEm: params.recebidaEm },
+  })
+
+  await registrarLog(
+    {
+      autorId: null,
+      acao: "PLANO",
+      entidade: "Aluno",
+      entidadeId: aluno.id,
+      valorAntigo: { tipo: "AVULSO", planoId: null },
+      valorNovo: {
+        tipo: "MENSALISTA",
+        planoId: plano.id,
+        diaVencimento,
+        mensalidadeId: mensalidadePaga.id,
+        valorMensalidade: Number(acesso.valorPlanoSnapshot),
+        creditoAulaAvulsa: Number(acesso.valorPago),
+        valorComplemento: Number(acesso.valorComplemento),
+        asaasPaymentId: cobranca.asaasPaymentId,
+      },
+      justificativa: "Conversão da aula avulsa confirmada pelo webhook Asaas.",
+    },
+    tx,
+  )
+  await criarNotificacao(tx, {
+    usuarioId: aluno.usuarioId,
+    tipo: "FINANCEIRO",
+    titulo: "Mensalidade fechada",
+    mensagem: "O complemento de R$ 80,00 foi confirmado. Seu plano mensal ECVO está ativo.",
+  })
+}
+
+async function tratarEstornoAulaAvulsa(
+  tx: Prisma.TransactionClient,
+  params: { solicitacaoId: string; eventoId: string },
+) {
+  const acesso = await tx.acessoAulaAvulsa.findUnique({
+    where: { solicitacaoId: params.solicitacaoId },
+    include: { aluno: { select: { id: true, usuarioId: true } } },
+  })
+  if (!acesso || acesso.status === "CANCELADO") return
+
+  if (acesso.status === "CONVERTIDO") {
+    await tx.aluno.update({ where: { id: acesso.alunoId }, data: { status: "INADIMPLENTE" } })
+    await criarNotificacao(tx, {
+      usuarioId: acesso.aluno.usuarioId,
+      tipo: "FINANCEIRO",
+      titulo: "Crédito da aula avulsa estornado",
+      mensagem: "O estorno dos R$ 20,00 requer conciliação da mensalidade com a ECVO.",
+    })
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "PAGAMENTO",
+        entidade: "AcessoAulaAvulsa",
+        entidadeId: acesso.id,
+        valorAntigo: { status: acesso.status },
+        valorNovo: { status: acesso.status, alunoStatus: "INADIMPLENTE" },
+        justificativa: `Estorno Asaas ${params.eventoId} após conversão; conciliação manual necessária.`,
+      },
+      tx,
+    )
+    return
+  }
+
+  const consumido = acesso.status === "USADO" || Boolean(acesso.checkinId)
+  await tx.acessoAulaAvulsa.update({
+    where: { id: acesso.id },
+    data: { status: "CANCELADO" },
+  })
+  if (!consumido) {
+    await tx.comparecimento.updateMany({
+      where: { alunoId: acesso.alunoId, aulaId: acesso.aulaId, status: "CONFIRMADO" },
+      data: { status: "CANCELADO_GESTOR", canceladoEm: new Date() },
+    })
+  }
+  await tx.aluno.update({
+    where: { id: acesso.alunoId },
+    data: { status: consumido ? "INADIMPLENTE" : "CANCELADO" },
+  })
+  await criarNotificacao(tx, {
+    usuarioId: acesso.aluno.usuarioId,
+    tipo: "FINANCEIRO",
+    titulo: "Aula avulsa estornada",
+    mensagem: consumido
+      ? "O pagamento da aula avulsa utilizada foi estornado e requer regularização com a ECVO."
+      : "O pagamento de R$ 20,00 foi estornado e o acesso à aula avulsa foi cancelado.",
+  })
+  await registrarLog(
+    {
+      autorId: null,
+      acao: "PAGAMENTO",
+      entidade: "AcessoAulaAvulsa",
+      entidadeId: acesso.id,
+      valorAntigo: { status: acesso.status },
+      valorNovo: {
+        status: "CANCELADO",
+        alunoStatus: consumido ? "INADIMPLENTE" : "CANCELADO",
+      },
+      justificativa: `Estorno integral confirmado pelo evento Asaas ${params.eventoId}.`,
+    },
+    tx,
+  )
+}
+
 export async function aplicarWebhookPagamentoMatricula(
   tx: Prisma.TransactionClient,
   cobranca: {
@@ -687,6 +1142,7 @@ export async function aplicarWebhookPagamentoMatricula(
     externalReference: string
     valor: Prisma.Decimal
     vencimentoAsaas: Date
+    finalidade: FinalidadeCobrancaMatriculaAsaas
   },
   webhook: WebhookAsaas,
 ) {
@@ -753,6 +1209,17 @@ export async function aplicarWebhookPagamentoMatricula(
           : null,
     },
   })
+  if (pagamentoRecebido && cobranca.finalidade === "COMPLEMENTO_MENSALIDADE") {
+    const recebidaEm =
+      interpretarDataAsaas(webhook.payment.paymentDate ?? webhook.dateCreated) ?? new Date()
+    await concluirConversaoAulaAvulsa(tx, { cobrancaId: cobranca.id, recebidaEm })
+  }
+  if (webhook.event === "PAYMENT_REFUNDED" && cobranca.finalidade === "AULA_AVULSA") {
+    await tratarEstornoAulaAvulsa(tx, {
+      solicitacaoId: cobranca.solicitacaoId,
+      eventoId: webhook.id,
+    })
+  }
   if (status !== cobranca.status) {
     await registrarLog(
       {

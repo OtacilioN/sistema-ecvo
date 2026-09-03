@@ -130,6 +130,20 @@ export function fimExclusivoDoDiaAcademia(data: Date): Date {
   return fromZonedTime(`${format(amanha, "yyyy-MM-dd")}T00:00:00`, TIMEZONE)
 }
 
+/** Início da semana civil da academia (segunda-feira às 00:00). */
+export function inicioDaSemanaAcademia(data: Date): Date {
+  const dataLocal = paraFusoAcademia(data)
+  const diasDesdeSegunda = (dataLocal.getDay() + 6) % 7
+  const segunda = addDays(dataLocal, -diasDesdeSegunda)
+  return fromZonedTime(`${format(segunda, "yyyy-MM-dd")}T00:00:00`, TIMEZONE)
+}
+
+/** Fim exclusivo da semana civil da academia (segunda-feira seguinte às 00:00). */
+export function fimExclusivoDaSemanaAcademia(data: Date): Date {
+  const proximaSegunda = addDays(paraFusoAcademia(inicioDaSemanaAcademia(data)), 7)
+  return fromZonedTime(`${format(proximaSegunda, "yyyy-MM-dd")}T00:00:00`, TIMEZONE)
+}
+
 /** Formata uma duração em minutos como "1h30" / "45min" / "2h". */
 export function formatarMinutos(minutos: number): string {
   const m = Math.max(0, Math.round(minutos))

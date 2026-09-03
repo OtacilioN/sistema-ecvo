@@ -23,6 +23,10 @@ const dataCivilOpcional = z.preprocess((valor) => {
 }, z.date().nullable())
 
 const declaracaoCheckbox = z.preprocess((valor) => valor === true || valor === "on", z.boolean())
+const identificadorOpcional = z.preprocess(
+  (valor) => (typeof valor === "string" && valor.trim() ? valor.trim() : null),
+  z.string().min(1).nullable(),
+)
 
 export const solicitacaoMatriculaSchema = z
   .object({
@@ -40,7 +44,8 @@ export const solicitacaoMatriculaSchema = z
     contatoEmergencia: textoOpcional(120),
     restricoesMedicas: textoOpcional(1000),
     modalidadeId: z.string().min(1, "Selecione uma modalidade"),
-    tipoPagamento: z.enum(["MENSALISTA", "WELLHUB", "TOTALPASS"]),
+    tipoPagamento: z.enum(["MENSALISTA", "AULA_AVULSA", "WELLHUB", "TOTALPASS"]),
+    aulaAvulsaId: identificadorOpcional.optional(),
     beneficioAtivoDeclarado: declaracaoCheckbox,
     aceiteDados: z.literal("on", { error: "Confirme o envio dos dados para análise" }),
   })
@@ -66,11 +71,28 @@ export const solicitacaoMatriculaSchema = z
         path: ["beneficioAtivoDeclarado"],
       })
     }
-    if (dados.tipoPagamento === "MENSALISTA" && dados.beneficioAtivoDeclarado) {
+    if (
+      (dados.tipoPagamento === "MENSALISTA" || dados.tipoPagamento === "AULA_AVULSA") &&
+      dados.beneficioAtivoDeclarado
+    ) {
       ctx.addIssue({
         code: "custom",
-        message: "A declaração de benefício não se aplica à matrícula mensalista",
+        message: "A declaração de benefício só se aplica a Wellhub e TotalPass",
         path: ["beneficioAtivoDeclarado"],
+      })
+    }
+    if (dados.tipoPagamento === "AULA_AVULSA" && !dados.aulaAvulsaId) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Selecione o dia e horário da aula avulsa",
+        path: ["aulaAvulsaId"],
+      })
+    }
+    if (dados.tipoPagamento !== "AULA_AVULSA" && dados.aulaAvulsaId) {
+      ctx.addIssue({
+        code: "custom",
+        message: "A aula escolhida só se aplica ao cadastro de aula avulsa",
+        path: ["aulaAvulsaId"],
       })
     }
   })

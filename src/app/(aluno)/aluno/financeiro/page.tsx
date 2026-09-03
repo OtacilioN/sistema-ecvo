@@ -1,31 +1,40 @@
 import QRCode from "qrcode"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { situacaoConversaoAulaAvulsa } from "@/lib/aula-avulsa"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
-import { formatarData } from "@/lib/utils/datas"
+import {
+  obterConversaoAulaAvulsa,
+  pixCobrancaMatriculaDisponivel,
+} from "@/lib/services/pagamento-matricula.service"
+import { formatarData, formatarDataHora } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
+import { FecharMensalidadeAulaAvulsa } from "./fechar-mensalidade-aula-avulsa"
 import { CancelarPixAutomatico, PagamentoPix } from "./pagamento-pix"
 
 export const dynamic = "force-dynamic"
 
 export default async function Page() {
   const { alunoId } = await exigirAluno()
-  const aluno = await db.aluno.findUnique({
-    where: { id: alunoId },
-    include: {
-      plano: true,
-      modalidadesPlano: { select: { modalidade: { select: { nome: true } } } },
-      mensalidades: {
-        orderBy: { vencimento: "desc" },
-        take: 12,
-        include: { cobrancasAsaas: { orderBy: { geracao: "desc" }, take: 1 } },
+  const [aluno, acessoAulaAvulsa] = await Promise.all([
+    db.aluno.findUnique({
+      where: { id: alunoId },
+      include: {
+        plano: true,
+        modalidadesPlano: { select: { modalidade: { select: { nome: true } } } },
+        mensalidades: {
+          orderBy: { vencimento: "desc" },
+          take: 12,
+          include: { cobrancasAsaas: { orderBy: { geracao: "desc" }, take: 1 } },
+        },
+        contratosPixAutomatico: { orderBy: { criadoEm: "desc" }, take: 1 },
+        pagamentos: { orderBy: { criadoEm: "desc" }, take: 12 },
       },
-      contratosPixAutomatico: { orderBy: { criadoEm: "desc" }, take: 1 },
-      pagamentos: { orderBy: { criadoEm: "desc" }, take: 12 },
-    },
-  })
+    }),
+    obterConversaoAulaAvulsa(alunoId),
+  ])
 
   if (!aluno) return null
 
@@ -38,6 +47,17 @@ export default async function Page() {
     .find((mensalidade) => ["EM_ABERTO", "VENCIDA"].includes(statusMensalidadeEfetivo(mensalidade)))
   const contratoPixAutomatico = aluno.contratosPixAutomatico[0]
   const agora = new Date()
+  const situacaoConversao = acessoAulaAvulsa
+    ? situacaoConversaoAulaAvulsa({ inicioAula: acessoAulaAvulsa.aula.inicio, agora })
+    : null
+  const cobrancaComplemento = acessoAulaAvulsa?.solicitacao.cobrancasAsaas[0] ?? null
+  const pixComplementoDisponivel = cobrancaComplemento
+    ? pixCobrancaMatriculaDisponivel(cobrancaComplemento, agora)
+    : false
+  const qrCodeComplementoDataUrl =
+    pixComplementoDisponivel && cobrancaComplemento?.pixCopiaECola
+      ? await QRCode.toDataURL(cobrancaComplemento.pixCopiaECola, { margin: 1 })
+      : null
   const contratoCriandoExpirado = Boolean(
     contratoPixAutomatico?.status === "CRIANDO" &&
       agora.getTime() - contratoPixAutomatico.atualizadoEm.getTime() >= 2 * 60 * 1_000,
@@ -124,6 +144,45 @@ export default async function Page() {
           <CardContent className="py-5 text-sm text-muted-foreground">
             Seu vínculo {aluno.tipo} está sem plano mensal interno. A conferência é feita por
             conciliação externa.
+          </CardContent>
+        </Card>
+      )}
+
+      {aluno.tipo === "AVULSO" && acessoAulaAvulsa && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Fechar mensalidade</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Campo
+                rotulo="Aula escolhida"
+                valor={formatarDataHora(acessoAulaAvulsa.aula.inicio)}
+              />
+              <Campo
+                rotulo="Aula avulsa paga"
+                valor={formatarBRL(Number(acessoAulaAvulsa.valorPago))}
+              />
+              <Campo
+                rotulo="Prazo do complemento"
+                valor={formatarData(new Date(acessoAulaAvulsa.prazoConversao.getTime() - 1))}
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {situacaoConversao === "AGUARDANDO_SEMANA"
+                ? "O complemento de R$ 80,00 ficará disponível na segunda-feira da semana da aula."
+                : situacaoConversao === "EXPIRADA"
+                  ? "O prazo para aproveitar os R$ 20,00 como crédito da mensalidade terminou."
+                  : "Pague o complemento de R$ 80,00. Após a confirmação do Asaas, sua mensalidade de R$ 100,00 será criada como paga e o plano mensal ficará ativo."}
+            </p>
+            <FecharMensalidadeAulaAvulsa
+              disponivel={situacaoConversao === "DISPONIVEL"}
+              pixCopiaECola={pixComplementoDisponivel ? cobrancaComplemento?.pixCopiaECola : null}
+              qrCodeDataUrl={qrCodeComplementoDataUrl}
+              cobrancaPendente={Boolean(
+                cobrancaComplemento?.status === "PENDENTE" && situacaoConversao === "DISPONIVEL",
+              )}
+            />
           </CardContent>
         </Card>
       )}

@@ -49,6 +49,7 @@ export async function acaoSolicitarMatricula(
     restricoesMedicas: formData.get("restricoesMedicas"),
     modalidadeId: formData.get("modalidadeId"),
     tipoPagamento: formData.get("tipoPagamento"),
+    aulaAvulsaId: formData.get("aulaAvulsaId"),
     beneficioAtivoDeclarado: formData.get("beneficioAtivoDeclarado"),
     aceiteDados: formData.get("aceiteDados"),
   })
@@ -90,7 +91,7 @@ export async function acaoSolicitarMatricula(
     return { erro: resultado.motivo }
   }
 
-  if (parsed.data.tipoPagamento === "MENSALISTA") {
+  if (parsed.data.tipoPagamento === "MENSALISTA" || parsed.data.tipoPagamento === "AULA_AVULSA") {
     await gerarCobrancaMatriculaAsaas(resultado.solicitacao.tokenAcompanhamento)
     redirect(`/matricula/pagamento/${resultado.solicitacao.tokenAcompanhamento}`)
   }

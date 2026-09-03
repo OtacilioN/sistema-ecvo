@@ -9,6 +9,7 @@ import { Dialog } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { formatarDataHora } from "@/lib/utils/datas"
 import { formatarBRL, formatarCPF } from "@/lib/utils/formato"
 import type { SolicitacaoPendente } from "./lista-matriculas-pendentes"
 
@@ -21,6 +22,7 @@ export function AcoesMatricula({
 }) {
   const [acaoAberta, setAcaoAberta] = useState<"aprovar" | "rejeitar" | null>(null)
   const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
+  const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
   return (
     <>
       <Button type="button" onClick={() => setAcaoAberta("aprovar")} className="w-full lg:w-auto">
@@ -32,7 +34,7 @@ export function AcoesMatricula({
         variante="lateral"
         titulo="Aprovar matrícula"
         descricao={
-          mensalista
+          mensalista || aulaAvulsa
             ? "Confira os dados e conclua a aprovação do pagamento já confirmado."
             : "Confira os dados e a declaração do benefício antes de liberar o acesso."
         }
@@ -73,7 +75,8 @@ function FormRejeicao({
 }) {
   const [estado, acao] = useActionState(acaoRejeitarMatricula, undefined)
   const pagamentoConfirmado =
-    solicitacao.tipoPagamento === "MENSALISTA" && solicitacao.cobrancasAsaas.length > 0
+    (solicitacao.tipoPagamento === "MENSALISTA" || solicitacao.tipoPagamento === "AULA_AVULSA") &&
+    solicitacao.cobrancasAsaas.length > 0
 
   useEffect(() => {
     if (estado?.ok) aoConcluir()
@@ -136,6 +139,7 @@ function FormAprovacao({
 }) {
   const [estado, acao] = useActionState(acaoAprovarMatricula, undefined)
   const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
+  const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
   const parceiro = solicitacao.tipoPagamento === "WELLHUB" ? "Wellhub" : "TotalPass"
   const planoMinimo = solicitacao.tipoPagamento === "WELLHUB" ? "Basic" : "TP1+"
 
@@ -154,20 +158,39 @@ function FormAprovacao({
         </div>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <Dado rotulo="Modalidade" valor={solicitacao.modalidade.nome} />
-          <Dado rotulo="Tipo de matrícula" valor={mensalista ? "Mensalista" : parceiro} />
+          <Dado
+            rotulo="Tipo de matrícula"
+            valor={mensalista ? "Mensalista" : aulaAvulsa ? "Aula avulsa" : parceiro}
+          />
           <Dado rotulo="CPF" valor={solicitacao.cpf ? formatarCPF(solicitacao.cpf) : null} />
           <Dado rotulo="Telefone" valor={solicitacao.telefone} />
           <Dado rotulo="Endereço" valor={solicitacao.endereco} />
           <Dado rotulo="Emergência" valor={solicitacao.contatoEmergencia} />
           <Dado rotulo="Restrições médicas" valor={solicitacao.restricoesMedicas} />
         </dl>
-        {!mensalista && (
+        {!mensalista && !aulaAvulsa && (
           <p className="flex items-start gap-2 rounded-md border border-success/30 bg-success/5 p-3 text-sm">
             <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" />O candidato declarou ter
             o {parceiro} ativo a partir do plano {planoMinimo}.
           </p>
         )}
       </section>
+
+      {aulaAvulsa && solicitacao.aulaAvulsa && (
+        <section className="space-y-3 rounded-lg border border-success/30 bg-success/5 p-4 text-sm">
+          <h3 className="font-semibold">Aula avulsa paga</h3>
+          <Dado
+            rotulo="Aula"
+            valor={`${formatarDataHora(new Date(solicitacao.aulaAvulsa.inicio))}${
+              solicitacao.aulaAvulsa.turma.local ? ` · ${solicitacao.aulaAvulsa.turma.local}` : ""
+            }`}
+          />
+          <Dado
+            rotulo="Pagamento Asaas"
+            valor={formatarBRL(solicitacao.cobrancasAsaas[0]?.valor ?? 20)}
+          />
+        </section>
+      )}
 
       {mensalista && (
         <section className="space-y-3">
@@ -232,6 +255,11 @@ function FormAprovacao({
               A conta do aluno será criada, a modalidade e o plano padrão serão vinculados e a
               primeira mensalidade ficará registrada como paga pelo Asaas. O comprovante opcional
               não gera baixa.
+            </>
+          ) : aulaAvulsa ? (
+            <>
+              A conta será criada como aluno avulso e ficará vinculada somente à aula escolhida. Na
+              semana da aula, o aluno poderá pagar R$ 80,00 para ativar o plano mensal.
             </>
           ) : (
             <>

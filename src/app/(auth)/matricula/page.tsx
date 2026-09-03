@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
+  CalendarCheck2,
   CreditCard,
   ShieldCheck,
   TicketCheck,
@@ -9,6 +10,7 @@ import {
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Marca } from "@/components/marca"
+import { planoCompativelComAulaAvulsa } from "@/lib/aula-avulsa"
 import { listarOpcoesPublicasMatricula } from "@/lib/services/matricula.service"
 import { obterPlanoPadraoMatricula } from "@/lib/services/pagamento-matricula.service"
 import { FormMatricula } from "./form-matricula"
@@ -20,7 +22,7 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic"
 
-export type TipoPagamentoMatriculaPublica = "MENSALISTA" | "WELLHUB" | "TOTALPASS"
+export type TipoPagamentoMatriculaPublica = "MENSALISTA" | "AULA_AVULSA" | "WELLHUB" | "TOTALPASS"
 
 const OPCOES: Array<{
   tipo: TipoPagamentoMatriculaPublica
@@ -30,6 +32,15 @@ const OPCOES: Array<{
   descricao: string
   icone: typeof CreditCard
 }> = [
+  {
+    tipo: "AULA_AVULSA",
+    parametro: "aula-avulsa",
+    titulo: "Aula avulsa",
+    chamada: "R$ 20 por aula",
+    descricao:
+      "Escolha uma aula do calendário e pague por PIX. Feche o plano na mesma semana por mais R$ 80.",
+    icone: CalendarCheck2,
+  },
   {
     tipo: "MENSALISTA",
     parametro: "mensalista",
@@ -69,13 +80,18 @@ export default async function MatriculaPage({
   if (tipoPagamento) {
     const resultados = await Promise.all([
       listarOpcoesPublicasMatricula(),
-      tipoPagamento === "MENSALISTA" ? obterPlanoPadraoMatricula() : Promise.resolve(null),
+      tipoPagamento === "MENSALISTA" || tipoPagamento === "AULA_AVULSA"
+        ? obterPlanoPadraoMatricula()
+        : Promise.resolve(null),
     ])
     modalidades = resultados[0]
     planoPadrao = resultados[1]
   }
 
-  const formularioDisponivel = tipoPagamento !== "MENSALISTA" || Boolean(planoPadrao)
+  const formularioDisponivel =
+    tipoPagamento === "AULA_AVULSA"
+      ? Boolean(planoPadrao && planoCompativelComAulaAvulsa(Number(planoPadrao.valor)))
+      : tipoPagamento !== "MENSALISTA" || Boolean(planoPadrao)
 
   return (
     <main className="w-full max-w-5xl py-4">
@@ -125,8 +141,9 @@ export default async function MatriculaPage({
           />
         ) : (
           <p className="p-8 text-center text-sm text-destructive">
-            A matrícula mensalista online está temporariamente indisponível porque o plano padrão
-            não foi configurado. As matrículas por Wellhub e TotalPass continuam disponíveis.
+            {tipoPagamento === "AULA_AVULSA"
+              ? "A aula avulsa está temporariamente indisponível porque exige o plano mensal padrão de R$ 100,00."
+              : "A matrícula mensalista online está temporariamente indisponível porque o plano padrão não foi configurado. As matrículas por Wellhub e TotalPass continuam disponíveis."}
           </p>
         )}
       </section>
@@ -142,7 +159,7 @@ export default async function MatriculaPage({
 function EscolhaTipoPagamento() {
   return (
     <div className="p-5 sm:p-8">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {OPCOES.map((opcao, indice) => {
           const Icone = opcao.icone
           return (
@@ -186,19 +203,29 @@ function normalizarTipoPagamento(
 ): TipoPagamentoMatriculaPublica | null {
   if (typeof valor !== "string") return null
   const normalizado = valor.trim().toUpperCase()
-  if (normalizado === "MENSALISTA" || normalizado === "WELLHUB" || normalizado === "TOTALPASS") {
-    return normalizado
+  if (
+    normalizado === "MENSALISTA" ||
+    normalizado === "AULA_AVULSA" ||
+    normalizado === "AULA-AVULSA" ||
+    normalizado === "WELLHUB" ||
+    normalizado === "TOTALPASS"
+  ) {
+    return normalizado === "AULA-AVULSA" ? "AULA_AVULSA" : normalizado
   }
   return null
 }
 
 function tituloDoFluxo(tipo: TipoPagamentoMatriculaPublica) {
+  if (tipo === "AULA_AVULSA") return "Cadastro para aula avulsa"
   if (tipo === "WELLHUB") return "Matrícula Wellhub"
   if (tipo === "TOTALPASS") return "Matrícula TotalPass"
   return "Matrícula mensalista"
 }
 
 function descricaoDoFluxo(tipo: TipoPagamentoMatriculaPublica) {
+  if (tipo === "AULA_AVULSA") {
+    return "Escolha uma aula real do calendário e pague R$ 20,00 por PIX. Na semana da aula, você poderá fechar a mensalidade por mais R$ 80,00."
+  }
   if (tipo === "WELLHUB") {
     return "Preencha seus dados e declare ter um plano Wellhub ativo a partir do Basic. Não há pagamento de matrícula ou mensalidade à ECVO."
   }

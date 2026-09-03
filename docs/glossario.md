@@ -25,6 +25,7 @@ O modelo técnico legado `Comparecimento` representa o agendamento da aula pelo 
 | **Mensalista** | Aluno com mensalidade contratada diretamente com a academia (controle financeiro completo). |
 | **Plano padrão** | Plano mensal ativo aplicado pelo servidor a toda nova matrícula pública. Só pode existir um; a cobrança inicial preserva o valor vigente no momento da emissão. |
 | **Cobrança de matrícula** | Intenção PIX Asaas vinculada à solicitação antes de existir `Aluno`. Somente `PAYMENT_RECEIVED` conclui o pagamento; na aprovação ela é transferida para a primeira mensalidade. |
+| **Aula avulsa de cadastro** | Acesso de R$ 20,00 a uma `Aula` exata escolhida no calendário. Na mesma semana civil, os R$ 20,00 viram crédito para o plano mensal de R$ 100,00 mediante complemento de R$ 80,00. |
 | **Wellhub / TotalPass** | Aluno vinculado a plataforma externa. Pode também ter plano mensal interno para modalidades pagas diretamente à academia; o uso externo segue conciliação por planilha (sem API no MVP). |
 | **Avulso** | Aluno que paga por aula, diária, pacote, seminário ou evento pontual. |
 | **Adimplência / Inadimplência** | Situação de pagamento de plano mensal interno (em dia / em atraso). Pode bloquear agendamento/check-in conforme configuração (RF-051). |

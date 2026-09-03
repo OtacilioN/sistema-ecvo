@@ -61,9 +61,9 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   modalidades, data de início, contato de emergência, observações admin/técnicas, restrições médicas,
   identificador externo).
 - **RF-001.1** O candidato pode solicitar a própria matrícula em rota pública, informando seus dados,
-  escolhendo antes do cadastro entre mensalista, Wellhub ou TotalPass, selecionando uma modalidade e
+  escolhendo antes do cadastro entre mensalista, aula avulsa, Wellhub ou TotalPass, selecionando uma modalidade e
   consultando a grade recorrente ativa publicada para ela. Os atalhos públicos usam
-  `?tipoPagamento=mensalista`, `wellhub` ou `totalpass`. No fluxo mensalista, pode anexar um comprovante
+  `?tipoPagamento=mensalista`, `aula-avulsa`, `wellhub` ou `totalpass`. No fluxo mensalista, pode anexar um comprovante
   PIX opcional em imagem ou PDF; o sistema aplica o plano padrão, emite a cobrança PIX da primeira
   mensalidade no Asaas e só coloca a solicitação na fila administrativa após `PAYMENT_RECEIVED`. Wellhub
   exige declaração de benefício ativo a partir do plano Basic e TotalPass a partir do TP1+; esses fluxos
@@ -77,6 +77,13 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   substitui nem duplica a confirmação integrada.
 - **RF-001.3** Cada nova solicitação de matrícula e cada aprovação concluída gera uma notificação interna
   com tentativa de Web Push para todos os gestores ativos, incluindo o gestor que realizou a aprovação.
+- **RF-001.4** No cadastro de aula avulsa, o candidato escolhe uma ocorrência futura, não cancelada e de
+  turma recorrente ativa da modalidade selecionada. O Asaas cobra R$ 20,00; após `PAYMENT_RECEIVED` e
+  aprovação administrativa, o aluno recebe reserva e check-in somente para essa `Aula`. Na semana civil
+  da aula (segunda a domingo, em `America/Sao_Paulo`), o aluno pode fechar o plano mensal padrão de
+  R$ 100,00 pagando um complemento Asaas de R$ 80,00. Somente `PAYMENT_RECEIVED` do complemento converte
+  o vínculo para mensalista e cria a mensalidade canônica paga de R$ 100,00, com crédito de R$ 20,00 e
+  recebimento complementar de R$ 80,00 preservados para auditoria.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,
@@ -243,6 +250,10 @@ manual auditada. Tentativas remotas permanecem no histórico; somente uma pode e
 
 RN-025 o plano padrão deve estar ativo e ter periodicidade mensal. A cobrança de matrícula preserva plano,
 competência e valor apresentados ao candidato; uma troca posterior do padrão não altera essa cobrança.
+
+RN-025.1 aula avulsa de cadastro é um acesso financeiro a uma `Aula` exata, não uma liberação geral da
+modalidade. O acordo é fixo em R$ 20,00 + R$ 80,00 = R$ 100,00 e fica indisponível se o plano padrão não
+corresponder a R$ 100,00. Alunos avulsos legados, criados fora desse fluxo, preservam seu comportamento.
 
 RN-026 ofensivas usam somente `Checkin.status = VALIDO` e a data civil da aula no fuso da academia.
 RN-027 vários check-ins do mesmo aluno, modalidade e dia contam uma única vez para a ofensiva.

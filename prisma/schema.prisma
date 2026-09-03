@@ -134,8 +134,22 @@ enum StatusSolicitacaoMatricula {
 
 enum TipoPagamentoMatricula {
   MENSALISTA
+  AULA_AVULSA
   WELLHUB
   TOTALPASS
+}
+
+enum FinalidadeCobrancaMatriculaAsaas {
+  PRIMEIRA_MENSALIDADE
+  AULA_AVULSA
+  COMPLEMENTO_MENSALIDADE
+}
+
+enum StatusAcessoAulaAvulsa {
+  ATIVO
+  USADO
+  CONVERTIDO
+  CANCELADO
 }
 
 enum TipoPagamento {
@@ -295,6 +309,7 @@ model Aluno {
   clienteAsaas                  ClienteAsaas?
   contratosPixAutomatico        ContratoPixAutomatico[]
   solicitacaoMatricula          SolicitacaoMatricula?
+  acessosAulaAvulsa             AcessoAulaAvulsa[]
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -437,8 +452,10 @@ model Aula {
   cancelada                     Boolean                        @default(false)
   comparecimentos               Comparecimento[]
   checkins                      Checkin[]
+  acessosAvulsos                AcessoAulaAvulsa[]
   tentativasCheckinInadimplente TentativaCheckinInadimplente[]
   criadoEm                      DateTime                       @default(now())
+  solicitacaoMatriculas         SolicitacaoMatricula[]
 
   @@unique([turmaId, inicio])
   @@index([inicio])
@@ -486,6 +503,7 @@ model Checkin {
   invalidadoEm             DateTime?
   justificativa            String?
   movimentos               MovimentoHoras[]
+  acessoAulaAvulsa         AcessoAulaAvulsa?
   registrosImportados      RegistroImportado[]
   criadoEm                 DateTime            @default(now())
   atualizadoEm             DateTime            @updatedAt
@@ -653,6 +671,8 @@ model SolicitacaoMatricula {
   tokenAcompanhamento     String                     @unique @default(cuid())
   tipoPagamento           TipoPagamentoMatricula     @default(MENSALISTA)
   beneficioAtivoDeclarado Boolean                    @default(false)
+  aulaAvulsa              Aula?                      @relation(fields: [aulaAvulsaId], references: [id], onDelete: Restrict)
+  aulaAvulsaId            String?
   modalidade              Modalidade                 @relation(fields: [modalidadeId], references: [id])
   modalidadeId            String
   plano                   Plano?                     @relation("PlanoSolicitacaoMatricula", fields: [planoId], references: [id], onDelete: Restrict)
@@ -670,30 +690,33 @@ model SolicitacaoMatricula {
   analisadoEm             DateTime?
   justificativa           String?
   cobrancasAsaas          CobrancaMatriculaAsaas[]
+  acessoAulaAvulsa        AcessoAulaAvulsa?
   criadoEm                DateTime                   @default(now())
   atualizadoEm            DateTime                   @updatedAt
 
   @@index([status, criadoEm])
   @@index([modalidadeId])
+  @@index([aulaAvulsaId])
   @@index([planoId])
   @@index([tipoPagamento, status])
   @@index([analisadoPorId])
 }
 
 model CobrancaMatriculaAsaas {
-  id                       String               @id @default(cuid())
-  solicitacao              SolicitacaoMatricula @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
+  id                       String                           @id @default(cuid())
+  solicitacao              SolicitacaoMatricula             @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
   solicitacaoId            String
-  mensalidade              Mensalidade?         @relation(fields: [mensalidadeId], references: [id], onDelete: SetNull)
-  mensalidadeId            String?              @unique
-  status                   StatusCobrancaAsaas  @default(CRIANDO)
-  geracao                  Int                  @default(1)
-  ativa                    Boolean              @default(true)
+  mensalidade              Mensalidade?                     @relation(fields: [mensalidadeId], references: [id], onDelete: SetNull)
+  mensalidadeId            String?                          @unique
+  status                   StatusCobrancaAsaas              @default(CRIANDO)
+  finalidade               FinalidadeCobrancaMatriculaAsaas @default(PRIMEIRA_MENSALIDADE)
+  geracao                  Int                              @default(1)
+  ativa                    Boolean                          @default(true)
   asaasCustomerId          String?
-  asaasPaymentId           String?              @unique
-  externalReference        String               @unique
+  asaasPaymentId           String?                          @unique
+  externalReference        String                           @unique
   competencia              String
-  valor                    Decimal              @db.Decimal(10, 2)
+  valor                    Decimal                          @db.Decimal(10, 2)
   vencimentoAsaas          DateTime
   statusAsaas              String?
   pixCopiaECola            String?
@@ -703,12 +726,37 @@ model CobrancaMatriculaAsaas {
   ultimoErro               String?
   recebidaEmAsaas          DateTime?
   estornoParcialPendenteEm DateTime?
-  criadoEm                 DateTime             @default(now())
-  atualizadoEm             DateTime             @updatedAt
+  criadoEm                 DateTime                         @default(now())
+  atualizadoEm             DateTime                         @updatedAt
 
   @@unique([solicitacaoId, geracao])
   @@index([status])
+  @@index([finalidade, status])
   @@index([solicitacaoId, ativa])
+}
+
+model AcessoAulaAvulsa {
+  id                 String                 @id @default(cuid())
+  solicitacao        SolicitacaoMatricula   @relation(fields: [solicitacaoId], references: [id], onDelete: Restrict)
+  solicitacaoId      String                 @unique
+  aluno              Aluno                  @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId            String
+  aula               Aula                   @relation(fields: [aulaId], references: [id], onDelete: Restrict)
+  aulaId             String
+  checkin            Checkin?               @relation(fields: [checkinId], references: [id], onDelete: SetNull)
+  checkinId          String?                @unique
+  status             StatusAcessoAulaAvulsa @default(ATIVO)
+  valorPago          Decimal                @default(20.00) @db.Decimal(10, 2)
+  valorPlanoSnapshot Decimal                @default(100.00) @db.Decimal(10, 2)
+  valorComplemento   Decimal                @default(80.00) @db.Decimal(10, 2)
+  prazoConversao     DateTime
+  convertidoEm       DateTime?
+  criadoEm           DateTime               @default(now())
+  atualizadoEm       DateTime               @updatedAt
+
+  @@index([alunoId, status])
+  @@index([aulaId, status])
+  @@index([prazoConversao, status])
 }
 
 model AlunoPlanoModalidade {
@@ -796,6 +844,7 @@ model CobrancaAsaas {
   contratoPixAutomaticoId  String?
   tipo                     TipoCobrancaAsaas
   status                   StatusCobrancaAsaas    @default(CRIANDO)
+  valorCobrado             Decimal?               @db.Decimal(10, 2)
   geracao                  Int                    @default(1)
   ativa                    Boolean                @default(true)
   asaasPaymentId           String?                @unique

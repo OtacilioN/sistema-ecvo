@@ -138,7 +138,7 @@ export async function marcarComparecimento(params: {
   const agora = params.agora ?? new Date()
   const config = await configuracao()
 
-  const [aluno, aula] = await Promise.all([
+  const [aluno, aula, acessoAvulso] = await Promise.all([
     db.aluno.findUnique({
       where: { id: params.alunoId },
       select: {
@@ -146,6 +146,7 @@ export async function marcarComparecimento(params: {
         tipo: true,
         planoId: true,
         usuarioId: true,
+        solicitacaoMatricula: { select: { tipoPagamento: true } },
         modalidades: { where: { ativa: true }, select: { id: true } },
         modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
       },
@@ -172,9 +173,18 @@ export async function marcarComparecimento(params: {
         },
       },
     }),
+    db.acessoAulaAvulsa.findFirst({
+      where: { alunoId: params.alunoId, aulaId: params.aulaId, status: "ATIVO" },
+      select: { id: true },
+    }),
   ])
   if (!aluno) return { ok: false, motivo: "Aluno não encontrado." }
   if (!aula || aula.cancelada) return { ok: false, motivo: "Aula indisponível." }
+  const acessoAvulsoControlado =
+    aluno.tipo === "AVULSO" && aluno.solicitacaoMatricula?.tipoPagamento === "AULA_AVULSA"
+  if (acessoAvulsoControlado && !acessoAvulso) {
+    return { ok: false, motivo: "Esta aula não está incluída no seu acesso avulso." }
+  }
   const regras = resolverRegrasTreino(config, aula.turma.modalidade)
   const modalidadeVinculada = aluno.modalidades.some(
     (modalidade) => modalidade.id === aula.turma.modalidadeId,

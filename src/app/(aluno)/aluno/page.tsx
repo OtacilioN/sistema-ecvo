@@ -21,8 +21,13 @@ export default async function AlunoAgenda() {
         status: true,
         tipo: true,
         planoId: true,
+        solicitacaoMatricula: { select: { tipoPagamento: true } },
         modalidades: { where: { ativa: true }, select: { id: true } },
         modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
+        acessosAulaAvulsa: {
+          where: { status: { in: ["ATIVO", "USADO"] } },
+          select: { aulaId: true },
+        },
       },
     }),
     db.configuracaoAcademia.findUnique({
@@ -39,8 +44,13 @@ export default async function AlunoAgenda() {
   const matriculaLiberada = Boolean(
     alunoOperacional &&
       aluno &&
-      (aluno.tipo !== "MENSALISTA" || (aluno.planoId && modalidadesInternas.size > 0)),
+      (aluno.tipo === "AVULSO" && aluno.solicitacaoMatricula?.tipoPagamento === "AULA_AVULSA"
+        ? aluno.acessosAulaAvulsa.length > 0
+        : aluno.tipo !== "MENSALISTA" || (aluno.planoId && modalidadesInternas.size > 0)),
   )
+  const aulaIdsAvulsas = aluno?.acessosAulaAvulsa.map((acesso) => acesso.aulaId) ?? []
+  const acessoAvulsoControlado =
+    aluno?.tipo === "AVULSO" && aluno.solicitacaoMatricula?.tipoPagamento === "AULA_AVULSA"
   const modalidadeIds = matriculaLiberada
     ? (aluno?.modalidades
         .filter((modalidade) =>
@@ -53,6 +63,7 @@ export default async function AlunoAgenda() {
 
   const aulas = await db.aula.findMany({
     where: {
+      ...(acessoAvulsoControlado ? { id: { in: aulaIdsAvulsas } } : {}),
       cancelada: false,
       fim: { gte: agora },
       turma: {
@@ -193,7 +204,9 @@ export default async function AlunoAgenda() {
             <span className="text-sm">
               {matriculaLiberada
                 ? "Nenhuma aula disponível nas suas modalidades."
-                : "Matrícula aguardando liberação e vínculo de um plano de pagamento."}
+                : acessoAvulsoControlado
+                  ? "Seu acesso avulso não possui outra aula liberada."
+                  : "Matrícula aguardando liberação e vínculo de um plano de pagamento."}
             </span>
           </CardContent>
         </Card>
