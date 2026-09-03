@@ -36,8 +36,10 @@ export type SolicitacaoPendente = {
 
 export function ListaMatriculasPendentes({
   solicitacoes,
+  diaVencimentoPadrao,
 }: {
   solicitacoes: SolicitacaoPendente[]
+  diaVencimentoPadrao: number
 }) {
   const [busca, setBusca] = useState("")
   const filtradas = useMemo(() => {
@@ -122,7 +124,7 @@ export function ListaMatriculasPendentes({
                     </p>
                   )}
                 </div>
-                <AcoesMatricula solicitacao={item} />
+                <AcoesMatricula solicitacao={item} diaVencimentoPadrao={diaVencimentoPadrao} />
               </article>
             ))}
           </div>

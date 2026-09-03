@@ -14,6 +14,7 @@ export default async function AlunosPage() {
   const podeAdministrarAluno = usuario.papel === "GESTOR"
   const competenciaAtual = chaveCompetencia()
   const dataHoje = formatarDataInput(new Date())
+  const diaVencimentoPadrao = Number(dataHoje.slice(-2))
   const [alunos, modalidades, planos] = await Promise.all([
     listarAlunos({ competenciaMensalidade: competenciaAtual }),
     listarModalidades(),
@@ -36,6 +37,7 @@ export default async function AlunosPage() {
           planos={opcoesPlanos}
           competenciaAtual={competenciaAtual}
           dataHoje={dataHoje}
+          diaVencimentoPadrao={diaVencimentoPadrao}
           podeRegistrarPagamento={podeAdministrarAluno}
         />
       </CabecalhoPagina>

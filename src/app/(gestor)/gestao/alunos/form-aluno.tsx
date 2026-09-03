@@ -43,6 +43,7 @@ export function FormAluno({
   planos,
   competenciaAtual,
   dataHoje,
+  diaVencimentoPadrao,
   podeRegistrarPagamento,
   aoConcluir,
 }: {
@@ -50,6 +51,7 @@ export function FormAluno({
   planos: Plano[]
   competenciaAtual: string
   dataHoje: string
+  diaVencimentoPadrao: number
   podeRegistrarPagamento: boolean
   aoConcluir?: () => void
 }) {
@@ -212,7 +214,7 @@ export function FormAluno({
           type="number"
           min="1"
           max="28"
-          defaultValue="10"
+          defaultValue={diaVencimentoPadrao}
         />
       </div>
       <CampoUploadFoto

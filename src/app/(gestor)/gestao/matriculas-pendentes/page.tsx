@@ -2,6 +2,7 @@ import { ClipboardList } from "lucide-react"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { exigirPapel } from "@/lib/auth/dal"
 import { listarMatriculasPendentes } from "@/lib/services/matricula.service"
+import { formatarDataInput } from "@/lib/utils/datas"
 import { ListaMatriculasPendentes } from "./lista-matriculas-pendentes"
 
 export const dynamic = "force-dynamic"
@@ -9,6 +10,7 @@ export const dynamic = "force-dynamic"
 export default async function MatriculasPendentesPage() {
   await exigirPapel("GESTOR")
   const solicitacoes = await listarMatriculasPendentes()
+  const diaVencimentoPadrao = Number(formatarDataInput(new Date()).slice(-2))
 
   return (
     <div className="space-y-6">
@@ -24,6 +26,7 @@ export default async function MatriculasPendentesPage() {
       </CabecalhoPagina>
 
       <ListaMatriculasPendentes
+        diaVencimentoPadrao={diaVencimentoPadrao}
         solicitacoes={solicitacoes.map((item) => ({
           ...item,
           criadoEm: item.criadoEm.toISOString(),

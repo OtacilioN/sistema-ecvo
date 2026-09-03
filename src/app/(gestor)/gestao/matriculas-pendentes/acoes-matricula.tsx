@@ -12,7 +12,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { formatarBRL, formatarCPF } from "@/lib/utils/formato"
 import type { SolicitacaoPendente } from "./lista-matriculas-pendentes"
 
-export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPendente }) {
+export function AcoesMatricula({
+  solicitacao,
+  diaVencimentoPadrao,
+}: {
+  solicitacao: SolicitacaoPendente
+  diaVencimentoPadrao: number
+}) {
   const [acaoAberta, setAcaoAberta] = useState<"aprovar" | "rejeitar" | null>(null)
   const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
   return (
@@ -31,7 +37,11 @@ export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPenden
             : "Confira os dados e a declaração do benefício antes de liberar o acesso."
         }
       >
-        <FormAprovacao solicitacao={solicitacao} aoConcluir={() => setAcaoAberta(null)} />
+        <FormAprovacao
+          solicitacao={solicitacao}
+          diaVencimentoPadrao={diaVencimentoPadrao}
+          aoConcluir={() => setAcaoAberta(null)}
+        />
       </Dialog>
       <Button
         type="button"
@@ -117,9 +127,11 @@ function FormRejeicao({
 
 function FormAprovacao({
   solicitacao,
+  diaVencimentoPadrao,
   aoConcluir,
 }: {
   solicitacao: SolicitacaoPendente
+  diaVencimentoPadrao: number
   aoConcluir: () => void
 }) {
   const [estado, acao] = useActionState(acaoAprovarMatricula, undefined)
@@ -177,7 +189,7 @@ function FormAprovacao({
               type="number"
               min={1}
               max={28}
-              defaultValue={10}
+              defaultValue={diaVencimentoPadrao}
               required
             />
           </div>

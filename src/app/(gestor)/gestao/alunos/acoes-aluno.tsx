@@ -94,12 +94,14 @@ export function BotaoNovoAluno({
   planos,
   competenciaAtual,
   dataHoje,
+  diaVencimentoPadrao,
   podeRegistrarPagamento,
 }: {
   modalidades: Modalidade[]
   planos: Plano[]
   competenciaAtual: string
   dataHoje: string
+  diaVencimentoPadrao: number
   podeRegistrarPagamento: boolean
 }) {
   const [aberto, setAberto] = useState(false)
@@ -120,6 +122,7 @@ export function BotaoNovoAluno({
           planos={planos}
           competenciaAtual={competenciaAtual}
           dataHoje={dataHoje}
+          diaVencimentoPadrao={diaVencimentoPadrao}
           podeRegistrarPagamento={podeRegistrarPagamento}
           aoConcluir={() => setAberto(false)}
         />
