@@ -123,6 +123,7 @@ describe("registrarMensalidadeInicialPaga", () => {
               modalidade: {
                 id: "modalidade-1",
                 nome: "Jiu-Jitsu",
+                valorRepasseProfessor: 50,
                 turmas: [
                   {
                     professorId: "professor-1",
@@ -212,6 +213,7 @@ describe("registrarMensalidadeInicialPaga", () => {
         professorNome: "Professor ECVO",
         plataformaExterna: null,
         valorBase: 100,
+        valorRepasseProfessor: 50,
       },
     ])
     expect(notificacoes).toEqual([
@@ -720,6 +722,50 @@ describe("mensagemPagamentoAvulso", () => {
 })
 
 describe("calcularRepasseFinanceiro", () => {
+  it("usa o valor configurado para cada modalidade no repasse interno", () => {
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: 110,
+        itens: [
+          {
+            professorId: "prof-kickboxing",
+            modalidadeId: "kickboxing",
+            valorRepasseProfessor: 60,
+          },
+          {
+            professorId: "prof-muay-thai",
+            modalidadeId: "muay-thai",
+            valorRepasseProfessor: 50,
+          },
+        ],
+      }),
+    ).toMatchObject({
+      professores: [
+        { professorId: "prof-kickboxing", valor: 60 },
+        { professorId: "prof-muay-thai", valor: 50 },
+      ],
+      sobraAposProfessores: 0,
+    })
+  })
+
+  it("reduz proporcionalmente os valores configurados quando a arrecadação é parcial", () => {
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: 55,
+        itens: [
+          { professorId: "prof-kickboxing", valorRepasseProfessor: 60 },
+          { professorId: "prof-muay-thai", valorRepasseProfessor: 50 },
+        ],
+      }),
+    ).toMatchObject({
+      professores: [
+        { professorId: "prof-kickboxing", valor: 30 },
+        { professorId: "prof-muay-thai", valor: 25 },
+      ],
+      sobraAposProfessores: 0,
+    })
+  })
+
   it("separa o repasse do professor da sobra do recebimento", () => {
     expect(
       calcularRepasseFinanceiro({
@@ -795,7 +841,13 @@ describe("calcularRepasseFinanceiro", () => {
       calcularRepasseFinanceiro({
         valorRecebido: 90,
         politica: "REPASSE_EXTERNO",
-        itens: [{ professorId: "prof-a", modalidadeId: "kickboxing" }],
+        itens: [
+          {
+            professorId: "prof-a",
+            modalidadeId: "kickboxing",
+            valorRepasseProfessor: 50,
+          },
+        ],
       }),
     ).toMatchObject({
       professores: [{ professorId: "prof-a", valor: 54 }],
@@ -863,6 +915,7 @@ describe("calcularRepasseFinanceiro", () => {
         professorNome: "Vinicius de Oliveira",
         plataformaExterna: "WELLHUB",
         valorBase: 100,
+        valorRepasseProfessor: 50,
       },
       {
         modalidadeId: "muay-thai-oyama",
@@ -871,6 +924,7 @@ describe("calcularRepasseFinanceiro", () => {
         professorNome: "Oyama",
         plataformaExterna: null,
         valorBase: 100,
+        valorRepasseProfessor: 50,
       },
     ])
     const itens = snapshot
@@ -881,6 +935,7 @@ describe("calcularRepasseFinanceiro", () => {
         modalidadeId: item.modalidadeId,
         modalidadeNome: item.modalidadeNome,
         valorBase: item.valorBase,
+        valorRepasseProfessor: item.valorRepasseProfessor,
       }))
 
     expect(
@@ -889,8 +944,8 @@ describe("calcularRepasseFinanceiro", () => {
         itens,
       }),
     ).toMatchObject({
-      professores: [{ professorId: "prof-oyama", valor: 60 }],
-      sobraAposProfessores: 30,
+      professores: [{ professorId: "prof-oyama", valor: 50 }],
+      sobraAposProfessores: 40,
     })
   })
 })

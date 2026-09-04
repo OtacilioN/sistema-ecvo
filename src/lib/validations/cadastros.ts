@@ -81,6 +81,10 @@ export const modalidadeSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome da modalidade"),
   descricao: textoOpcional,
   duracaoPadraoMin: z.coerce.number().int().min(15, "Mínimo de 15 minutos").max(480),
+  valorRepasseProfessor: z.coerce
+    .number()
+    .positive("Informe um valor de repasse positivo")
+    .max(100000, "Valor de repasse inválido"),
 })
 export type ModalidadeInput = z.infer<typeof modalidadeSchema>
 

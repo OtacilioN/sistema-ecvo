@@ -11,6 +11,7 @@ import {
   type FiltroAtividade,
 } from "@/lib/filtros/atividade"
 import { formatarMinutos } from "@/lib/utils/datas"
+import { formatarBRL } from "@/lib/utils/formato"
 import { AcoesModalidade, type ModalidadeLinha } from "./acoes-modalidade"
 
 type Graduacao = {
@@ -27,6 +28,7 @@ export type ModalidadeLista = ModalidadeLinha & {
   professorNomes: string[]
   turmas: number
   alunos: number
+  valorRepasseProfessor: number
 }
 
 export function TabelaModalidades({
@@ -84,6 +86,7 @@ export function TabelaModalidades({
               <tr>
                 <th className="p-4 font-medium">Modalidade</th>
                 <th className="p-4 font-medium">Duração padrão</th>
+                <th className="p-4 font-medium">Repasse</th>
                 <th className="p-4 font-medium">Graduações</th>
                 <th className="p-4 font-medium">Professores</th>
                 <th className="p-4 font-medium">Regras</th>
@@ -113,6 +116,9 @@ export function TabelaModalidades({
                   </td>
                   <td className="p-4" data-label="Duração">
                     {formatarMinutos(m.duracaoPadraoMin)}
+                  </td>
+                  <td className="p-4 tabular-nums" data-label="Repasse">
+                    {formatarBRL(m.valorRepasseProfessor)}
                   </td>
                   <td className="p-4" data-label="Graduações">
                     <div className="flex max-w-sm flex-wrap gap-1">
@@ -171,7 +177,7 @@ export function TabelaModalidades({
               {filtradas.length === 0 && (
                 <tr>
                   <td
-                    colSpan={podeEditar ? 9 : 8}
+                    colSpan={podeEditar ? 10 : 9}
                     className="p-10 text-center text-muted-foreground"
                   >
                     {modalidades.length === 0

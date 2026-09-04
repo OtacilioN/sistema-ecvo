@@ -35,6 +35,7 @@ export function criarModalidade(params: {
   nome: string
   descricao?: string | null
   duracaoPadraoMin: number
+  valorRepasseProfessor: number
   autorId: string
   graduacoes?: GraduacaoCatalogo[]
 }) {
@@ -44,6 +45,7 @@ export function criarModalidade(params: {
         nome: params.nome,
         descricao: params.descricao ?? null,
         duracaoPadraoMin: params.duracaoPadraoMin,
+        valorRepasseProfessor: params.valorRepasseProfessor,
       },
     })
 
@@ -61,6 +63,7 @@ export function criarModalidade(params: {
         valorNovo: {
           nome: modalidade.nome,
           duracaoPadraoMin: modalidade.duracaoPadraoMin,
+          valorRepasseProfessor: Number(modalidade.valorRepasseProfessor),
           ativa: modalidade.ativa,
           graduacoes: graduacoes.map(serializarGraduacao),
         },
@@ -78,6 +81,7 @@ export async function atualizarDadosModalidade(params: {
   nome: string
   descricao?: string | null
   duracaoPadraoMin: number
+  valorRepasseProfessor: number
   ativa: boolean
   graduacoes?: GraduacaoCatalogo[]
 }) {
@@ -88,6 +92,7 @@ export async function atualizarDadosModalidade(params: {
       nome: true,
       descricao: true,
       duracaoPadraoMin: true,
+      valorRepasseProfessor: true,
       ativa: true,
       graduacoes: {
         orderBy: [{ ordem: "asc" }, { nome: "asc" }],
@@ -111,9 +116,17 @@ export async function atualizarDadosModalidade(params: {
         nome: params.nome,
         descricao: params.descricao ?? null,
         duracaoPadraoMin: params.duracaoPadraoMin,
+        valorRepasseProfessor: params.valorRepasseProfessor,
         ativa: params.ativa,
       },
-      select: { id: true, nome: true, descricao: true, duracaoPadraoMin: true, ativa: true },
+      select: {
+        id: true,
+        nome: true,
+        descricao: true,
+        duracaoPadraoMin: true,
+        valorRepasseProfessor: true,
+        ativa: true,
+      },
     })
 
     const graduacoes = await sincronizarGraduacoesModalidade(tx, {
@@ -345,6 +358,7 @@ function serializarDadosModalidade(modalidade: {
   nome: string
   descricao: string | null
   duracaoPadraoMin: number
+  valorRepasseProfessor: number | Prisma.Decimal
   ativa: boolean
   graduacoes?: Array<{
     id: string
@@ -359,6 +373,7 @@ function serializarDadosModalidade(modalidade: {
     nome: modalidade.nome,
     descricao: modalidade.descricao,
     duracaoPadraoMin: modalidade.duracaoPadraoMin,
+    valorRepasseProfessor: Number(modalidade.valorRepasseProfessor),
     ativa: modalidade.ativa,
     ...(modalidade.graduacoes
       ? { graduacoes: modalidade.graduacoes.map(serializarGraduacao) }

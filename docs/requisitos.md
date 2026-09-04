@@ -180,9 +180,8 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **RF-050** Adimplência. **RF-051** Bloqueio por inadimplência (alertar / bloquear agendamento / bloquear check-in / não aplicar).
 - **RF-052** Pagamentos avulsos (aula, diária, pacote, seminário, evento, exame, produto).
 - **RF-053** Wellhub/TotalPass podem combinar vínculo externo com plano mensal interno por modalidade.
-- **RF-053.1** Divisão de receita de mensalidade interna: valor base global por modalidade; professor recebe
-  até 60% do valor base cheio por modalidade. Descontos reduzem primeiro a sobra e, se a arrecadação não
-  atingir o teto dos professores, reduzem
+- **RF-053.1** Divisão de receita de mensalidade interna: cada modalidade define o valor de repasse do
+  professor. Descontos reduzem primeiro a sobra e, se a arrecadação não atingir o teto dos professores, reduzem
   proporcionalmente a parte dos professores.
 - **RF-053.3** Cada aluno com plano mensal pode usar cobrança PIX mensal pelo Asaas. Cada competência gera
   uma cobrança dinâmica e um QR Code de uso único, sem alterar o valor histórico da mensalidade. A primeira
@@ -231,7 +230,7 @@ várias graduações · RN-009 professor é responsável pela graduação · RN-
 automaticamente · RN-011 Wellhub/TotalPass conciliam por planilha no MVP · RN-012 plano mensal interno tem
 controle financeiro · RN-013 avulso tem pagamentos pontuais · RN-014 **não existe aluno experimental** ·
 RN-015 CPF tem prioridade na identificação · RN-016 check-in invalidado deve aparecer na conciliação ·
-RN-017 repasse de mensalidade interna usa cascata: professores até o teto por modalidade, depois sobra mensal ·
+RN-017 repasse de mensalidade interna usa cascata: professores até o valor configurado por modalidade, depois sobra mensal ·
 RN-018 repasse Wellhub/TotalPass separa 60% para o professor e 40% para a sobra mensal.
 
 RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 como padrão inicial.

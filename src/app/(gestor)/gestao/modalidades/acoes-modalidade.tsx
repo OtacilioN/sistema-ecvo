@@ -17,6 +17,7 @@ export type ModalidadeLinha = {
   nome: string
   descricao: string | null
   duracaoPadraoMin: number
+  valorRepasseProfessor: number
   ativa: boolean
   graduacoes: {
     id: string

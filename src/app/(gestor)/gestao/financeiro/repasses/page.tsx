@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -84,13 +85,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const mesRepasse = mesRepasseValido(valorUnico(params.competencia))
   const { inicio, fim } = intervaloMesRepasse(mesRepasse)
 
-  const [configuracao, mensalidades, registrosExternos] = await Promise.all([
-    db.configuracaoAcademia.upsert({
-      where: { id: "default" },
-      update: {},
-      create: { id: "default" },
-      select: { valorBaseModalidade: true },
-    }),
+  const [mensalidades, registrosExternos] = await Promise.all([
     db.mensalidade.findMany({
       where: {
         status: "PAGA",
@@ -107,6 +102,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   select: {
                     id: true,
                     nome: true,
+                    valorRepasseProfessor: true,
                     turmas: {
                       where: { ativa: true, professorId: { not: null } },
                       orderBy: { criadoEm: "asc" },
@@ -153,7 +149,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     }),
   ])
 
-  const valorBaseModalidade = Number(configuracao.valorBaseModalidade)
   const linhas = new Map<string, LinhaRepasse>()
   const pendencias: PendenciaRepasse[] = []
   let totalRecebido = 0
@@ -202,7 +197,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       valorRecebido,
       itens,
       politica: "MENSALIDADE_INTERNA",
-      configuracao: { valorBaseModalidade },
     })
     const repasseProfessores = repasse.professores.reduce(
       (total, professor) => total + professor.valor,
@@ -263,7 +257,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       valorRecebido: Number(registro.valorRepasse),
       itens: [item],
       politica: "REPASSE_EXTERNO",
-      configuracao: { valorBaseModalidade },
     })
     const repasseProfessores = repasse.professores.reduce(
       (total, professor) => total + professor.valor,
@@ -598,6 +591,7 @@ function itemModalidadeMensalidade(
   modalidade: {
     id: string
     nome: string
+    valorRepasseProfessor: Prisma.Decimal
     turmas: Array<{
       professorId: string | null
       professor: { usuario: { nome: string } } | null
@@ -619,6 +613,7 @@ function itemModalidadeMensalidade(
       professorNome,
       modalidadeId: modalidade.id,
       modalidadeNome: modalidade.nome,
+      valorRepasseProfessor: Number(modalidade.valorRepasseProfessor),
     }
   }
 
@@ -652,6 +647,7 @@ function itemModalidadeSnapshot(
       modalidadeId: item.modalidadeId,
       modalidadeNome: item.modalidadeNome,
       valorBase: item.valorBase,
+      valorRepasseProfessor: item.valorRepasseProfessor,
     }
   }
 
@@ -667,6 +663,7 @@ function itemModalidadeSnapshot(
     modalidadeId: item.modalidadeId,
     modalidadeNome: item.modalidadeNome,
     valorBase: item.valorBase,
+    valorRepasseProfessor: item.valorRepasseProfessor,
   }
 }
 

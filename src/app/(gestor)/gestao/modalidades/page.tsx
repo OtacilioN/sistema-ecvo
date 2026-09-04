@@ -24,6 +24,7 @@ export default async function ModalidadesPage() {
           nome: m.nome,
           descricao: m.descricao,
           duracaoPadraoMin: m.duracaoPadraoMin,
+          valorRepasseProfessor: Number(m.valorRepasseProfessor),
           ativa: m.ativa,
           checkinSemRestricaoHorario: m.checkinSemRestricaoHorario,
           janelaComparecimentoHoras: m.janelaComparecimentoHoras,

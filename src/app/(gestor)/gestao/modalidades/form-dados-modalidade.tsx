@@ -14,6 +14,7 @@ type ModalidadeDados = {
   nome: string
   descricao: string | null
   duracaoPadraoMin: number
+  valorRepasseProfessor: number
   ativa: boolean
   graduacoes: GraduacaoForm[]
 }
@@ -37,7 +38,7 @@ export function FormDadosModalidade({
   return (
     <form action={acao} className="grid gap-4">
       <input type="hidden" name="modalidadeId" value={modalidade.id} />
-      <div className="grid gap-3 sm:grid-cols-[1fr_9rem_9rem]">
+      <div className="grid gap-3 sm:grid-cols-[1fr_9rem_10rem_9rem]">
         <div className="space-y-1.5">
           <Label htmlFor="nome-modalidade">Nome</Label>
           <Input id="nome-modalidade" name="nome" defaultValue={modalidade?.nome ?? ""} required />
@@ -51,6 +52,18 @@ export function FormDadosModalidade({
             min={15}
             max={480}
             defaultValue={modalidade?.duracaoPadraoMin ?? 60}
+            required
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="repasse-professor-modalidade">Repasse ao professor (R$)</Label>
+          <Input
+            id="repasse-professor-modalidade"
+            name="valorRepasseProfessor"
+            type="number"
+            min={0.01}
+            step="0.01"
+            defaultValue={modalidade.valorRepasseProfessor}
             required
           />
         </div>

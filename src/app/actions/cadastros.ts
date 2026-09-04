@@ -105,6 +105,7 @@ export async function acaoCriarModalidade(_: EstadoForm, formData: FormData): Pr
     nome: formData.get("nome"),
     descricao: formData.get("descricao"),
     duracaoPadraoMin: formData.get("duracaoPadraoMin"),
+    valorRepasseProfessor: formData.get("valorRepasseProfessor"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
@@ -131,6 +132,7 @@ export async function acaoAtualizarDadosModalidade(
     nome: formData.get("nome"),
     descricao: formData.get("descricao"),
     duracaoPadraoMin: formData.get("duracaoPadraoMin"),
+    valorRepasseProfessor: formData.get("valorRepasseProfessor"),
     ativa: formData.get("ativa"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }

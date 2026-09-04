@@ -37,6 +37,7 @@ export type ItemRepasseModalidade = {
   modalidadeId?: string | null
   modalidadeNome?: string | null
   valorBase?: number | null
+  valorRepasseProfessor?: number | null
 }
 
 export type ItemRepasseModalidadeCobranca = ItemRepasseModalidade & {
@@ -50,6 +51,7 @@ export type ItemRepasseMensalidadeSnapshot = {
   professorNome: string | null
   plataformaExterna: Plataforma | null
   valorBase: number
+  valorRepasseProfessor?: number
 }
 
 export type PoliticaRepasseFinanceiro = "MENSALIDADE_INTERNA" | "REPASSE_EXTERNO"
@@ -247,14 +249,26 @@ export function calcularRepasseFinanceiro(params: {
   if (params.valorRecebido < 0) throw new Error("Valor recebido não pode ser negativo.")
   if (params.itens.length === 0) throw new Error("Informe ao menos uma modalidade para repasse.")
 
+  const politica = params.politica ?? "MENSALIDADE_INTERNA"
   const valorRecebidoCentavos = paraCentavos(params.valorRecebido)
   const itens = params.itens.map((item) => {
     const valorBaseCentavos = paraCentavos(item.valorBase ?? config.valorBaseModalidade)
     if (valorBaseCentavos <= 0) throw new Error("Valor base da modalidade deve ser positivo.")
+    const valorRepasseProfessorCentavos =
+      politica === "MENSALIDADE_INTERNA" &&
+      item.valorRepasseProfessor !== null &&
+      item.valorRepasseProfessor !== undefined
+        ? paraCentavos(item.valorRepasseProfessor)
+        : null
+    if (valorRepasseProfessorCentavos !== null && valorRepasseProfessorCentavos <= 0) {
+      throw new Error("Valor de repasse do professor deve ser positivo.")
+    }
     return {
       ...item,
       valorBaseCentavos,
-      tetoProfessorCentavos: Math.round((valorBaseCentavos * config.percentualProfessor) / 100),
+      tetoProfessorCentavos:
+        valorRepasseProfessorCentavos ??
+        Math.round((valorBaseCentavos * config.percentualProfessor) / 100),
     }
   })
   const valorBaseTotalCentavos = itens.reduce((total, item) => total + item.valorBaseCentavos, 0)
@@ -262,7 +276,6 @@ export function calcularRepasseFinanceiro(params: {
     (total, item) => total + item.tetoProfessorCentavos,
     0,
   )
-  const politica = params.politica ?? "MENSALIDADE_INTERNA"
   const valoresProfessor =
     politica === "REPASSE_EXTERNO"
       ? dividirProporcionalmente(
@@ -380,6 +393,7 @@ export function lerRepasseSnapshotMensalidade(
       continue
     }
     const valorBase = Number(registro.valorBase)
+    const valorRepasseProfessor = Number(registro.valorRepasseProfessor)
     itens.push({
       modalidadeId: typeof registro.modalidadeId === "string" ? registro.modalidadeId : null,
       modalidadeNome: typeof registro.modalidadeNome === "string" ? registro.modalidadeNome : null,
@@ -387,6 +401,9 @@ export function lerRepasseSnapshotMensalidade(
       professorNome: typeof registro.professorNome === "string" ? registro.professorNome : null,
       plataformaExterna,
       valorBase: Number.isFinite(valorBase) && valorBase > 0 ? valorBase : 100,
+      ...(Number.isFinite(valorRepasseProfessor) && valorRepasseProfessor > 0
+        ? { valorRepasseProfessor }
+        : {}),
     })
   }
 
@@ -399,13 +416,13 @@ function montarRepasseSnapshotMensalidade(params: {
     modalidade: {
       id: string
       nome: string
+      valorRepasseProfessor: Prisma.Decimal
       turmas: Array<{
         professorId: string | null
         professor: { usuario: { nome: string } } | null
       }>
     }
   }>
-  valorBaseModalidade: number
 }): ItemRepasseMensalidadeSnapshot[] {
   return params.modalidadesPlano.map((vinculo) => {
     const professores = new Map<string, string>()
@@ -430,7 +447,8 @@ function montarRepasseSnapshotMensalidade(params: {
       professorId,
       professorNome,
       plataformaExterna: vinculo.plataformaExterna,
-      valorBase: params.valorBaseModalidade,
+      valorBase: CONFIGURACAO_REPASSE_PADRAO.valorBaseModalidade,
+      valorRepasseProfessor: Number(vinculo.modalidade.valorRepasseProfessor),
     }
   })
 }
@@ -897,6 +915,7 @@ export async function obterOuCriarMensalidadeNaTransacao(
             select: {
               id: true,
               nome: true,
+              valorRepasseProfessor: true,
               turmas: {
                 where: { ativa: true, professorId: { not: null } },
                 orderBy: { criadoEm: "asc" },
@@ -911,11 +930,6 @@ export async function obterOuCriarMensalidadeNaTransacao(
       },
     },
   })
-  const configuracao = await tx.configuracaoAcademia.findUnique({
-    where: { id: "default" },
-    select: { valorBaseModalidade: true },
-  })
-
   if (!aluno) return { ok: false as const, motivo: "Aluno não encontrado." }
   if (!aluno.plano) {
     return {
@@ -923,12 +937,8 @@ export async function obterOuCriarMensalidadeNaTransacao(
       motivo: "Mensalidade interna exige plano vinculado ao aluno.",
     }
   }
-  const valorBaseModalidade = Number(
-    configuracao?.valorBaseModalidade ?? CONFIGURACAO_REPASSE_PADRAO.valorBaseModalidade,
-  )
   const repasseSnapshot = montarRepasseSnapshotMensalidade({
     modalidadesPlano: aluno.modalidadesPlano,
-    valorBaseModalidade,
   })
   const modalidadesInternas = repasseSnapshot.filter((modalidade) => !modalidade.plataformaExterna)
   if (modalidadesInternas.length === 0) {

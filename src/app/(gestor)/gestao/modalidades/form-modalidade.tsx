@@ -20,7 +20,7 @@ export function FormModalidade({ aoConcluir }: { aoConcluir?: () => void }) {
   }, [estado?.ok, aoConcluir])
 
   return (
-    <form ref={ref} action={acao} className="grid gap-4 sm:grid-cols-3">
+    <form ref={ref} action={acao} className="grid gap-4 sm:grid-cols-4">
       <div className="space-y-1.5 sm:col-span-1">
         <Label htmlFor="nome">Nome</Label>
         <Input id="nome" name="nome" placeholder="Jiu-jitsu" required />
@@ -41,12 +41,24 @@ export function FormModalidade({ aoConcluir }: { aoConcluir?: () => void }) {
         <Label htmlFor="descricao">Descrição</Label>
         <Textarea id="descricao" name="descricao" className="min-h-10" rows={1} />
       </div>
+      <div className="space-y-1.5 sm:col-span-1">
+        <Label htmlFor="valorRepasseProfessor">Repasse ao professor (R$)</Label>
+        <Input
+          id="valorRepasseProfessor"
+          name="valorRepasseProfessor"
+          type="number"
+          defaultValue={50}
+          min={0.01}
+          step="0.01"
+          required
+        />
+      </div>
 
-      <div className="sm:col-span-3">
+      <div className="sm:col-span-4">
         <CamposGraduacoesModalidade />
       </div>
 
-      <div className="flex items-center gap-3 sm:col-span-3">
+      <div className="flex items-center gap-3 sm:col-span-4">
         <BotaoEnviar>Cadastrar</BotaoEnviar>
         {estado?.erro && <p className="text-sm text-destructive">{estado.erro}</p>}
       </div>

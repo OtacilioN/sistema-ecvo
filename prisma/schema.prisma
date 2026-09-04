@@ -391,6 +391,7 @@ model Modalidade {
   nome                             String                            @unique
   descricao                        String?
   duracaoPadraoMin                 Int                               @default(60)
+  valorRepasseProfessor            Decimal                           @default(50.00) @db.Decimal(10, 2)
   ativa                            Boolean                           @default(true)
   checkinSemRestricaoHorario       Boolean                           @default(false)
   janelaComparecimentoHoras        Int?
