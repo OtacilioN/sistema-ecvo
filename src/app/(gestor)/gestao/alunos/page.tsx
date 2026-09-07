@@ -65,6 +65,7 @@ export default async function AlunosPage() {
           observacoesTecnicas: a.observacoesTecnicas,
           observacoesAdmin: a.observacoesAdmin,
           idExterno: a.idExterno,
+          idAtleta: a.idAtleta,
           planoId: a.planoId,
           planoNome: a.plano?.nome ?? null,
           planoValor: a.plano ? Number(a.plano.valor) : null,

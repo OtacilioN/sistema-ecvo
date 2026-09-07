@@ -78,6 +78,7 @@ export function TabelaAlunos({
       return [
         a.nome,
         a.email,
+        a.idAtleta,
         a.tipo,
         a.status,
         a.planoNome,
@@ -109,7 +110,11 @@ export function TabelaAlunos({
     <Card>
       <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="grid flex-1 gap-3 sm:grid-cols-[minmax(220px,1fr)_160px_160px_220px]">
-          <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Nome, e-mail, modalidade…" />
+          <CampoBusca
+            valor={busca}
+            aoMudar={setBusca}
+            placeholder="Nome, e-mail, ID de atleta, modalidade…"
+          />
           <Select
             aria-label="Filtrar por status"
             value={statusFiltro}
@@ -240,6 +245,11 @@ function TabelaGrupoAlunos({
                       )}
                     </span>
                     <span className="block truncate text-xs text-muted-foreground">{a.email}</span>
+                    {a.idAtleta && (
+                      <span className="block text-xs text-muted-foreground">
+                        ID de atleta: {a.idAtleta}
+                      </span>
+                    )}
                   </div>
                 </div>
               </td>

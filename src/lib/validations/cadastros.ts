@@ -26,6 +26,13 @@ const idOpcional = z
   .optional()
   .transform((v) => (v && v.length > 0 ? v : null))
 
+const idAtletaOpcional = z
+  .union([z.string().trim(), z.null()])
+  .optional()
+  .transform((v) => (typeof v === "string" && v.length > 0 ? v : null))
+  .refine((v) => v === null || /^\d+$/.test(v), "ID de atleta deve conter apenas números")
+  .refine((v) => v === null || v.length <= 32, "ID de atleta deve ter no máximo 32 dígitos")
+
 const fotoUrlOpcional = z
   .union([
     z.url("Informe uma URL válida"),
@@ -275,6 +282,7 @@ export const alunoSchema = z
     restricoesMedicas: textoOpcional,
     observacoesTecnicas: textoOpcional,
     observacoesAdmin: textoOpcional,
+    idAtleta: idAtletaOpcional,
     idExterno: textoOpcional,
     planoId: idOpcional,
     diaVencimento: diaVencimentoSchema,
@@ -311,6 +319,7 @@ export const dadosAlunoSchema = z
     restricoesMedicas: textoOpcional,
     observacoesTecnicas: textoOpcional,
     observacoesAdmin: textoOpcional,
+    idAtleta: idAtletaOpcional,
     idExterno: textoOpcional,
     planoId: idOpcional,
     diaVencimento: diaVencimentoSchema,

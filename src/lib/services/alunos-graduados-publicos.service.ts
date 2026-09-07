@@ -17,6 +17,7 @@ export async function listarAlunosGraduadosPublicos(origem: string) {
     orderBy: { usuario: { nome: "asc" } },
     select: {
       id: true,
+      idAtleta: true,
       fotoUrl: true,
       usuario: { select: { nome: true, fotoUrl: true } },
       graduacoes: {
@@ -39,6 +40,7 @@ export async function listarAlunosGraduadosPublicos(origem: string) {
 
     return {
       nome: aluno.usuario.nome,
+      idAtleta: aluno.idAtleta,
       fotoUrl: urlFotoPublica(origem, aluno.id, fotoUrl),
       graduacoes: aluno.graduacoes.map((registro) => ({
         modalidade: registro.graduacao.modalidade.nome,

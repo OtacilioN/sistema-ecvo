@@ -284,6 +284,8 @@ model Aluno {
   restricoesMedicas   String?
   observacoesTecnicas String?
   observacoesAdmin    String?
+  // Identificador federativo do atleta (ex.: cadastro CBKB)
+  idAtleta            String?     @unique
   // Identificador externo para conciliação Wellhub/TotalPass (RF-001.16, RF-059)
   idExterno           String?
 

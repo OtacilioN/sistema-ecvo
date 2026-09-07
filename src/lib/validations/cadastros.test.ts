@@ -87,6 +87,41 @@ describe("dadosAlunoSchema", () => {
     expect(formatarData(parsed.dataNascimento as Date)).toBe("14/12/1996")
     expect(formatarData(parsed.dataInicio as Date)).toBe("10/06/2026")
   })
+
+  it("normaliza o ID de atleta e aceita o campo vazio", () => {
+    const base = {
+      alunoId: "aluno-1",
+      nome: "Otacilio Maia",
+      tipo: "MENSALISTA",
+      status: "ATIVO",
+      fotoUrl: "",
+      modalidadeIds: ["modalidade-1"],
+      cobrancasModalidades: [],
+    }
+
+    expect(dadosAlunoSchema.parse({ ...base, idAtleta: " 52820 " }).idAtleta).toBe("52820")
+    expect(dadosAlunoSchema.parse({ ...base, idAtleta: "" }).idAtleta).toBeNull()
+    expect(dadosAlunoSchema.parse({ ...base, idAtleta: null }).idAtleta).toBeNull()
+    expect(dadosAlunoSchema.parse(base).idAtleta).toBeNull()
+  })
+
+  it("rejeita ID de atleta com caracteres não numéricos", () => {
+    const parsed = dadosAlunoSchema.safeParse({
+      alunoId: "aluno-1",
+      nome: "Otacilio Maia",
+      tipo: "MENSALISTA",
+      status: "ATIVO",
+      idAtleta: "CBKB-52820",
+      fotoUrl: "",
+      modalidadeIds: ["modalidade-1"],
+      cobrancasModalidades: [],
+    })
+
+    expect(parsed.success).toBe(false)
+    if (!parsed.success) {
+      expect(parsed.error.issues[0]?.message).toBe("ID de atleta deve conter apenas números")
+    }
+  })
 })
 
 describe("alunoSchema", () => {

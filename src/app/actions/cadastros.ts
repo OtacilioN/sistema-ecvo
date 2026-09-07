@@ -1,5 +1,6 @@
 "use server"
 
+import { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { exigirPapel } from "@/lib/auth/dal"
 import {
@@ -371,6 +372,7 @@ export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise
     observacoesTecnicas: formData.get("observacoesTecnicas"),
     observacoesAdmin: formData.get("observacoesAdmin"),
     idExterno: formData.get("idExterno"),
+    idAtleta: formData.get("idAtleta"),
     planoId: formData.get("planoId"),
     diaVencimento: formData.get("diaVencimento"),
     modalidadeIds: formData.getAll("modalidadeIds"),
@@ -397,7 +399,7 @@ export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise
     if (erro instanceof Error && erro.message.startsWith("Pagamento inicial:")) {
       return { erro: erro.message }
     }
-    return { erro: "Não foi possível criar (e-mail/CPF já cadastrado?)." }
+    return { erro: "Não foi possível criar (e-mail, CPF ou ID de atleta já cadastrado?)." }
   }
   revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/financeiro")
@@ -428,6 +430,7 @@ export async function acaoAtualizarDadosAluno(
     observacoesTecnicas: formData.get("observacoesTecnicas"),
     observacoesAdmin: formData.get("observacoesAdmin"),
     idExterno: formData.get("idExterno"),
+    idAtleta: formData.get("idAtleta"),
     planoId: formData.get("planoId"),
     diaVencimento: formData.get("diaVencimento"),
     modalidadeIds: formData.getAll("modalidadeIds"),
@@ -436,28 +439,41 @@ export async function acaoAtualizarDadosAluno(
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
-  const resultado = await atualizarAluno(parsed.data.alunoId, {
-    autorId: usuario.id,
-    nome: parsed.data.nome,
-    tipo: parsed.data.tipo,
-    status: parsed.data.status,
-    cpf: parsed.data.cpf,
-    telefone: parsed.data.telefone,
-    fotoUrl: parsed.data.fotoUrl,
-    dataNascimento: parsed.data.dataNascimento,
-    dataInicio: parsed.data.dataInicio,
-    endereco: parsed.data.endereco,
-    contatoEmergencia: parsed.data.contatoEmergencia,
-    restricoesMedicas: parsed.data.restricoesMedicas,
-    observacoesTecnicas: parsed.data.observacoesTecnicas,
-    observacoesAdmin: parsed.data.observacoesAdmin,
-    idExterno: parsed.data.idExterno,
-    planoId: parsed.data.planoId,
-    diaVencimento: parsed.data.diaVencimento,
-    modalidadeIds: parsed.data.modalidadeIds,
-    cobrancasModalidades: parsed.data.cobrancasModalidades,
-    responsavel: parsed.data.responsavel,
-  })
+  let resultado: Awaited<ReturnType<typeof atualizarAluno>>
+  try {
+    resultado = await atualizarAluno(parsed.data.alunoId, {
+      autorId: usuario.id,
+      nome: parsed.data.nome,
+      tipo: parsed.data.tipo,
+      status: parsed.data.status,
+      cpf: parsed.data.cpf,
+      telefone: parsed.data.telefone,
+      fotoUrl: parsed.data.fotoUrl,
+      dataNascimento: parsed.data.dataNascimento,
+      dataInicio: parsed.data.dataInicio,
+      endereco: parsed.data.endereco,
+      contatoEmergencia: parsed.data.contatoEmergencia,
+      restricoesMedicas: parsed.data.restricoesMedicas,
+      observacoesTecnicas: parsed.data.observacoesTecnicas,
+      observacoesAdmin: parsed.data.observacoesAdmin,
+      idExterno: parsed.data.idExterno,
+      idAtleta: parsed.data.idAtleta,
+      planoId: parsed.data.planoId,
+      diaVencimento: parsed.data.diaVencimento,
+      modalidadeIds: parsed.data.modalidadeIds,
+      cobrancasModalidades: parsed.data.cobrancasModalidades,
+      responsavel: parsed.data.responsavel,
+    })
+  } catch (erro) {
+    if (
+      erro instanceof Prisma.PrismaClientKnownRequestError &&
+      erro.code === "P2002" &&
+      String(erro.meta?.target).includes("idAtleta")
+    ) {
+      return { erro: "ID de atleta já cadastrado para outro aluno." }
+    }
+    return { erro: "Não foi possível atualizar os dados do aluno." }
+  }
   if (!resultado.ok) return { erro: resultado.motivo }
 
   revalidatePath("/gestao/alunos")

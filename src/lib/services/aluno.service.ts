@@ -139,6 +139,7 @@ type DadosAluno = {
   restricoesMedicas?: string | null
   observacoesTecnicas?: string | null
   observacoesAdmin?: string | null
+  idAtleta?: string | null
   idExterno?: string | null
   planoId?: string | null
   diaVencimento?: number
@@ -233,6 +234,7 @@ export async function criarAluno(
             restricoesMedicas: params.restricoesMedicas ?? null,
             observacoesTecnicas: params.observacoesTecnicas ?? null,
             observacoesAdmin: params.observacoesAdmin ?? null,
+            idAtleta: params.idAtleta ?? null,
             idExterno: params.idExterno ?? null,
             planoId: params.planoId ?? null,
             diaVencimento: params.diaVencimento ?? 10,
@@ -283,6 +285,7 @@ export async function criarAluno(
           responsavelInformado: Boolean(params.responsavel),
           cpfInformado: Boolean(params.cpf),
           fotoInformada: Boolean(params.fotoUrl),
+          idAtleta: params.idAtleta ?? null,
           idExternoInformado: Boolean(params.idExterno),
         },
       },
@@ -324,6 +327,7 @@ export async function atualizarAluno(
       restricoesMedicas: true,
       observacoesTecnicas: true,
       observacoesAdmin: true,
+      idAtleta: true,
       idExterno: true,
       planoId: true,
       plano: { select: { nome: true } },
@@ -414,6 +418,7 @@ export async function atualizarAluno(
         ...(params.observacoesAdmin !== undefined
           ? { observacoesAdmin: params.observacoesAdmin }
           : {}),
+        ...(params.idAtleta !== undefined ? { idAtleta: params.idAtleta } : {}),
         ...(params.idExterno !== undefined ? { idExterno: params.idExterno } : {}),
         ...(params.planoId !== undefined
           ? {
@@ -495,6 +500,7 @@ export async function atualizarAluno(
       restricoesMedicas: atual.restricoesMedicas,
       observacoesTecnicas: atual.observacoesTecnicas,
       observacoesAdmin: atual.observacoesAdmin,
+      idAtleta: atual.idAtleta,
       idExterno: atual.idExterno,
       plano: atual.plano?.nome ?? null,
       diaVencimento: atual.diaVencimento,
@@ -518,6 +524,7 @@ export async function atualizarAluno(
         restricoesMedicas: aluno.restricoesMedicas,
         observacoesTecnicas: aluno.observacoesTecnicas,
         observacoesAdmin: aluno.observacoesAdmin,
+        idAtleta: aluno.idAtleta,
         idExterno: aluno.idExterno,
         plano: aluno.plano?.nome ?? null,
         diaVencimento: aluno.diaVencimento,
@@ -579,6 +586,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       restricoesMedicas: true,
       observacoesTecnicas: true,
       observacoesAdmin: true,
+      idAtleta: true,
       idExterno: true,
       plano: { select: { nome: true } },
       diaVencimento: true,
@@ -624,6 +632,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
           restricoesMedicas: aluno.restricoesMedicas,
           observacoesTecnicas: aluno.observacoesTecnicas,
           observacoesAdmin: aluno.observacoesAdmin,
+          idAtleta: aluno.idAtleta,
           idExterno: aluno.idExterno,
           plano: aluno.plano?.nome ?? null,
           diaVencimento: aluno.diaVencimento,
@@ -655,6 +664,7 @@ function serializarAluno(dados: {
   restricoesMedicas: string | null
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
+  idAtleta: string | null
   idExterno: string | null
   plano: string | null
   diaVencimento: number
@@ -687,6 +697,7 @@ function serializarAluno(dados: {
     restricoesMedicas: dados.restricoesMedicas,
     observacoesTecnicas: dados.observacoesTecnicas,
     observacoesAdmin: dados.observacoesAdmin,
+    idAtleta: dados.idAtleta,
     idExterno: dados.idExterno,
     plano: dados.plano,
     diaVencimento: dados.diaVencimento,

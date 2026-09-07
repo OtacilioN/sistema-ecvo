@@ -27,6 +27,7 @@ status financeiro do aluno não é exposto.
   "alunos": [
     {
       "nome": "Ana Silva",
+      "idAtleta": "55975",
       "fotoUrl": "https://app.ecvo.com.br/api/publico/alunos-graduados/cm123/foto",
       "graduacoes": [
         {
@@ -44,18 +45,20 @@ status financeiro do aluno não é exposto.
 | --- | --- | --- |
 | `total` | número | Quantidade de alunos retornados. |
 | `alunos[].nome` | texto | Nome público do atleta. |
+| `alunos[].idAtleta` | texto ou `null` | Identificador público do atleta na entidade esportiva; é `null` quando não cadastrado. |
 | `alunos[].fotoUrl` | texto ou `null` | URL absoluta da foto; use uma imagem padrão quando for `null`. |
 | `alunos[].graduacoes` | lista | Histórico em ordem cronológica, da graduação mais antiga para a mais recente. |
 | `modalidade` | texto | Modalidade à qual a faixa ou nível pertence. |
 | `faixa` | texto | Nome da graduação no catálogo da modalidade. |
 | `dataGraduacao` | texto | Instante da concessão no formato ISO 8601, em UTC. |
 
-Os alunos são ordenados alfabeticamente pelo nome. A resposta contém somente nome, foto e histórico de
-graduações; CPF, e-mail, telefone, situação financeira, observações e demais dados internos nunca são
-incluídos.
+Os alunos são ordenados alfabeticamente pelo nome. A resposta contém somente nome, ID de atleta, foto
+e histórico de graduações; CPF, e-mail, telefone, situação financeira, observações e demais dados
+internos nunca são incluídos.
 
-> A rota torna nome, foto e graduações dados públicos. Antes de ativar a integração na landing, a ECVO
-> deve confirmar a base legal e as autorizações de uso de imagem aplicáveis aos atletas publicados.
+> A rota torna nome, ID de atleta, foto e graduações dados públicos. Antes de ativar a integração na
+> landing, a ECVO deve confirmar a base legal e as autorizações de uso de imagem aplicáveis aos atletas
+> publicados.
 
 ## Exemplo de integração na landing page
 

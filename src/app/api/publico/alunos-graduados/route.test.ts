@@ -19,6 +19,7 @@ describe("API pública de alunos graduados", () => {
     mocks.findMany.mockResolvedValue([
       {
         id: "aluno-1",
+        idAtleta: "55975",
         fotoUrl: "/api/fotos/alunos/aluno-1/perfil.jpg",
         usuario: { nome: "Ana Silva", fotoUrl: null },
         graduacoes: [
@@ -30,6 +31,7 @@ describe("API pública de alunos graduados", () => {
       },
       {
         id: "aluno-2",
+        idAtleta: null,
         fotoUrl: null,
         usuario: { nome: "Bruno Lima", fotoUrl: "https://cdn.example/bruno.webp" },
         graduacoes: [
@@ -50,6 +52,7 @@ describe("API pública de alunos graduados", () => {
       alunos: [
         {
           nome: "Ana Silva",
+          idAtleta: "55975",
           fotoUrl: "https://app.ecvo.com.br/api/publico/alunos-graduados/aluno-1/foto",
           graduacoes: [
             {
@@ -61,6 +64,7 @@ describe("API pública de alunos graduados", () => {
         },
         {
           nome: "Bruno Lima",
+          idAtleta: null,
           fotoUrl: "https://cdn.example/bruno.webp",
           graduacoes: [
             {
@@ -79,6 +83,7 @@ describe("API pública de alunos graduados", () => {
           usuario: { ativo: true },
           graduacoes: { some: {} },
         },
+        select: expect.objectContaining({ idAtleta: true }),
       }),
     )
   })

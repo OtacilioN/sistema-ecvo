@@ -40,6 +40,7 @@ type AlunoParaEdicao = {
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
   idExterno: string | null
+  idAtleta: string | null
   planoId: string | null
   diaVencimento: number
   modalidades: string[]
@@ -194,6 +195,16 @@ export function FormDadosAluno({
       <div className="space-y-1.5">
         <Label htmlFor="idExterno-aluno">ID externo</Label>
         <Input id="idExterno-aluno" name="idExterno" defaultValue={aluno?.idExterno ?? ""} />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="idAtleta-aluno">ID de atleta</Label>
+        <Input
+          id="idAtleta-aluno"
+          name="idAtleta"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          defaultValue={aluno.idAtleta ?? ""}
+        />
       </div>
       <div className="space-y-1.5 sm:col-span-2">
         <Label htmlFor="endereco-aluno">Endereço</Label>

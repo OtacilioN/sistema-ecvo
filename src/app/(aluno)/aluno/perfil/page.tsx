@@ -304,6 +304,7 @@ export default async function Page() {
               <Campo rotulo="Nome" valor={aluno.usuario.nome} />
               <Campo rotulo="E-mail" valor={aluno.usuario.email} />
               <Campo rotulo="CPF" valor={aluno.cpf ? formatarCPF(aluno.cpf) : null} />
+              <Campo rotulo="ID de atleta" valor={aluno.idAtleta} />
               <Campo rotulo="Telefone" valor={aluno.telefone} />
               <Campo
                 rotulo="Data de nascimento"

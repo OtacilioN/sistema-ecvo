@@ -105,6 +105,9 @@ export default async function Page() {
       <div>
         <h1 className="text-xl font-bold tracking-tight">Minhas graduações</h1>
         <p className="text-sm text-muted-foreground">Graduação atual, histórico e exames.</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          ID de atleta: <span className="font-medium text-foreground">{aluno.idAtleta ?? "—"}</span>
+        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

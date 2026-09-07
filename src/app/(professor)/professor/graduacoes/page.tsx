@@ -86,7 +86,12 @@ export default async function Page() {
   const alunosOpcao = alunos.map((aluno) => ({
     id: aluno.id,
     nome: aluno.usuario.nome,
-    detalhe: aluno.modalidades.map((m) => m.nome).join(", "),
+    detalhe: [
+      aluno.idAtleta ? `ID de atleta: ${aluno.idAtleta}` : null,
+      aluno.modalidades.map((m) => m.nome).join(", "),
+    ]
+      .filter(Boolean)
+      .join(" · "),
     modalidades: aluno.modalidades.map((modalidade) => ({
       id: modalidade.id,
       nome: modalidade.nome,
@@ -99,6 +104,7 @@ export default async function Page() {
       .map((registro) => ({
         id: registro.id,
         aluno: aluno.usuario.nome,
+        idAtleta: aluno.idAtleta,
         modalidade: registro.graduacao.modalidade.nome,
         graduacao: registro.graduacao.nome,
         concedidaEm: registro.concedidaEm,
@@ -199,6 +205,7 @@ export default async function Page() {
             <thead className="border-b border-border text-left text-muted-foreground">
               <tr>
                 <th className="p-4 font-medium">Aluno</th>
+                <th className="p-4 font-medium">ID de atleta</th>
                 <th className="p-4 font-medium">Modalidade</th>
                 <th className="p-4 font-medium">Graduação</th>
                 <th className="p-4 font-medium">Concedida em</th>
@@ -210,6 +217,9 @@ export default async function Page() {
                 <tr key={registro.id} className="border-b border-border last:border-0">
                   <td className="p-4 font-medium" data-label="Aluno">
                     {registro.aluno}
+                  </td>
+                  <td className="p-4 tabular-nums" data-label="ID de atleta">
+                    {registro.idAtleta ?? "—"}
                   </td>
                   <td className="p-4" data-label="Modalidade">
                     {registro.modalidade}
@@ -227,7 +237,7 @@ export default async function Page() {
               ))}
               {atuais.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
                     Nenhuma graduação atual registrada.
                   </td>
                 </tr>

@@ -65,6 +65,7 @@ export type AlunoLinha = {
   observacoesTecnicas: string | null
   observacoesAdmin: string | null
   idExterno: string | null
+  idAtleta: string | null
   planoId: string | null
   planoNome: string | null
   planoValor: number | null

@@ -236,6 +236,16 @@ export function FormAluno({
         <Input id="idExterno" name="idExterno" placeholder="WH-0001" />
       </div>
       <div className="space-y-1.5">
+        <Label htmlFor="idAtleta">ID de atleta</Label>
+        <Input
+          id="idAtleta"
+          name="idAtleta"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          placeholder="55975"
+        />
+      </div>
+      <div className="space-y-1.5">
         <Label htmlFor="endereco">Endereço</Label>
         <Input id="endereco" name="endereco" />
       </div>
