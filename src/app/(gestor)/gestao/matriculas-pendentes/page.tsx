@@ -29,6 +29,10 @@ export default async function MatriculasPendentesPage() {
         diaVencimentoPadrao={diaVencimentoPadrao}
         solicitacoes={solicitacoes.map((item) => ({
           ...item,
+          modalidades:
+            item.modalidades.length > 0
+              ? item.modalidades.map((vinculo) => vinculo.modalidade)
+              : [item.modalidadePrincipal],
           criadoEm: item.criadoEm.toISOString(),
           dataNascimento: item.dataNascimento?.toISOString() ?? null,
           aulaAvulsa: item.aulaAvulsa

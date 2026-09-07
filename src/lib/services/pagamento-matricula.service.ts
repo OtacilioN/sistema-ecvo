@@ -110,6 +110,24 @@ export function obterPlanoPadraoMatricula() {
   })
 }
 
+export function obterPlanosMatriculaMensalista() {
+  return db.plano.findMany({
+    where: {
+      quantidadeModalidadesMatricula: { not: null },
+      ativo: true,
+      periodicidade: "MENSAL",
+    },
+    orderBy: { quantidadeModalidadesMatricula: "asc" },
+    select: {
+      id: true,
+      nome: true,
+      valor: true,
+      periodicidade: true,
+      quantidadeModalidadesMatricula: true,
+    },
+  })
+}
+
 export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
   return db.solicitacaoMatricula.findUnique({
     where: { tokenAcompanhamento },

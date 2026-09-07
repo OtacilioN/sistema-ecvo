@@ -16,7 +16,7 @@ const solicitacaoValida = {
   endereco: "",
   contatoEmergencia: "",
   restricoesMedicas: "",
-  modalidadeId: "modalidade-1",
+  modalidadeIds: ["modalidade-1"],
   tipoPagamento: "MENSALISTA",
   beneficioAtivoDeclarado: null,
   aceiteDados: "on",
@@ -66,6 +66,46 @@ describe("solicitacaoMatriculaSchema", () => {
       solicitacaoMatriculaSchema.safeParse({
         ...solicitacaoValida,
         beneficioAtivoDeclarado: "on",
+      }).success,
+    ).toBe(false)
+  })
+
+  it.each([1, 2, 3])("aceita mensalista com %i modalidade(s) única(s)", (quantidade) => {
+    expect(
+      solicitacaoMatriculaSchema.safeParse({
+        ...solicitacaoValida,
+        modalidadeIds: Array.from(
+          { length: quantidade },
+          (_, indice) => `modalidade-${indice + 1}`,
+        ),
+      }).success,
+    ).toBe(true)
+  })
+
+  it("rejeita mensalista sem modalidade, com mais de três ou com repetição", () => {
+    for (const modalidadeIds of [
+      [],
+      ["modalidade-1", "modalidade-2", "modalidade-3", "modalidade-4"],
+      ["modalidade-1", "modalidade-1"],
+    ]) {
+      expect(
+        solicitacaoMatriculaSchema.safeParse({ ...solicitacaoValida, modalidadeIds }).success,
+      ).toBe(false)
+    }
+  })
+
+  it.each([
+    "AULA_AVULSA",
+    "WELLHUB",
+    "TOTALPASS",
+  ] as const)("mantém seleção única no fluxo %s", (tipoPagamento) => {
+    expect(
+      solicitacaoMatriculaSchema.safeParse({
+        ...solicitacaoValida,
+        tipoPagamento,
+        modalidadeIds: ["modalidade-1", "modalidade-2"],
+        aulaAvulsaId: tipoPagamento === "AULA_AVULSA" ? "aula-1" : undefined,
+        beneficioAtivoDeclarado: tipoPagamento === "AULA_AVULSA" ? false : "on",
       }).success,
     ).toBe(false)
   })

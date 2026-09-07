@@ -12,7 +12,10 @@ import Link from "next/link"
 import { Marca } from "@/components/marca"
 import { planoCompativelComAulaAvulsa } from "@/lib/aula-avulsa"
 import { listarOpcoesPublicasMatricula } from "@/lib/services/matricula.service"
-import { obterPlanoPadraoMatricula } from "@/lib/services/pagamento-matricula.service"
+import {
+  obterPlanoPadraoMatricula,
+  obterPlanosMatriculaMensalista,
+} from "@/lib/services/pagamento-matricula.service"
 import { FormMatricula } from "./form-matricula"
 
 export const metadata: Metadata = {
@@ -77,21 +80,23 @@ export default async function MatriculaPage({
 
   let modalidades: Awaited<ReturnType<typeof listarOpcoesPublicasMatricula>> = []
   let planoPadrao: Awaited<ReturnType<typeof obterPlanoPadraoMatricula>> = null
+  let planosMensalista: Awaited<ReturnType<typeof obterPlanosMatriculaMensalista>> = []
   if (tipoPagamento) {
     const resultados = await Promise.all([
       listarOpcoesPublicasMatricula(),
-      tipoPagamento === "MENSALISTA" || tipoPagamento === "AULA_AVULSA"
-        ? obterPlanoPadraoMatricula()
-        : Promise.resolve(null),
+      tipoPagamento === "AULA_AVULSA" ? obterPlanoPadraoMatricula() : Promise.resolve(null),
+      tipoPagamento === "MENSALISTA" ? obterPlanosMatriculaMensalista() : Promise.resolve([]),
     ])
     modalidades = resultados[0]
     planoPadrao = resultados[1]
+    planosMensalista = resultados[2]
   }
 
   const formularioDisponivel =
     tipoPagamento === "AULA_AVULSA"
       ? Boolean(planoPadrao && planoCompativelComAulaAvulsa(Number(planoPadrao.valor)))
-      : tipoPagamento !== "MENSALISTA" || Boolean(planoPadrao)
+      : tipoPagamento !== "MENSALISTA" ||
+        planosMensalista.some((plano) => plano.quantidadeModalidadesMatricula === 1)
 
   return (
     <main className="w-full max-w-5xl py-4">
@@ -138,12 +143,17 @@ export default async function MatriculaPage({
             modalidades={modalidades}
             tipoPagamento={tipoPagamento}
             planoPadrao={planoPadrao ? { ...planoPadrao, valor: Number(planoPadrao.valor) } : null}
+            planosMensalista={planosMensalista.map((plano) => ({
+              ...plano,
+              valor: Number(plano.valor),
+              quantidadeModalidades: plano.quantidadeModalidadesMatricula!,
+            }))}
           />
         ) : (
           <p className="p-8 text-center text-sm text-destructive">
             {tipoPagamento === "AULA_AVULSA"
               ? "A aula avulsa está temporariamente indisponível porque exige o plano mensal padrão de R$ 100,00."
-              : "A matrícula mensalista online está temporariamente indisponível porque o plano padrão não foi configurado. As matrículas por Wellhub e TotalPass continuam disponíveis."}
+              : "A matrícula mensalista online está temporariamente indisponível porque o plano de 1 modalidade não foi configurado. As matrículas por Wellhub e TotalPass continuam disponíveis."}
           </p>
         )}
       </section>
@@ -232,5 +242,5 @@ function descricaoDoFluxo(tipo: TipoPagamentoMatriculaPublica) {
   if (tipo === "TOTALPASS") {
     return "Preencha seus dados e declare ter um plano TotalPass ativo a partir do TP1+. Não há pagamento de matrícula ou mensalidade à ECVO."
   }
-  return "Escolha sua modalidade, confira a grade e conclua a primeira mensalidade por PIX para enviar sua solicitação."
+  return "Escolha de 1 a 3 modalidades, confira as grades e conclua a primeira mensalidade por PIX para enviar sua solicitação."
 }

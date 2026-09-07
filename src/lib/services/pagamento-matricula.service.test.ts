@@ -166,6 +166,58 @@ describe("disponibilidade do PIX de matrícula", () => {
 })
 
 describe("sincronização e reemissão", () => {
+  it("gera a primeira mensalidade com o valor vigente do plano vinculado", async () => {
+    const solicitacaoPlanoAtualizado = {
+      ...solicitacao,
+      plano: { id: "plano-2", valor: 187.53 },
+    }
+    mocks.tx.solicitacaoMatricula.findUnique.mockImplementation(({ select }) =>
+      select ? { id: solicitacao.id } : solicitacaoPlanoAtualizado,
+    )
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(null)
+    mocks.tx.cobrancaMatriculaAsaas.create.mockImplementation(({ data }) => ({
+      id: "cobranca-mensal-1",
+      status: "CRIANDO",
+      ativa: true,
+      asaasPaymentId: null,
+      asaasCustomerId: null,
+      statusAsaas: null,
+      pixCopiaECola: null,
+      qrCodeExpiraEm: null,
+      atualizadoEm: new Date(),
+      ...data,
+    }))
+    mocks.criarCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto("PENDING"),
+      value: 187.53,
+    })
+    mocks.obterQrCodePixAsaas.mockResolvedValue({
+      encodedImage: "",
+      payload: "pix-mensal",
+      expirationDate: "2026-09-01 22:00:00",
+    })
+    mocks.tx.cobrancaMatriculaAsaas.findUniqueOrThrow.mockImplementation(({ where }) => ({
+      id: where.id,
+      status: "CRIANDO",
+      pixCopiaECola: null,
+      qrCodeExpiraEm: null,
+    }))
+    mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(({ where, data }) => ({
+      id: where.id,
+      ...data,
+    }))
+
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento)
+
+    expect(resultado.ok).toBe(true)
+    expect(mocks.tx.cobrancaMatriculaAsaas.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ finalidade: "PRIMEIRA_MENSALIDADE", valor: 187.53 }),
+    })
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledWith(
+      expect.objectContaining({ value: 187.53, description: "Primeira mensalidade ECVO" }),
+    )
+  })
+
   it("gera a cobrança inicial da aula avulsa por R$ 20,00", async () => {
     const solicitacaoAvulsa = {
       ...solicitacao,

@@ -53,6 +53,7 @@ export type PlanoEdicao = {
   valor: number
   periodicidade: PeriodicidadePlano
   limiteAulas: number | null
+  quantidadeModalidadesMatricula: number | null
   ativo: boolean
   padrao: boolean
 }
@@ -92,12 +93,14 @@ export function FormPlano({ aoConcluir }: { aoConcluir?: () => void }) {
         </Select>
       </div>
       <CampoTexto id="limiteAulas" rotulo="Limite de aulas" type="number" min="1" />
+      <CampoQuantidadeModalidades />
       <label className="flex items-start gap-3 sm:col-span-2">
         <input type="checkbox" name="padrao" className="mt-0.5 size-4 accent-primary" />
         <span>
-          <span className="block text-sm font-medium">Plano padrão para novas matrículas</span>
+          <span className="block text-sm font-medium">Plano padrão de 1 modalidade</span>
           <span className="block text-xs text-muted-foreground">
-            Precisa ser mensal e ficará ativo.
+            Referência do fluxo de aula avulsa; precisa estar ativo, mensal e associado a 1
+            modalidade.
           </span>
         </span>
       </label>
@@ -155,9 +158,9 @@ export function FormEditarPlano({
           className="mt-0.5 size-4 accent-primary"
         />
         <span>
-          <span className="block text-sm font-medium">Plano padrão para novas matrículas</span>
+          <span className="block text-sm font-medium">Plano padrão de 1 modalidade</span>
           <span className="block text-xs text-muted-foreground">
-            Ao selecionar, o padrão anterior será substituído.
+            Referência da aula avulsa; ao selecionar, o padrão anterior será substituído.
           </span>
         </span>
       </label>
@@ -169,6 +172,7 @@ export function FormEditarPlano({
         min="1"
         defaultValue={plano.limiteAulas ?? ""}
       />
+      <CampoQuantidadeModalidades valor={plano.quantidadeModalidadesMatricula} />
       <div className="space-y-1.5">
         <Label htmlFor="status-plano">Status</Label>
         <Select id="status-plano" name="ativo" defaultValue={String(plano.ativo)}>
@@ -183,6 +187,28 @@ export function FormEditarPlano({
         </BotaoEnviar>
       </div>
     </form>
+  )
+}
+
+function CampoQuantidadeModalidades({ valor }: { valor?: number | null }) {
+  const id = valor === undefined ? "quantidadeModalidadesMatricula" : "quantidade-modalidades-plano"
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>Matrícula online</Label>
+      <Select
+        id={id}
+        name="quantidadeModalidadesMatricula"
+        defaultValue={valor === undefined ? "" : String(valor ?? "")}
+      >
+        <option value="">Não oferecer neste fluxo</option>
+        <option value="1">1 modalidade</option>
+        <option value="2">2 modalidades</option>
+        <option value="3">3 modalidades</option>
+      </Select>
+      <p className="text-xs text-muted-foreground">
+        Define qual quantidade seleciona este plano e seu valor no autocadastro.
+      </p>
+    </div>
   )
 }
 

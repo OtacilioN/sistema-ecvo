@@ -53,6 +53,7 @@ export async function acaoCriarPlano(
     valor: formData.get("valor"),
     periodicidade: formData.get("periodicidade"),
     limiteAulas: formData.get("limiteAulas") || undefined,
+    quantidadeModalidadesMatricula: formData.get("quantidadeModalidadesMatricula"),
     padrao: formData.get("padrao"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
@@ -75,6 +76,7 @@ export async function acaoAtualizarPlano(
     valor: formData.get("valor"),
     periodicidade: formData.get("periodicidade"),
     limiteAulas: formData.get("limiteAulas") || undefined,
+    quantidadeModalidadesMatricula: formData.get("quantidadeModalidadesMatricula"),
     ativo: formData.get("ativo"),
     padrao: formData.get("padrao"),
   })

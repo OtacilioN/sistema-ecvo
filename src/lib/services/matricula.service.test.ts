@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => {
   const tx = {
     $queryRaw: vi.fn(),
-    modalidade: { findFirst: vi.fn() },
+    modalidade: { findMany: vi.fn() },
     aula: { findFirst: vi.fn(), findUnique: vi.fn() },
     plano: { findFirst: vi.fn() },
     solicitacaoMatricula: {
@@ -66,7 +66,7 @@ const dadosBase = {
   endereco: null,
   contatoEmergencia: null,
   restricoesMedicas: null,
-  modalidadeId: "modalidade-1",
+  modalidadeIds: ["modalidade-1"],
   aceiteDados: "on" as const,
 }
 
@@ -74,7 +74,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.db.usuario.findUnique.mockResolvedValue(null)
   mocks.gerarHashSenha.mockResolvedValue("senha-hash")
-  mocks.tx.modalidade.findFirst.mockResolvedValue({ id: "modalidade-1", nome: "Jiu-Jitsu" })
+  mocks.tx.modalidade.findMany.mockResolvedValue([{ id: "modalidade-1", nome: "Jiu-Jitsu" }])
   mocks.tx.solicitacaoMatricula.create.mockImplementation(({ data }) => ({
     id: "solicitacao-1",
     tokenAcompanhamento: "token-acompanhamento",
@@ -100,6 +100,7 @@ describe("solicitarMatricula", () => {
       id: "plano-padrao",
       nome: "Plano padrão",
       valor: 150,
+      quantidadeModalidadesMatricula: 1,
     })
 
     const resultado = await solicitarMatricula({
@@ -110,6 +111,15 @@ describe("solicitarMatricula", () => {
 
     expect(resultado.ok).toBe(true)
     expect(mocks.tx.plano.findFirst).toHaveBeenCalledOnce()
+    expect(mocks.tx.plano.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          quantidadeModalidadesMatricula: 1,
+          ativo: true,
+          periodicidade: "MENSAL",
+        },
+      }),
+    )
     expect(mocks.tx.solicitacaoMatricula.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         tipoPagamento: "MENSALISTA",
@@ -148,6 +158,79 @@ describe("solicitarMatricula", () => {
       expect.objectContaining({ id: "notificacao-gestor-1", usuarioId: "gestor-1" }),
       expect.objectContaining({ id: "notificacao-gestor-2", usuarioId: "gestor-2" }),
     ])
+  })
+
+  it("seleciona o plano pela quantidade e preserva seu valor dinâmico", async () => {
+    mocks.tx.modalidade.findMany.mockResolvedValue([
+      { id: "modalidade-1", nome: "Jiu-Jitsu" },
+      { id: "modalidade-2", nome: "Boxe" },
+      { id: "modalidade-3", nome: "Kickboxing" },
+    ])
+    mocks.tx.plano.findFirst.mockResolvedValue({
+      id: "plano-tres",
+      nome: "Plano livre de três",
+      valor: 281.2,
+      quantidadeModalidadesMatricula: 3,
+    })
+
+    const resultado = await solicitarMatricula({
+      ...dadosBase,
+      modalidadeIds: ["modalidade-1", "modalidade-2", "modalidade-3"],
+      tipoPagamento: "MENSALISTA",
+      beneficioAtivoDeclarado: false,
+    })
+
+    expect(resultado.ok).toBe(true)
+    expect(mocks.tx.plano.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          quantidadeModalidadesMatricula: 3,
+          ativo: true,
+          periodicidade: "MENSAL",
+        },
+      }),
+    )
+    expect(mocks.tx.solicitacaoMatricula.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        planoId: "plano-tres",
+        modalidadePrincipalId: "modalidade-1",
+        modalidades: {
+          create: [
+            { modalidadeId: "modalidade-1" },
+            { modalidadeId: "modalidade-2" },
+            { modalidadeId: "modalidade-3" },
+          ],
+        },
+      }),
+    })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        valorNovo: expect.objectContaining({
+          modalidadeIds: ["modalidade-1", "modalidade-2", "modalidade-3"],
+          quantidadeModalidades: 3,
+          planoId: "plano-tres",
+          valorPlano: 281.2,
+        }),
+      }),
+      mocks.tx,
+    )
+  })
+
+  it("rejeita quando alguma modalidade não está ativa ou não existe", async () => {
+    mocks.tx.modalidade.findMany.mockResolvedValue([{ id: "modalidade-1", nome: "Jiu-Jitsu" }])
+
+    await expect(
+      solicitarMatricula({
+        ...dadosBase,
+        modalidadeIds: ["modalidade-1", "modalidade-invalida"],
+        tipoPagamento: "MENSALISTA",
+        beneficioAtivoDeclarado: false,
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      motivo: "Uma das modalidades selecionadas não está disponível.",
+    })
+    expect(mocks.tx.plano.findFirst).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -267,8 +350,14 @@ describe("aprovarMatricula", () => {
       senhaHash: "senha-hash",
       tipoPagamento: "MENSALISTA",
       beneficioAtivoDeclarado: false,
-      modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
-      plano: { id: "plano-padrao" },
+      modalidadePrincipal: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
+      modalidades: [{ modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true } }],
+      plano: {
+        id: "plano-padrao",
+        ativo: true,
+        periodicidade: "MENSAL",
+        quantidadeModalidadesMatricula: 1,
+      },
       cobrancasAsaas: [],
     })
     const resultado = await aprovarMatricula({
@@ -278,6 +367,109 @@ describe("aprovarMatricula", () => {
 
     expect(resultado).toEqual({ ok: false, motivo: "Informe o dia de vencimento." })
     expect(mocks.tx.solicitacaoMatricula.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("aprova mensalista com três modalidades e o valor preservado da cobrança", async () => {
+    const modalidades = [
+      { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
+      { id: "modalidade-2", nome: "Boxe", ativa: true },
+      { id: "modalidade-3", nome: "Kickboxing", ativa: true },
+    ]
+    const recebidaEmAsaas = new Date("2026-09-07T12:00:00.000Z")
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "solicitacao-1",
+      status: "PENDENTE",
+      senhaHash: "senha-hash",
+      nome: "Aluno Mensalista",
+      email: "mensalista@exemplo.com",
+      cpf: "52998224725",
+      telefone: null,
+      dataNascimento: null,
+      endereco: null,
+      contatoEmergencia: null,
+      restricoesMedicas: null,
+      tipoPagamento: "MENSALISTA",
+      beneficioAtivoDeclarado: false,
+      comprovantePagamentoUrl: null,
+      modalidadePrincipal: modalidades[0],
+      modalidades: modalidades.map((modalidade) => ({ modalidade })),
+      aulaAvulsa: null,
+      plano: {
+        id: "plano-tres",
+        ativo: true,
+        periodicidade: "MENSAL",
+        quantidadeModalidadesMatricula: 3,
+      },
+      cobrancasAsaas: [
+        {
+          id: "cobranca-matricula-1",
+          status: "RECEBIDA",
+          finalidade: "PRIMEIRA_MENSALIDADE",
+          competencia: "2026-09",
+          valor: 281.2,
+          recebidaEmAsaas,
+          asaasPaymentId: "pay-1",
+          asaasCustomerId: "cus-1",
+          externalReference: "matricula:solicitacao-1",
+          vencimentoAsaas: new Date("2026-09-07T15:00:00.000Z"),
+          statusAsaas: "RECEIVED",
+          pixCopiaECola: "pix",
+          qrCodeExpiraEm: new Date("2026-09-08T00:00:00.000Z"),
+          invoiceUrl: "https://asaas.example/invoice",
+          ultimoEventoAsaas: "PAYMENT_RECEIVED",
+        },
+      ],
+    })
+    mocks.registrarMensalidadeInicialPagaAsaas.mockResolvedValue({
+      ok: true,
+      mensalidade: { id: "mensalidade-1" },
+    })
+    mocks.tx.cobrancaAsaas.create.mockResolvedValue({ id: "cobranca-canonica-1" })
+
+    const resultado = await aprovarMatricula({
+      solicitacaoId: "solicitacao-1",
+      diaVencimento: 10,
+      autorId: "gestor-1",
+      agora: new Date("2026-09-07T13:00:00.000Z"),
+    })
+
+    expect(resultado).toEqual({ ok: true, alunoId: "aluno-1" })
+    expect(mocks.tx.usuario.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          aluno: {
+            create: expect.objectContaining({
+              planoId: "plano-tres",
+              modalidades: {
+                connect: modalidades.map((modalidade) => ({ id: modalidade.id })),
+              },
+              modalidadesPlano: {
+                create: modalidades.map((modalidade) => ({
+                  modalidadeId: modalidade.id,
+                  plataformaExterna: null,
+                })),
+              },
+            }),
+          },
+        }),
+      }),
+    )
+    expect(mocks.registrarMensalidadeInicialPagaAsaas).toHaveBeenCalledWith(
+      mocks.tx,
+      expect.objectContaining({ valor: 281.2, pagoEm: recebidaEmAsaas }),
+    )
+    expect(mocks.tx.solicitacaoMatricula.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ planoAprovadoId: "plano-tres" }) }),
+    )
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        acao: "ALUNO_CRIADO",
+        valorNovo: expect.objectContaining({
+          modalidadeIds: ["modalidade-1", "modalidade-2", "modalidade-3"],
+        }),
+      }),
+      mocks.tx,
+    )
   })
 
   it.each([
@@ -299,7 +491,8 @@ describe("aprovarMatricula", () => {
       tipoPagamento,
       beneficioAtivoDeclarado: true,
       comprovantePagamentoUrl: null,
-      modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
+      modalidadePrincipal: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
+      modalidades: [{ modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true } }],
       plano: null,
       cobrancasAsaas: [],
     })
@@ -318,10 +511,12 @@ describe("aprovarMatricula", () => {
               tipo: tipoPagamento,
               planoId: null,
               modalidadesPlano: {
-                create: {
-                  modalidadeId: "modalidade-1",
-                  plataformaExterna: tipoPagamento,
-                },
+                create: [
+                  {
+                    modalidadeId: "modalidade-1",
+                    plataformaExterna: tipoPagamento,
+                  },
+                ],
               },
             }),
           },
@@ -378,7 +573,8 @@ describe("aprovarMatricula", () => {
       restricoesMedicas: null,
       tipoPagamento: "AULA_AVULSA",
       beneficioAtivoDeclarado: false,
-      modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
+      modalidadePrincipal: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
+      modalidades: [{ modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true } }],
       aulaAvulsa: {
         id: "aula-1",
         inicio,
@@ -386,7 +582,13 @@ describe("aprovarMatricula", () => {
         cancelada: false,
         turma: { ativa: true, ehEvento: false, modalidadeId: "modalidade-1", capacidade: 20 },
       },
-      plano: { id: "plano-padrao", ativo: true, periodicidade: "MENSAL", valor: 100 },
+      plano: {
+        id: "plano-padrao",
+        ativo: true,
+        periodicidade: "MENSAL",
+        valor: 100,
+        quantidadeModalidadesMatricula: 1,
+      },
       cobrancasAsaas: [
         {
           id: "cobranca-1",

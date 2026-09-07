@@ -146,6 +146,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     valor: Number(plano.valor),
     periodicidade: plano.periodicidade,
     limiteAulas: plano.limiteAulas,
+    quantidadeModalidadesMatricula: plano.quantidadeModalidadesMatricula,
     ativo: plano.ativo,
     padrao: plano.padrao,
   }))
@@ -314,6 +315,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                         {plano.ativo ? "Ativo" : "Inativo"}
                       </Badge>
                       {plano.padrao && <Badge variant="outline">Padrão</Badge>}
+                      {plano.quantidadeModalidadesMatricula && (
+                        <Badge variant="outline">
+                          Matrícula: {plano.quantidadeModalidadesMatricula} modalidade(s)
+                        </Badge>
+                      )}
                       {podeEditar && (
                         <AcoesPlano
                           plano={{
@@ -322,6 +328,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                             valor: Number(plano.valor),
                             periodicidade: plano.periodicidade,
                             limiteAulas: plano.limiteAulas,
+                            quantidadeModalidadesMatricula: plano.quantidadeModalidadesMatricula,
                             ativo: plano.ativo,
                             padrao: plano.padrao,
                           }}

@@ -30,6 +30,27 @@ test("atalho mensalista mantém o pagamento PIX", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Continuar para o pagamento PIX" })).toBeVisible()
   await expect(page.getByText(/Declaro ter o Wellhub/)).toHaveCount(0)
   await expect(page.getByText(/Declaro ter o TotalPass/)).toHaveCount(0)
+
+  const modalidades = page.locator('input[name="modalidadeIds"]')
+  expect(await modalidades.count()).toBeGreaterThanOrEqual(4)
+  const resumoPlano = page.getByTestId("plano-matricula")
+
+  await modalidades.nth(0).check()
+  const planoUmaModalidade = await resumoPlano.textContent()
+
+  await modalidades.nth(1).check()
+  const planoDuasModalidades = await resumoPlano.textContent()
+  expect(planoDuasModalidades).not.toBe(planoUmaModalidade)
+
+  await modalidades.nth(2).check()
+  const planoTresModalidades = await resumoPlano.textContent()
+  expect(planoTresModalidades).not.toBe(planoDuasModalidades)
+  await expect(modalidades.nth(3)).toBeDisabled()
+  await expect(page.getByText("3 de 3 selecionada(s)", { exact: true })).toBeVisible()
+
+  await modalidades.nth(2).uncheck()
+  await expect(resumoPlano).toHaveText(planoDuasModalidades ?? "")
+  await expect(modalidades.nth(3)).toBeEnabled()
 })
 
 test("atalho Wellhub exige Basic e não exibe cobrança", async ({ page }) => {

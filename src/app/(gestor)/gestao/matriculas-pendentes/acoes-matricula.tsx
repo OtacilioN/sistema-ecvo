@@ -157,7 +157,10 @@ function FormAprovacao({
           <p className="text-sm text-muted-foreground">{solicitacao.email}</p>
         </div>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          <Dado rotulo="Modalidade" valor={solicitacao.modalidade.nome} />
+          <Dado
+            rotulo={solicitacao.modalidades.length === 1 ? "Modalidade" : "Modalidades"}
+            valor={solicitacao.modalidades.map((modalidade) => modalidade.nome).join(", ")}
+          />
           <Dado
             rotulo="Tipo de matrícula"
             valor={mensalista ? "Mensalista" : aulaAvulsa ? "Aula avulsa" : parceiro}
@@ -252,7 +255,7 @@ function FormAprovacao({
         <p className="mt-2 text-muted-foreground">
           {mensalista ? (
             <>
-              A conta do aluno será criada, a modalidade e o plano padrão serão vinculados e a
+              A conta do aluno será criada, as modalidades e o plano escolhido serão vinculados e a
               primeira mensalidade ficará registrada como paga pelo Asaas. O comprovante opcional
               não gera baixa.
             </>

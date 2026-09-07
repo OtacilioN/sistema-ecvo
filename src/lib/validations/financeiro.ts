@@ -9,11 +9,17 @@ const diaVencimentoSchema = z.preprocess(
   z.coerce.number().int().min(1, "Informe um dia entre 1 e 28").max(28),
 )
 
+const quantidadeModalidadesMatriculaSchema = z.preprocess(
+  (v) => (v === "" || v === null || v === undefined ? null : v),
+  z.coerce.number().int().min(1).max(3).nullable(),
+)
+
 export const planoSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome do plano"),
   valor: z.coerce.number().positive("Informe o valor"),
   periodicidade: z.enum(["MENSAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL"]),
   limiteAulas: z.coerce.number().int().positive().optional().nullable(),
+  quantidadeModalidadesMatricula: quantidadeModalidadesMatriculaSchema,
   padrao: z.preprocess((valor) => valor === "on" || valor === true, z.boolean()),
 })
 

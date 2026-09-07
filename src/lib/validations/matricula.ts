@@ -28,6 +28,12 @@ const identificadorOpcional = z.preprocess(
   z.string().min(1).nullable(),
 )
 
+const modalidadesMatricula = z
+  .array(z.string().min(1, "Selecione uma modalidade"))
+  .min(1, "Selecione ao menos uma modalidade")
+  .max(3, "Selecione no máximo 3 modalidades")
+  .refine((ids) => new Set(ids).size === ids.length, "Não repita a mesma modalidade")
+
 export const solicitacaoMatriculaSchema = z
   .object({
     nome: z.string().trim().min(2, "Informe seu nome completo").max(120),
@@ -43,7 +49,7 @@ export const solicitacaoMatriculaSchema = z
     endereco: textoOpcional(300),
     contatoEmergencia: textoOpcional(120),
     restricoesMedicas: textoOpcional(1000),
-    modalidadeId: z.string().min(1, "Selecione uma modalidade"),
+    modalidadeIds: modalidadesMatricula,
     tipoPagamento: z.enum(["MENSALISTA", "AULA_AVULSA", "WELLHUB", "TOTALPASS"]),
     aulaAvulsaId: identificadorOpcional.optional(),
     beneficioAtivoDeclarado: declaracaoCheckbox,
@@ -93,6 +99,13 @@ export const solicitacaoMatriculaSchema = z
         code: "custom",
         message: "A aula escolhida só se aplica ao cadastro de aula avulsa",
         path: ["aulaAvulsaId"],
+      })
+    }
+    if (dados.tipoPagamento !== "MENSALISTA" && dados.modalidadeIds.length !== 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Selecione somente uma modalidade para este tipo de matrícula",
+        path: ["modalidadeIds"],
       })
     }
   })

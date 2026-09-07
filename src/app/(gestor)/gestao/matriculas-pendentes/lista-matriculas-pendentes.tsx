@@ -24,7 +24,7 @@ export type SolicitacaoPendente = {
   comprovanteContentType: string | null
   comprovanteNomeOriginal: string | null
   criadoEm: string
-  modalidade: { id: string; nome: string }
+  modalidades: Array<{ id: string; nome: string }>
   aulaAvulsa: {
     id: string
     inicio: string
@@ -52,7 +52,14 @@ export function ListaMatriculasPendentes({
     const termo = busca.trim().toLowerCase()
     if (!termo) return solicitacoes
     return solicitacoes.filter((item) =>
-      [item.nome, item.email, item.telefone, item.cpf, item.modalidade.nome, item.tipoPagamento]
+      [
+        item.nome,
+        item.email,
+        item.telefone,
+        item.cpf,
+        ...item.modalidades.map((modalidade) => modalidade.nome),
+        item.tipoPagamento,
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -114,7 +121,13 @@ export function ListaMatriculasPendentes({
                   </div>
                 </div>
                 <div className="space-y-2 text-sm">
-                  <Badge variant="outline">{item.modalidade.nome}</Badge>
+                  <div className="flex flex-wrap gap-1.5">
+                    {item.modalidades.map((modalidade) => (
+                      <Badge key={modalidade.id} variant="outline">
+                        {modalidade.nome}
+                      </Badge>
+                    ))}
+                  </div>
                   <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <CalendarClock className="size-3.5" /> Enviada em{" "}
                     {formatarDataHora(new Date(item.criadoEm))}

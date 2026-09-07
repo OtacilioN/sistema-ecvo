@@ -593,22 +593,55 @@ export async function criarPlano(params: {
   valor: number
   periodicidade: Periodicidade
   limiteAulas?: number | null
+  quantidadeModalidadesMatricula: number | null
   padrao: boolean
   autorId: string
 }) {
   if (params.padrao && params.periodicidade !== "MENSAL") {
     return { ok: false as const, motivo: "O plano padrão precisa ter periodicidade mensal." }
   }
+  if (params.padrao && params.quantidadeModalidadesMatricula !== 1) {
+    return {
+      ok: false as const,
+      motivo: "O plano padrão precisa ser a oferta de 1 modalidade na matrícula online.",
+    }
+  }
+  if (params.quantidadeModalidadesMatricula !== null && params.periodicidade !== "MENSAL") {
+    return {
+      ok: false as const,
+      motivo: "O plano oferecido na matrícula online precisa ter periodicidade mensal.",
+    }
+  }
+  if (
+    params.quantidadeModalidadesMatricula !== null &&
+    !(params.padrao && params.quantidadeModalidadesMatricula === 1) &&
+    (await db.plano.findFirst({
+      where: { quantidadeModalidadesMatricula: params.quantidadeModalidadesMatricula },
+      select: { id: true },
+    }))
+  ) {
+    return {
+      ok: false as const,
+      motivo: "Já existe um plano para esta quantidade de modalidades na matrícula online.",
+    }
+  }
 
   const plano = await db.$transaction(async (tx) => {
-    if (params.padrao)
-      await tx.plano.updateMany({ where: { padrao: true }, data: { padrao: false } })
+    if (params.padrao) {
+      await tx.plano.updateMany({
+        where: {
+          OR: [{ padrao: true }, { quantidadeModalidadesMatricula: 1 }],
+        },
+        data: { padrao: false, quantidadeModalidadesMatricula: null },
+      })
+    }
     const criado = await tx.plano.create({
       data: {
         nome: params.nome,
         valor: params.valor,
         periodicidade: params.periodicidade,
         limiteAulas: params.limiteAulas ?? null,
+        quantidadeModalidadesMatricula: params.quantidadeModalidadesMatricula,
         padrao: params.padrao,
       },
     })
@@ -635,6 +668,7 @@ export async function atualizarPlano(params: {
   valor: number
   periodicidade: Periodicidade
   limiteAulas?: number | null
+  quantidadeModalidadesMatricula: number | null
   ativo: boolean
   padrao: boolean
   autorId: string
@@ -647,6 +681,7 @@ export async function atualizarPlano(params: {
       valor: true,
       periodicidade: true,
       limiteAulas: true,
+      quantidadeModalidadesMatricula: true,
       ativo: true,
       padrao: true,
     },
@@ -654,6 +689,37 @@ export async function atualizarPlano(params: {
   if (!anterior) return { ok: false as const, motivo: "Plano não encontrado." }
   if (params.padrao && (!params.ativo || params.periodicidade !== "MENSAL")) {
     return { ok: false as const, motivo: "O plano padrão precisa estar ativo e ser mensal." }
+  }
+  if (params.padrao && params.quantidadeModalidadesMatricula !== 1) {
+    return {
+      ok: false as const,
+      motivo: "O plano padrão precisa ser a oferta de 1 modalidade na matrícula online.",
+    }
+  }
+  if (
+    params.quantidadeModalidadesMatricula !== null &&
+    (!params.ativo || params.periodicidade !== "MENSAL")
+  ) {
+    return {
+      ok: false as const,
+      motivo: "O plano oferecido na matrícula online precisa estar ativo e ser mensal.",
+    }
+  }
+  if (
+    params.quantidadeModalidadesMatricula !== null &&
+    !(params.padrao && params.quantidadeModalidadesMatricula === 1) &&
+    (await db.plano.findFirst({
+      where: {
+        quantidadeModalidadesMatricula: params.quantidadeModalidadesMatricula,
+        id: { not: params.planoId },
+      },
+      select: { id: true },
+    }))
+  ) {
+    return {
+      ok: false as const,
+      motivo: "Já existe um plano para esta quantidade de modalidades na matrícula online.",
+    }
   }
   if (anterior.padrao && !params.padrao) {
     return {
@@ -665,8 +731,11 @@ export async function atualizarPlano(params: {
   const plano = await db.$transaction(async (tx) => {
     if (params.padrao) {
       await tx.plano.updateMany({
-        where: { padrao: true, id: { not: params.planoId } },
-        data: { padrao: false },
+        where: {
+          id: { not: params.planoId },
+          OR: [{ padrao: true }, { quantidadeModalidadesMatricula: 1 }],
+        },
+        data: { padrao: false, quantidadeModalidadesMatricula: null },
       })
     }
     const atualizado = await tx.plano.update({
@@ -676,6 +745,7 @@ export async function atualizarPlano(params: {
         valor: params.valor,
         periodicidade: params.periodicidade,
         limiteAulas: params.limiteAulas ?? null,
+        quantidadeModalidadesMatricula: params.quantidadeModalidadesMatricula,
         ativo: params.ativo,
         padrao: params.padrao,
       },
@@ -712,6 +782,7 @@ export async function excluirPlano(params: {
       valor: true,
       periodicidade: true,
       limiteAulas: true,
+      quantidadeModalidadesMatricula: true,
       ativo: true,
       padrao: true,
       _count: { select: { alunos: true, mensalidades: true } },
@@ -1820,6 +1891,7 @@ function serializarPlano(plano: {
   valor: Prisma.Decimal | number
   periodicidade: Periodicidade
   limiteAulas: number | null
+  quantidadeModalidadesMatricula: number | null
   ativo: boolean
   padrao: boolean
 }): Prisma.InputJsonObject {
@@ -1828,6 +1900,7 @@ function serializarPlano(plano: {
     valor: Number(plano.valor),
     periodicidade: plano.periodicidade,
     limiteAulas: plano.limiteAulas,
+    quantidadeModalidadesMatricula: plano.quantidadeModalidadesMatricula,
     ativo: plano.ativo,
     padrao: plano.padrao,
   }

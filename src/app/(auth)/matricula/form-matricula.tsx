@@ -24,36 +24,66 @@ type Modalidade = Awaited<
   ReturnType<typeof import("@/lib/services/matricula.service").listarOpcoesPublicasMatricula>
 >[number]
 
+type PlanoMensalista = {
+  id: string
+  nome: string
+  valor: number
+  quantidadeModalidades: number
+}
+
 const classeCheckboxMatricula = "mt-0.5 size-5 shrink-0 cursor-pointer accent-primary"
 
 export function FormMatricula({
   modalidades,
   planoPadrao,
+  planosMensalista,
   tipoPagamento,
 }: {
   modalidades: Modalidade[]
   planoPadrao: { nome: string; valor: number } | null
+  planosMensalista: PlanoMensalista[]
   tipoPagamento: TipoPagamentoMatriculaPublica
 }) {
   const [estado, acao] = useActionState(acaoSolicitarMatricula, undefined)
-  const [modalidadeId, setModalidadeId] = useState("")
+  const [modalidadeIds, setModalidadeIds] = useState<string[]>([])
   const [aulaAvulsaId, setAulaAvulsaId] = useState("")
   const [arquivo, setArquivo] = useState<File | null>(null)
-  const modalidade = useMemo(
-    () => modalidades.find((item) => item.id === modalidadeId),
-    [modalidadeId, modalidades],
+  const modalidadesSelecionadas = useMemo(
+    () => modalidadeIds.map((id) => modalidades.find((item) => item.id === id)!).filter(Boolean),
+    [modalidadeIds, modalidades],
   )
+  const modalidadeUnica = modalidadesSelecionadas[0]
   const aulaAvulsa = tipoPagamento === "AULA_AVULSA"
+  const mensalista = tipoPagamento === "MENSALISTA"
   const matriculaExterna = tipoPagamento === "WELLHUB" || tipoPagamento === "TOTALPASS"
   const parceiro = tipoPagamento === "WELLHUB" ? "Wellhub" : "TotalPass"
   const planoMinimo = tipoPagamento === "WELLHUB" ? "Basic" : "TP1+"
   const aulasDisponiveis = useMemo(
     () =>
       (
-        modalidade?.turmas.flatMap((turma) => turma.aulas.map((aula) => ({ ...aula, turma }))) ?? []
+        modalidadeUnica?.turmas.flatMap((turma) =>
+          turma.aulas.map((aula) => ({ ...aula, turma })),
+        ) ?? []
       ).sort((a, b) => a.inicio.getTime() - b.inicio.getTime()),
-    [modalidade],
+    [modalidadeUnica],
   )
+  const planoMensalista = planosMensalista.find(
+    (plano) => plano.quantidadeModalidades === modalidadeIds.length,
+  )
+  const planoPagamento = aulaAvulsa ? planoPadrao : (planoMensalista ?? planosMensalista[0] ?? null)
+  const quantidadesDisponiveis = new Set(
+    planosMensalista.map((plano) => plano.quantidadeModalidades),
+  )
+
+  function alternarModalidade(id: string) {
+    setModalidadeIds((atuais) => {
+      if (atuais.includes(id)) return atuais.filter((modalidadeId) => modalidadeId !== id)
+      const proximaQuantidade = atuais.length + 1
+      if (proximaQuantidade > 3 || !quantidadesDisponiveis.has(proximaQuantidade)) return atuais
+      return [...atuais, id]
+    })
+    setAulaAvulsaId("")
+  }
 
   return (
     <form action={acao} className="grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
@@ -176,7 +206,7 @@ export function FormMatricula({
           </Secao>
         )}
 
-        {(tipoPagamento === "MENSALISTA" || aulaAvulsa) && planoPadrao && (
+        {(mensalista || aulaAvulsa) && planoPagamento && (
           <Secao
             numero="05"
             titulo={aulaAvulsa ? "Pagamento da aula" : "Primeira mensalidade"}
@@ -186,10 +216,13 @@ export function FormMatricula({
                 : "Ao enviar os dados, você receberá o QR Code PIX para concluir a solicitação."
             }
           >
-            <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
-              <p className="font-medium">{aulaAvulsa ? "Aula avulsa" : planoPadrao.nome}</p>
+            <div
+              className="rounded-lg border border-primary/25 bg-primary/5 p-4"
+              data-testid="plano-matricula"
+            >
+              <p className="font-medium">{aulaAvulsa ? "Aula avulsa" : planoPagamento.nome}</p>
               <p className="mt-1 text-2xl font-bold text-primary">
-                {formatarBRL(aulaAvulsa ? 20 : planoPadrao.valor)}
+                {formatarBRL(aulaAvulsa ? 20 : planoPagamento.valor)}
                 {!aulaAvulsa && (
                   <span className="text-sm font-normal text-muted-foreground"> / mês</span>
                 )}
@@ -267,37 +300,78 @@ export function FormMatricula({
                   ? "Aula avulsa"
                   : "Plano mensalista"}
             </p>
-            <h2 className="mt-2 text-xl font-bold tracking-tight">Escolha sua modalidade</h2>
+            <h2 className="mt-2 text-xl font-bold tracking-tight">
+              {mensalista ? "Escolha suas modalidades" : "Escolha sua modalidade"}
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              A grade muda automaticamente conforme sua escolha.
+              {mensalista
+                ? "Selecione de 1 a 3 modalidades. O plano e o valor mudam conforme a quantidade."
+                : "A grade muda automaticamente conforme sua escolha."}
             </p>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="modalidadeId">
-              Modalidade
-              <IndicadorObrigatorio />
-            </Label>
-            <Select
-              id="modalidadeId"
-              name="modalidadeId"
-              value={modalidadeId}
-              onChange={(evento) => {
-                setModalidadeId(evento.currentTarget.value)
-                setAulaAvulsaId("")
-              }}
-              required
-            >
-              <option value="">Selecione uma modalidade</option>
-              {modalidades.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.nome}
-                </option>
-              ))}
-            </Select>
-          </div>
+          {mensalista ? (
+            <fieldset className="space-y-2">
+              <legend className="mb-2 text-sm font-medium">
+                Modalidades
+                <IndicadorObrigatorio />
+              </legend>
+              {modalidades.map((item) => {
+                const selecionada = modalidadeIds.includes(item.id)
+                const proximaQuantidade = modalidadeIds.length + 1
+                const desabilitada =
+                  !selecionada &&
+                  (modalidadeIds.length >= 3 || !quantidadesDisponiveis.has(proximaQuantidade))
+                return (
+                  <label
+                    key={item.id}
+                    className="flex cursor-pointer items-center gap-3 rounded-md border border-border bg-card px-3 py-2.5 text-sm has-checked:border-primary/50 has-checked:bg-primary/5 has-disabled:cursor-not-allowed has-disabled:opacity-55"
+                  >
+                    <input
+                      type="checkbox"
+                      name="modalidadeIds"
+                      value={item.id}
+                      checked={selecionada}
+                      disabled={desabilitada}
+                      required={modalidadeIds.length === 0 && item.id === modalidades[0]?.id}
+                      onChange={() => alternarModalidade(item.id)}
+                      className={classeCheckboxMatricula}
+                    />
+                    <span>{item.nome}</span>
+                  </label>
+                )
+              })}
+              <p className="pt-1 text-xs text-muted-foreground" aria-live="polite">
+                {modalidadeIds.length} de 3 selecionada(s)
+              </p>
+            </fieldset>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="modalidadeId">
+                Modalidade
+                <IndicadorObrigatorio />
+              </Label>
+              <Select
+                id="modalidadeId"
+                name="modalidadeIds"
+                value={modalidadeIds[0] ?? ""}
+                onChange={(evento) => {
+                  setModalidadeIds(evento.currentTarget.value ? [evento.currentTarget.value] : [])
+                  setAulaAvulsaId("")
+                }}
+                required
+              >
+                <option value="">Selecione uma modalidade</option>
+                {modalidades.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.nome}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
 
-          {aulaAvulsa && modalidade && (
+          {aulaAvulsa && modalidadeUnica && (
             <div className="space-y-1.5">
               <Label htmlFor="aulaAvulsaId">
                 Dia e horário da aula
@@ -330,7 +404,7 @@ export function FormMatricula({
             </div>
           )}
 
-          {!modalidade && (
+          {modalidadesSelecionadas.length === 0 && (
             <div className="rounded-lg border border-dashed border-border bg-card p-6 text-center">
               <CalendarDays className="mx-auto size-6 text-muted-foreground" />
               <p className="mt-3 text-sm text-muted-foreground">
@@ -339,11 +413,13 @@ export function FormMatricula({
             </div>
           )}
 
-          {modalidade && (
-            <div className="space-y-3">
+          {modalidadesSelecionadas.map((modalidade) => (
+            <div key={modalidade.id} className="space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold">Grade semanal</p>
+                  <p className="text-sm font-semibold">
+                    {mensalista ? modalidade.nome : "Grade semanal"}
+                  </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Horários para consulta — não é necessário selecionar.
                   </p>
@@ -388,7 +464,7 @@ export function FormMatricula({
                 </ul>
               )}
             </div>
-          )}
+          ))}
 
           <div className="flex gap-3 border-t border-border pt-5 text-xs text-muted-foreground">
             {matriculaExterna ? (

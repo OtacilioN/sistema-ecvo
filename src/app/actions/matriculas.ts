@@ -47,7 +47,7 @@ export async function acaoSolicitarMatricula(
     endereco: formData.get("endereco"),
     contatoEmergencia: formData.get("contatoEmergencia"),
     restricoesMedicas: formData.get("restricoesMedicas"),
-    modalidadeId: formData.get("modalidadeId"),
+    modalidadeIds: formData.getAll("modalidadeIds"),
     tipoPagamento: formData.get("tipoPagamento"),
     aulaAvulsaId: formData.get("aulaAvulsaId"),
     beneficioAtivoDeclarado: formData.get("beneficioAtivoDeclarado"),

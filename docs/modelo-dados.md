@@ -28,8 +28,9 @@ Fonte de verdade: `prisma/schema.prisma`. Este documento explica as decisões e 
   e a modalidade preservada no crédito de `MovimentoHoras`. O ciclo vigente começa em 31/08/2026;
   check-ins anteriores continuam preservados, mas são ignorados no cálculo do ranking.
 - **Solicitação pública de matrícula**: `SolicitacaoMatricula` guarda os dados fornecidos pelo candidato,
-  a modalidade pretendida, `tipoPagamento` (mensalista, aula avulsa, Wellhub ou TotalPass) e a declaração obrigatória
-  de benefício ativo nos fluxos externos. Para mensalistas, também guarda o plano padrão aplicado e a
+  as modalidades pretendidas em `SolicitacaoMatriculaModalidade`, `tipoPagamento` (mensalista, aula avulsa,
+  Wellhub ou TotalPass) e a declaração obrigatória de benefício ativo nos fluxos externos. Para mensalistas,
+  também guarda o plano associado à quantidade selecionada e a
   referência privada do comprovante PIX opcional. `CobrancaMatriculaAsaas` preserva competência, valor,
   cliente, cobrança e QR antes de existir um aluno mensalista. Nenhum `Usuario`/`Aluno` é criado enquanto
   a solicitação estiver `PENDENTE`. Mensalistas só ficam visíveis para aprovação após `PAYMENT_RECEIVED`;
@@ -81,6 +82,8 @@ erDiagram
   ContratoPixAutomatico ||--o{ Mensalidade : "seis ciclos"
   ContratoPixAutomatico ||--o{ CobrancaAsaas : "materializa"
   Mensalidade ||--o{ CobrancaAsaas : "tentativas"
+  SolicitacaoMatricula ||--o{ SolicitacaoMatriculaModalidade : "seleciona"
+  Modalidade ||--o{ SolicitacaoMatriculaModalidade : "pretendida"
   SolicitacaoMatricula ||--o{ CobrancaMatriculaAsaas : "cobra antes da aprovação"
   SolicitacaoMatricula ||--o| AcessoAulaAvulsa : "libera aula paga"
   Aula ||--o{ AcessoAulaAvulsa : "restringe acesso"
@@ -115,8 +118,9 @@ erDiagram
 - **Turma** modela tanto a grade recorrente (`diasSemana`/`horaInicio`/`horaFim`) quanto eventos únicos
 - **Aluno.diaVencimento** define o dia usado ao gerar mensalidades internas; `Mensalidade.vencimento`
   preserva a data histórica da cobrança gerada.
-- **Plano.padrao** identifica o único plano mensal ativo aplicado a novas matrículas. Índice parcial e
-  `CHECK` no PostgreSQL impedem dois padrões ou um padrão inativo/não mensal.
+- **Plano.padrao** identifica o único plano mensal ativo usado como referência na aula avulsa. Para o
+  autocadastro mensalista, `Plano.quantidadeModalidadesMatricula` associa de forma única os planos ativos
+  mensais às ofertas de uma, duas ou três modalidades; o valor cobrado vem de `Plano.valor`.
 - **ClienteAsaas** reserva localmente o aluno antes da criação remota; enquanto a operação está em curso,
   o identificador remoto pode ser nulo e falhas sanitizadas ficam em `ultimoErro`. Depois, mantém somente o
   identificador remoto e se o pagador é o aluno ou seu responsável financeiro. **ContratoPixAutomatico**
@@ -140,7 +144,8 @@ erDiagram
   com autorização ativa. `EventoWebhookAsaas.asaasEventId` impede processamento duplicado; o payload bruto,
   documentos e segredos do Asaas não são guardados na auditoria.
 - **AlunoPlanoModalidade** define quais modalidades do aluno estão cobertas pelo plano mensal interno.
-  O plano não restringe modalidades; a seleção acontece no vínculo aluno-plano.
+  O plano não restringe quais modalidades podem ser escolhidas; a seleção acontece no vínculo aluno-plano.
+  `Plano.quantidadeModalidadesMatricula` limita somente a quantidade da oferta no autocadastro público.
   (`ehEvento = true`, sem dia da semana). **Aula** é a ocorrência datada concreta.
 - **Agendamento de aula** é persistido no modelo técnico `Comparecimento`. Pode ficar em `LISTA_ESPERA`
   quando a capacidade da aula foi atingida e a configuração de lista de espera está ativa. Ao cancelar um

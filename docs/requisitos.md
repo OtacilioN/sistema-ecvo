@@ -61,10 +61,12 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   modalidades, data de início, contato de emergência, observações admin/técnicas, restrições médicas,
   identificador externo).
 - **RF-001.1** O candidato pode solicitar a própria matrícula em rota pública, informando seus dados,
-  escolhendo antes do cadastro entre mensalista, aula avulsa, Wellhub ou TotalPass, selecionando uma modalidade e
-  consultando a grade recorrente ativa publicada para ela. Os atalhos públicos usam
+  escolhendo antes do cadastro entre mensalista, aula avulsa, Wellhub ou TotalPass. O mensalista seleciona
+  de uma a três modalidades e consulta as respectivas grades recorrentes ativas; aula avulsa, Wellhub e
+  TotalPass mantêm a seleção de uma modalidade. Os atalhos públicos usam
   `?tipoPagamento=mensalista`, `aula-avulsa`, `wellhub` ou `totalpass`. No fluxo mensalista, pode anexar um comprovante
-  PIX opcional em imagem ou PDF; o sistema aplica o plano padrão, emite a cobrança PIX da primeira
+  PIX opcional em imagem ou PDF; o sistema aplica o plano ativo associado à quantidade de modalidades,
+  usando o valor vigente do próprio plano, e emite a cobrança PIX da primeira
   mensalidade no Asaas e só coloca a solicitação na fila administrativa após `PAYMENT_RECEIVED`. Wellhub
   exige declaração de benefício ativo a partir do plano Basic e TotalPass a partir do TP1+; esses fluxos
   não geram pagamento de matrícula, mensalidade, plano interno ou cobrança Asaas. A solicitação não cria
@@ -72,7 +74,8 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **RF-001.2** O gestor visualiza as matrículas pendentes e aprova cada solicitação em uma única operação,
   confirmando o dia de vencimento apenas para mensalistas. A aprovação mensalista usa o plano e o valor
   preservados na cobrança, cria o aluno e registra a mensalidade inicial paga pelo Asaas. A aprovação
-  Wellhub/TotalPass cria o aluno com o tipo e o vínculo externo da modalidade correspondentes, sem efeitos
+  vincula todas as modalidades selecionadas ao aluno e ao plano. A aprovação Wellhub/TotalPass cria o aluno
+  com o tipo e o vínculo externo da modalidade correspondente, sem efeitos
   financeiros internos. O comprovante anexado é evidência privada opcional do fluxo mensalista e nunca
   substitui nem duplica a confirmação integrada.
 - **RF-001.3** Cada nova solicitação de matrícula e cada aprovação concluída gera uma notificação interna
@@ -235,7 +238,8 @@ RN-018 repasse Wellhub/TotalPass separa 60% para o professor e 40% para a sobra 
 
 RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 como padrão inicial.
 RN-020 plano é um pacote comercial disponível para qualquer modalidade; as modalidades contratadas são
-definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno.
+definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno. A quantidade opcional
+configurada no plano apenas associa a oferta ao autocadastro mensalista; não fixa quais modalidades podem ser escolhidas.
 RN-021 a sobra mensal paga primeiro R$ 2.670,00 de custos fixos; apenas o saldo positivo é dividido
 igualmente entre Caixa/investimento, Sócio A e Sócio B.
 

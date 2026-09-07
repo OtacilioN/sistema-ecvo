@@ -120,11 +120,21 @@ export async function solicitarMatricula(
 
   try {
     const resultadoTransacao = await db.$transaction(async (tx) => {
-      const modalidade = await tx.modalidade.findFirst({
-        where: { id: params.modalidadeId, ativa: true },
+      const modalidadesEncontradas = await tx.modalidade.findMany({
+        where: { id: { in: params.modalidadeIds }, ativa: true },
         select: { id: true, nome: true },
       })
-      if (!modalidade) throw new ErroMatricula("A modalidade selecionada não está disponível.")
+      if (modalidadesEncontradas.length !== params.modalidadeIds.length) {
+        throw new ErroMatricula("Uma das modalidades selecionadas não está disponível.")
+      }
+      const modalidadesPorId = new Map(
+        modalidadesEncontradas.map((modalidade) => [modalidade.id, modalidade]),
+      )
+      const modalidades = params.modalidadeIds.map((id) => modalidadesPorId.get(id)!)
+      const modalidadePrincipal = modalidades[0]
+      if (!modalidadePrincipal) {
+        throw new ErroMatricula("Selecione ao menos uma modalidade.")
+      }
       const aulaAvulsa =
         params.tipoPagamento === "AULA_AVULSA"
           ? await tx.aula.findFirst({
@@ -135,7 +145,7 @@ export async function solicitarMatricula(
                 turma: {
                   ativa: true,
                   ehEvento: false,
-                  modalidadeId: modalidade.id,
+                  modalidadeId: modalidadePrincipal.id,
                   modalidade: { ativa: true },
                 },
               },
@@ -154,14 +164,38 @@ export async function solicitarMatricula(
       }
       const exigePlano =
         params.tipoPagamento === "MENSALISTA" || params.tipoPagamento === "AULA_AVULSA"
-      const plano = exigePlano
-        ? await tx.plano.findFirst({
-            where: { padrao: true, ativo: true, periodicidade: "MENSAL" },
-            select: { id: true, nome: true, valor: true },
-          })
-        : null
+      const plano =
+        params.tipoPagamento === "MENSALISTA"
+          ? await tx.plano.findFirst({
+              where: {
+                quantidadeModalidadesMatricula: modalidades.length,
+                ativo: true,
+                periodicidade: "MENSAL",
+              },
+              select: {
+                id: true,
+                nome: true,
+                valor: true,
+                quantidadeModalidadesMatricula: true,
+              },
+            })
+          : params.tipoPagamento === "AULA_AVULSA"
+            ? await tx.plano.findFirst({
+                where: { padrao: true, ativo: true, periodicidade: "MENSAL" },
+                select: {
+                  id: true,
+                  nome: true,
+                  valor: true,
+                  quantidadeModalidadesMatricula: true,
+                },
+              })
+            : null
       if (exigePlano && !plano) {
-        throw new ErroMatricula("O plano padrão de matrícula não está configurado.")
+        throw new ErroMatricula(
+          params.tipoPagamento === "MENSALISTA"
+            ? `O plano para ${modalidades.length} ${modalidades.length === 1 ? "modalidade" : "modalidades"} não está configurado.`
+            : "O plano padrão de matrícula não está configurado.",
+        )
       }
       if (
         params.tipoPagamento === "AULA_AVULSA" &&
@@ -187,7 +221,10 @@ export async function solicitarMatricula(
           tipoPagamento: params.tipoPagamento,
           beneficioAtivoDeclarado: params.beneficioAtivoDeclarado,
           aulaAvulsaId: aulaAvulsa?.id ?? null,
-          modalidadeId: modalidade.id,
+          modalidadePrincipalId: modalidadePrincipal.id,
+          modalidades: {
+            create: modalidades.map((modalidade) => ({ modalidadeId: modalidade.id })),
+          },
           planoId: plano?.id ?? null,
           comprovantePagamentoUrl: params.comprovante?.url ?? null,
           comprovanteContentType: params.comprovante?.contentType ?? null,
@@ -202,8 +239,9 @@ export async function solicitarMatricula(
           entidade: "SolicitacaoMatricula",
           entidadeId: criada.id,
           valorNovo: {
-            modalidadeId: modalidade.id,
-            modalidadeNome: modalidade.nome,
+            modalidadeIds: modalidades.map((modalidade) => modalidade.id),
+            modalidadeNomes: modalidades.map((modalidade) => modalidade.nome),
+            quantidadeModalidades: modalidades.length,
             tipoPagamento: params.tipoPagamento,
             beneficioAtivoDeclarado: params.beneficioAtivoDeclarado,
             comprovanteInformado: Boolean(params.comprovante),
@@ -220,7 +258,7 @@ export async function solicitarMatricula(
 
       const notificacoes = await notificarGestoresSobreMatricula(tx, {
         titulo: "Matrícula aguardando análise",
-        mensagem: `${params.nome} solicitou matrícula em ${modalidade.nome}. Tipo de pagamento: ${ROTULO_TIPO_PAGAMENTO[params.tipoPagamento]}.`,
+        mensagem: `${params.nome} solicitou matrícula em ${modalidades.map((modalidade) => modalidade.nome).join(", ")}. Tipo de pagamento: ${ROTULO_TIPO_PAGAMENTO[params.tipoPagamento]}.`,
       })
 
       return { solicitacao: criada, notificacoes }
@@ -299,7 +337,11 @@ export function listarMatriculasPendentes() {
           recebidaEmAsaas: true,
         },
       },
-      modalidade: { select: { id: true, nome: true } },
+      modalidadePrincipal: { select: { id: true, nome: true } },
+      modalidades: {
+        orderBy: { criadoEm: "asc" },
+        select: { modalidade: { select: { id: true, nome: true } } },
+      },
     },
   })
 }
@@ -313,7 +355,11 @@ export async function aprovarMatricula(
       const solicitacao = await tx.solicitacaoMatricula.findUnique({
         where: { id: params.solicitacaoId },
         include: {
-          modalidade: { select: { id: true, nome: true, ativa: true } },
+          modalidadePrincipal: { select: { id: true, nome: true, ativa: true } },
+          modalidades: {
+            orderBy: { criadoEm: "asc" },
+            select: { modalidade: { select: { id: true, nome: true, ativa: true } } },
+          },
           aulaAvulsa: {
             select: {
               id: true,
@@ -337,8 +383,12 @@ export async function aprovarMatricula(
       if (!solicitacao.senhaHash) {
         return { ok: false as const, motivo: "Esta solicitação não possui credenciais válidas." }
       }
-      if (!solicitacao.modalidade.ativa) {
-        return { ok: false as const, motivo: "A modalidade solicitada está inativa." }
+      const modalidades =
+        solicitacao.modalidades.length > 0
+          ? solicitacao.modalidades.map((vinculo) => vinculo.modalidade)
+          : [solicitacao.modalidadePrincipal]
+      if (modalidades.some((modalidade) => !modalidade.ativa)) {
+        return { ok: false as const, motivo: "Uma das modalidades solicitadas está inativa." }
       }
       const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
       const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
@@ -370,6 +420,18 @@ export async function aprovarMatricula(
           return { ok: false as const, motivo: "Informe o dia de vencimento." }
         }
         if (
+          modalidades.length < 1 ||
+          modalidades.length > 3 ||
+          !plano.ativo ||
+          plano.periodicidade !== "MENSAL" ||
+          plano.quantidadeModalidadesMatricula !== modalidades.length
+        ) {
+          return {
+            ok: false as const,
+            motivo: "A quantidade de modalidades não corresponde ao plano da solicitação.",
+          }
+        }
+        if (
           !cobrancaMatricula?.recebidaEmAsaas ||
           !cobrancaMatricula.asaasPaymentId ||
           !cobrancaMatricula.asaasCustomerId
@@ -378,6 +440,11 @@ export async function aprovarMatricula(
             ok: false as const,
             motivo: "A primeira mensalidade ainda não foi confirmada pelo Asaas.",
           }
+        }
+      } else if (modalidades.length !== 1) {
+        return {
+          ok: false as const,
+          motivo: "Este tipo de matrícula deve possuir somente uma modalidade.",
         }
       } else if (aulaAvulsa) {
         if (!plano || !planoCompativelComAulaAvulsa(Number(plano.valor))) {
@@ -399,7 +466,7 @@ export async function aprovarMatricula(
           solicitacao.aulaAvulsa.cancelada ||
           !solicitacao.aulaAvulsa.turma.ativa ||
           solicitacao.aulaAvulsa.turma.ehEvento ||
-          solicitacao.aulaAvulsa.turma.modalidadeId !== solicitacao.modalidade.id ||
+          solicitacao.aulaAvulsa.turma.modalidadeId !== modalidades[0]?.id ||
           solicitacao.aulaAvulsa.fim.getTime() <= agora.getTime()
         ) {
           return { ok: false as const, motivo: "A aula avulsa escolhida não está mais disponível." }
@@ -447,12 +514,12 @@ export async function aprovarMatricula(
               restricoesMedicas: solicitacao.restricoesMedicas,
               planoId: mensalista ? (plano?.id ?? null) : null,
               ...(mensalista ? { diaVencimento: params.diaVencimento } : {}),
-              modalidades: { connect: { id: solicitacao.modalidade.id } },
+              modalidades: { connect: modalidades.map((modalidade) => ({ id: modalidade.id })) },
               modalidadesPlano: {
-                create: {
-                  modalidadeId: solicitacao.modalidade.id,
+                create: modalidades.map((modalidade) => ({
+                  modalidadeId: modalidade.id,
                   plataformaExterna,
-                },
+                })),
               },
             },
           },
@@ -479,7 +546,7 @@ export async function aprovarMatricula(
           aulaAtual.cancelada ||
           !aulaAtual.turma.ativa ||
           aulaAtual.turma.ehEvento ||
-          aulaAtual.turma.modalidadeId !== solicitacao.modalidade.id ||
+          aulaAtual.turma.modalidadeId !== modalidades[0]?.id ||
           aulaAtual.fim.getTime() <= agora.getTime()
         ) {
           throw new ErroMatricula("A aula avulsa escolhida não está mais disponível.")
@@ -609,7 +676,7 @@ export async function aprovarMatricula(
             tipo: tipoAluno,
             status: "ATIVO",
             planoId: mensalista ? (plano?.id ?? null) : null,
-            modalidadeIds: [solicitacao.modalidade.id],
+            modalidadeIds: modalidades.map((modalidade) => modalidade.id),
             plataformaExterna,
             aulaAvulsaId: solicitacao.aulaAvulsa?.id ?? null,
           },
@@ -630,7 +697,8 @@ export async function aprovarMatricula(
             beneficioAtivoDeclarado: solicitacao.beneficioAtivoDeclarado,
             planoId: mensalista ? (plano?.id ?? null) : null,
             planoAlvoConversaoId: aulaAvulsa ? (plano?.id ?? null) : null,
-            modalidadeId: solicitacao.modalidade.id,
+            modalidadeIds: modalidades.map((modalidade) => modalidade.id),
+            modalidadeNomes: modalidades.map((modalidade) => modalidade.nome),
             diaVencimento: mensalista ? params.diaVencimento : null,
             pagamentoAsaasConfirmado: mensalista,
             pagamentoAulaAvulsaAsaasConfirmado: aulaAvulsa,
@@ -648,7 +716,7 @@ export async function aprovarMatricula(
 
       const notificacoes = await notificarGestoresSobreMatricula(tx, {
         titulo: "Matrícula aprovada",
-        mensagem: `A matrícula de ${solicitacao.nome} em ${solicitacao.modalidade.nome} está concluída. O acesso ao sistema está liberado.`,
+        mensagem: `A matrícula de ${solicitacao.nome} em ${modalidades.map((modalidade) => modalidade.nome).join(", ")} está concluída. O acesso ao sistema está liberado.`,
       })
 
       return { ok: true as const, alunoId: usuario.aluno.id, notificacoes }
