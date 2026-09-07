@@ -41,6 +41,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Requisito | Entidade(s) | Arquivos |
 | --- | --- | --- |
 | Graduação atual + histórico com grau anterior e novo (RF-041/042) | `GraduacaoAluno.graduacaoAnteriorId` | `src/lib/services/graduacao.service.ts`, `professor/graduacoes`, `aluno/graduacoes`, `aluno/perfil` |
+| Listagem pública de alunos graduados para integração com a landing | `Aluno`,`Usuario`,`GraduacaoAluno` | `src/lib/services/alunos-graduados-publicos.service.ts`, `src/app/api/publico/alunos-graduados`, `docs/api-publica-alunos-graduados.md` |
 | Registro manual pelo professor (RF-043/RN-010/CA-018) | `GraduacaoAluno`,`LogAuditoria` | `src/app/actions/graduacoes.ts`, `src/lib/services/graduacao.service.ts` |
 | Critérios de elegibilidade sem graduação automática (RF-044/RN-010) | `Graduacao`,`MovimentoHoras` | `avaliarElegibilidade`, `professor/graduacoes`, `aluno/graduacoes` |
 | Exames de graduação: criação, inscrição, resultado, taxa e nova graduação (RF-045) | `Exame`,`InscricaoExame`,`GraduacaoAluno` | `src/lib/services/graduacao.service.ts`, `src/app/actions/graduacoes.ts`, `professor/graduacoes`, `aluno/graduacoes` |

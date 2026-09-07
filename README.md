@@ -96,4 +96,6 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
 - [`docs/glossario.md`](./docs/glossario.md) — glossário do domínio.
 - [`docs/modelo-dados.md`](./docs/modelo-dados.md) — modelo de dados (ER).
 - [`docs/rastreabilidade.md`](./docs/rastreabilidade.md) — requisito ↔ entidade ↔ código.
+- [`docs/api-publica-alunos-graduados.md`](./docs/api-publica-alunos-graduados.md) — integração da
+  landing com a listagem pública de alunos graduados.
 - [`docs/decisoes/`](./docs/decisoes/) — registros de decisão (ADRs).
