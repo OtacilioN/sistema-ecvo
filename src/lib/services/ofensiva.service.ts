@@ -2,6 +2,7 @@ import "server-only"
 import type { Prisma } from "@prisma/client"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
+import { graduacaoAtualEfetiva } from "@/lib/services/graduacao.service"
 import { formatarDataInput } from "@/lib/utils/datas"
 
 type Cliente = Prisma.TransactionClient | typeof db
@@ -29,12 +30,13 @@ export type LinhaRankingOfensiva = {
   maximoDias: number
   modalidadeId: string | null
   modalidadeNome: string | null
+  graduacaoNome: string | null
 }
 
 type AlunoRanking = {
   id: string
   nome: string
-  modalidades: Array<{ id: string; nome: string }>
+  modalidades: Array<{ id: string; nome: string; graduacaoNome: string | null }>
 }
 
 const UM_DIA_MS = 86_400_000
@@ -352,6 +354,7 @@ export function montarRankingOfensivas(params: {
       maximoDias: melhor?.estado?.maximoDias ?? 0,
       modalidadeId: melhor?.modalidade.id ?? null,
       modalidadeNome: melhor?.modalidade.nome ?? null,
+      graduacaoNome: melhor?.modalidade.graduacaoNome ?? null,
     })
   }
 
@@ -375,7 +378,21 @@ export async function listarRankingOfensivas(params: {
         modalidades: {
           where: { ativa: true },
           orderBy: { nome: "asc" },
-          select: { id: true, nome: true },
+          select: {
+            id: true,
+            nome: true,
+            graduacoes: {
+              orderBy: [{ ordem: "asc" }, { nome: "asc" }],
+              select: { id: true, nome: true, ordem: true },
+            },
+          },
+        },
+        graduacoes: {
+          where: { atual: true },
+          orderBy: { concedidaEm: "desc" },
+          select: {
+            graduacao: { select: { id: true, nome: true, ordem: true, modalidadeId: true } },
+          },
         },
       },
     }),
@@ -389,7 +406,18 @@ export async function listarRankingOfensivas(params: {
   const alunos = alunosBanco.map((aluno) => ({
     id: aluno.id,
     nome: aluno.usuario.nome,
-    modalidades: aluno.modalidades,
+    modalidades: aluno.modalidades.map((modalidade) => {
+      const registroAtual = aluno.graduacoes.find(
+        (registro) => registro.graduacao.modalidadeId === modalidade.id,
+      )
+      const graduacaoAtual = graduacaoAtualEfetiva(modalidade.graduacoes, registroAtual?.graduacao)
+
+      return {
+        id: modalidade.id,
+        nome: modalidade.nome,
+        graduacaoNome: graduacaoAtual?.nome ?? null,
+      }
+    }),
   }))
   const hoje = formatarDataInput(params.agora ?? new Date())
   const estados = calcularOfensivas(presencas, hoje)

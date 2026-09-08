@@ -188,7 +188,8 @@ export default async function RankingOfensivas({ searchParams }: { searchParams:
                       {alunoAtual && <Badge variant="outline">Você</Badge>}
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
-                      {linha.modalidadeNome ?? "Sem modalidade ativa"} · atual de{" "}
+                      {linha.modalidadeNome ?? "Sem modalidade ativa"} · Graduação:{" "}
+                      {linha.graduacaoNome ?? "Sem graduação"} · atual de{" "}
                       {rotuloDias(linha.diasAtuais)}
                     </p>
                   </div>

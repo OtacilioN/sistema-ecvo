@@ -169,19 +169,19 @@ describe("montarRankingOfensivas", () => {
       id: "ana",
       nome: "Ana Beatriz Silva",
       modalidades: [
-        { id: "kickboxing", nome: "Kickboxing" },
-        { id: "jiu-jitsu", nome: "Jiu-jitsu" },
+        { id: "kickboxing", nome: "Kickboxing", graduacaoNome: "Amarela" },
+        { id: "jiu-jitsu", nome: "Jiu-jitsu", graduacaoNome: "Faixa azul" },
       ],
     },
     {
       id: "bia",
       nome: "Beatriz Souza",
-      modalidades: [{ id: "kickboxing", nome: "Kickboxing" }],
+      modalidades: [{ id: "kickboxing", nome: "Kickboxing", graduacaoNome: "Laranja" }],
     },
     {
       id: "caio",
       nome: "Caio Lima",
-      modalidades: [{ id: "jiu-jitsu", nome: "Jiu-jitsu" }],
+      modalidades: [{ id: "jiu-jitsu", nome: "Jiu-jitsu", graduacaoNome: null }],
     },
   ]
   const estados = [
@@ -222,6 +222,7 @@ describe("montarRankingOfensivas", () => {
     expect(ranking[0]).toMatchObject({
       nome: "Ana S.",
       modalidadeNome: "Jiu-jitsu",
+      graduacaoNome: "Faixa azul",
       diasAtuais: 2,
     })
   })
