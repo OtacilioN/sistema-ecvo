@@ -166,10 +166,10 @@ export default async function RankingOfensivas({ searchParams }: { searchParams:
             const alunoAtual = linha.alunoId === alunoId
             return (
               <Card key={linha.alunoId} className={cn(alunoAtual && "border-primary bg-primary/5")}>
-                <CardContent className="grid grid-cols-[auto_1fr_auto] items-center gap-3 py-3">
+                <CardContent className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 py-4">
                   <span
                     className={cn(
-                      "flex size-9 items-center justify-center rounded-full text-sm font-bold tabular-nums",
+                      "mt-0.5 flex size-9 items-center justify-center rounded-full text-sm font-bold tabular-nums",
                       corPosicao(linha.posicao),
                     )}
                   >
@@ -183,19 +183,33 @@ export default async function RankingOfensivas({ searchParams }: { searchParams:
                     )}
                   </span>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate font-semibold">{linha.nome}</p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <p className="font-semibold leading-tight">{linha.nome}</p>
                       {alunoAtual && <Badge variant="outline">Você</Badge>}
                     </div>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {linha.modalidadeNome ?? "Sem modalidade ativa"} · Graduação:{" "}
-                      {linha.graduacaoNome ?? "Sem graduação"} · atual de{" "}
-                      {rotuloDias(linha.diasAtuais)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 text-orange-600">
-                    <Flame className="size-4" aria-hidden="true" />
-                    <strong className="tabular-nums">{rotuloDias(linha.maximoDias)}</strong>
+                    <dl className="mt-2 grid gap-1 text-xs leading-relaxed text-muted-foreground">
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="shrink-0 font-medium text-foreground/80">Modalidade:</dt>
+                        <dd className="min-w-0 break-words">
+                          {linha.modalidadeNome ?? "Sem modalidade ativa"}
+                        </dd>
+                      </div>
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="shrink-0 font-medium text-foreground/80">Graduação:</dt>
+                        <dd className="min-w-0 break-words">
+                          {linha.graduacaoNome ?? "Sem graduação"}
+                        </dd>
+                      </div>
+                      <div className="flex min-w-0 gap-1.5">
+                        <dt className="shrink-0 font-medium text-foreground/80">Ofensiva atual:</dt>
+                        <dd className="tabular-nums">{rotuloDias(linha.diasAtuais)}</dd>
+                      </div>
+                    </dl>
+                    <div className="mt-2 flex items-center gap-1.5 border-t border-border/60 pt-2 text-sm text-orange-600">
+                      <Flame className="size-4" aria-hidden="true" />
+                      <span className="font-medium">Recorde:</span>
+                      <strong className="tabular-nums">{rotuloDias(linha.maximoDias)}</strong>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
