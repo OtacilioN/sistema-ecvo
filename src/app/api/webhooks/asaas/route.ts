@@ -7,12 +7,25 @@ export const runtime = "nodejs"
 
 const LIMITE_BODY_BYTES = 256 * 1024
 
+function segredosWebhookConfigurados() {
+  return [process.env.ASAAS_WEBHOOK_TOKEN, process.env.ASAAS_WEBHOOK_TOKEN_SUBCONTAS]
+    .map((segredo) => segredo?.trim())
+    .filter((segredo): segredo is string =>
+      Boolean(segredo && segredo.length >= 32 && segredo.length <= 255),
+    )
+}
+
 export async function POST(request: Request) {
-  const segredo = process.env.ASAAS_WEBHOOK_TOKEN
-  if (!segredo || segredo.length < 32 || segredo.length > 255) {
+  const segredos = segredosWebhookConfigurados()
+  if (segredos.length === 0) {
     return Response.json({ erro: "Webhook Asaas não configurado." }, { status: 500 })
   }
-  if (!tokenWebhookValido(request.headers.get("asaas-access-token"), segredo)) {
+  const tokenRecebido = request.headers.get("asaas-access-token")
+  const autorizado = segredos.reduce(
+    (valido, segredo) => tokenWebhookValido(tokenRecebido, segredo) || valido,
+    false,
+  )
+  if (!autorizado) {
     return Response.json({ erro: "Não autorizado." }, { status: 401 })
   }
 

@@ -91,7 +91,8 @@ function dadosPersistidos(dados: ContaAsaasProfessorInput, agora: Date) {
 
 function webhookStatusConta(dados: ContaAsaasProfessorInput) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "")
-  const authToken = process.env.ASAAS_WEBHOOK_TOKEN?.trim()
+  const authToken =
+    process.env.ASAAS_WEBHOOK_TOKEN_SUBCONTAS?.trim() ?? process.env.ASAAS_WEBHOOK_TOKEN?.trim()
   if (
     !baseUrl?.startsWith("https://") ||
     !authToken ||

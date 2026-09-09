@@ -25,6 +25,7 @@ describe("webhook Asaas", () => {
 
   afterEach(() => {
     delete process.env.ASAAS_WEBHOOK_TOKEN
+    delete process.env.ASAAS_WEBHOOK_TOKEN_SUBCONTAS
   })
 
   it("falha fechado quando o segredo não está configurado", async () => {
@@ -39,6 +40,18 @@ describe("webhook Asaas", () => {
 
   it("recusa token incorreto", async () => {
     expect((await POST(request("{}", "incorreto"))).status).toBe(401)
+  })
+
+  it("aceita o segredo dedicado aos webhooks das subcontas", async () => {
+    const segredoSubcontas = "token-webhook-subcontas-com-tamanho-seguro"
+    delete process.env.ASAAS_WEBHOOK_TOKEN
+    process.env.ASAAS_WEBHOOK_TOKEN_SUBCONTAS = segredoSubcontas
+    const evento = { id: "evt_subconta", event: "PAYMENT_RECEIVED", payment: { id: "pay_1" } }
+
+    const resposta = await POST(request(JSON.stringify(evento), segredoSubcontas))
+
+    expect(resposta.status).toBe(200)
+    expect(processarWebhookAsaas).toHaveBeenCalledOnce()
   })
 
   it("recusa JSON inválido e payload acima do limite", async () => {
