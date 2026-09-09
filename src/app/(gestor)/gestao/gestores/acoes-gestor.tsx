@@ -28,7 +28,7 @@ export function BotaoNovoGestor() {
         aoFechar={() => setAberto(false)}
         variante="lateral"
         titulo="Novo acesso"
-        descricao="Gestor ou Secretaria com acesso administrativo."
+        descricao="Gestor, Secretaria ou Loja, cada qual com seu acesso autorizado."
       >
         <FormGestor aoConcluir={() => setAberto(false)} />
       </Dialog>

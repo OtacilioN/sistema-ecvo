@@ -43,6 +43,7 @@ export const webhookAsaasSchema = z
                   id: identificador.optional(),
                   walletId: identificador,
                   fixedValue: z.number().positive().optional(),
+                  percentualValue: z.number().positive().max(100).optional(),
                   totalValue: z.number().nonnegative().optional(),
                   status: identificador.optional(),
                   refusalReason: z.string().nullish(),

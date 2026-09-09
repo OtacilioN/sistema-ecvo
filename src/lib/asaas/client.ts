@@ -176,12 +176,16 @@ export type DadosCriacaoCobrancaAsaas = {
   description?: string
   externalReference?: string
   pixAutomaticAuthorizationId?: string
-  split?: Array<{
-    walletId: string
-    fixedValue: number
-    externalReference?: string
-    description?: string
-  }>
+  split?: Array<
+    {
+      walletId: string
+      externalReference?: string
+      description?: string
+    } & (
+      | { fixedValue: number; percentualValue?: never }
+      | { percentualValue: number; fixedValue?: never }
+    )
+  >
 }
 
 export type FiltrosCobrancasAsaas = {

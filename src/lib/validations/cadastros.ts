@@ -200,7 +200,7 @@ export const gestorSchema = z.object({
   email: z.email("E-mail inválido").trim().toLowerCase(),
   senha: z.string().min(6, "Senha de no mínimo 6 caracteres"),
   dataNascimento: dataCivilOpcional,
-  papel: z.enum(["GESTOR", "SECRETARIA"]).default("GESTOR"),
+  papel: z.enum(["GESTOR", "SECRETARIA", "LOJA"]).default("GESTOR"),
 })
 export type GestorInput = z.infer<typeof gestorSchema>
 

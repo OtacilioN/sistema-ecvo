@@ -23,6 +23,7 @@ enum Papel {
   SECRETARIA
   PROFESSOR
   ALUNO
+  LOJA
 }
 
 enum TipoAluno {
@@ -217,6 +218,7 @@ enum TipoAcaoAudit {
   COMPARECIMENTO_PROMOVIDO_LISTA_ESPERA
   GESTOR_CRIADO
   SECRETARIA_CRIADA
+  LOJA_CRIADA
   OBSERVACAO_TECNICA
   ALUNO_CRIADO
   PROFESSOR_CRIADO
@@ -227,6 +229,8 @@ enum TipoAcaoAudit {
   PROFESSOR_STATUS_ATUALIZADO
   CONTA_ASAAS_PROFESSOR_DADOS_ATUALIZADOS
   CONTA_ASAAS_PROFESSOR_SOLICITADA
+  CONTA_ASAAS_LOJA_SOLICITADA
+  VENDA_LOJA
   TURMA_ATUALIZADA
   CHECKIN_BLOQUEADO_INADIMPLENCIA
   TERMO_RESPONSABILIDADE_ACEITO
@@ -245,6 +249,26 @@ enum StatusContaAsaasProfessor {
   BLOQUEADA
   ERRO
   DESABILITADA
+}
+
+enum StatusContaAsaasLoja {
+  CRIANDO
+  RESULTADO_INDETERMINADO
+  AGUARDANDO_ATIVACAO
+  AGUARDANDO_APROVACAO
+  HABILITADA
+  BLOQUEADA
+  ERRO
+  DESABILITADA
+}
+
+enum StatusPedidoLoja {
+  RASCUNHO
+  AGUARDANDO_PAGAMENTO
+  PAGO
+  CANCELADO
+  ESTORNADO
+  CONCILIACAO
 }
 
 enum StatusSplitPagamentoAsaas {
@@ -292,6 +316,97 @@ model Usuario {
   matriculasAnalisadas SolicitacaoMatricula[] @relation("AnalisadorMatricula")
   criadoEm             DateTime               @default(now())
   atualizadoEm         DateTime               @updatedAt
+}
+
+model ContaAsaasLoja {
+  id                  String               @id @default("principal")
+  nomeTitular         String
+  emailContaAsaas     String               @unique
+  cpfCnpj             String
+  dataNascimento      DateTime
+  celular             String
+  rendaMensal         Decimal              @db.Decimal(12, 2)
+  logradouro          String
+  numeroEndereco      String
+  complemento         String?
+  bairro              String
+  cep                 String
+  status              StatusContaAsaasLoja @default(CRIANDO)
+  asaasAccountId      String?              @unique
+  walletId            String?              @unique
+  consentimentoVersao String?
+  consentidoEm        DateTime?
+  solicitadoEm        DateTime?
+  ultimoErro          String?
+  statusGeralAsaas    String?
+  ultimoEventoAsaas   String?
+  splits              SplitLojaAsaas[]
+  criadoEm            DateTime             @default(now())
+  atualizadoEm        DateTime             @updatedAt
+
+  @@index([status])
+}
+
+model PedidoLoja {
+  id           String              @id @default(cuid())
+  referencia   String              @unique
+  descricao    String
+  valorTotal   Decimal             @db.Decimal(10, 2)
+  status       StatusPedidoLoja    @default(RASCUNHO)
+  cobrancas    CobrancaLojaAsaas[]
+  criadoEm     DateTime            @default(now())
+  atualizadoEm DateTime            @updatedAt
+
+  @@index([status, criadoEm])
+}
+
+model CobrancaLojaAsaas {
+  id                String              @id @default(cuid())
+  pedido            PedidoLoja          @relation(fields: [pedidoId], references: [id], onDelete: Restrict)
+  pedidoId          String
+  geracao           Int                 @default(1)
+  ativa             Boolean             @default(true)
+  valor             Decimal             @db.Decimal(10, 2)
+  status            StatusCobrancaAsaas @default(CRIANDO)
+  asaasCustomerId   String?
+  asaasPaymentId    String?             @unique
+  externalReference String              @unique
+  vencimentoAsaas   DateTime?
+  statusAsaas       String?
+  pixCopiaECola     String?
+  qrCodeExpiraEm    DateTime?
+  invoiceUrl        String?
+  recebidaEmAsaas   DateTime?
+  ultimoEventoAsaas String?
+  ultimoErro        String?
+  split             SplitLojaAsaas?
+  criadoEm          DateTime            @default(now())
+  atualizadoEm      DateTime            @updatedAt
+
+  @@unique([pedidoId, geracao])
+  @@index([pedidoId, ativa])
+  @@index([status, criadoEm])
+}
+
+model SplitLojaAsaas {
+  id                      String                    @id @default(cuid())
+  cobranca                CobrancaLojaAsaas         @relation(fields: [cobrancaId], references: [id], onDelete: Restrict)
+  cobrancaId              String                    @unique
+  contaAsaasLoja          ContaAsaasLoja            @relation(fields: [contaAsaasLojaId], references: [id], onDelete: Restrict)
+  contaAsaasLojaId        String
+  walletIdSnapshot        String
+  percentualSplitSnapshot Decimal                   @default(100.00) @db.Decimal(5, 2)
+  externalReference       String                    @unique
+  asaasSplitId            String?                   @unique
+  status                  StatusSplitPagamentoAsaas @default(PREPARADO)
+  statusAsaas             String?
+  motivo                  String?
+  ultimoEventoAsaas       String?
+  criadoEm                DateTime                  @default(now())
+  atualizadoEm            DateTime                  @updatedAt
+
+  @@index([contaAsaasLojaId, status])
+  @@index([status])
 }
 
 model Aluno {

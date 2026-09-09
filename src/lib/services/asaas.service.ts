@@ -36,12 +36,17 @@ import {
 import { mensagemErroAsaasSegura } from "@/lib/asaas/seguranca"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import { aplicarStatusContaAsaasLojaDoWebhook } from "@/lib/services/conta-asaas-loja.service"
 import { aplicarStatusContaAsaasDoWebhook } from "@/lib/services/conta-asaas-professor.service"
 import {
   gerarMensalidade,
   sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
 } from "@/lib/services/financeiro.service"
+import {
+  aplicarWebhookPagamentoLoja,
+  reconciliarSplitLojaWebhook,
+} from "@/lib/services/loja-pagamento.service"
 import { aplicarWebhookPagamentoMatricula } from "@/lib/services/pagamento-matricula.service"
 import {
   payloadSplitAsaas,
@@ -132,7 +137,8 @@ function referenciaPagamentoEcvo(referencia?: string | null) {
       (referencia.startsWith("mensalidade:") ||
         referencia.startsWith("pixauto:") ||
         referencia.startsWith("pixauto-fallback:") ||
-        referencia.startsWith("matricula:")),
+        referencia.startsWith("matricula:") ||
+        referencia.startsWith("loja:pedido:")),
   )
 }
 
@@ -2266,11 +2272,14 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
     if (inserido.count === 0) return { ok: true as const, duplicado: true }
 
     if (webhook.account && webhook.accountStatus) {
-      const aplicada = await aplicarStatusContaAsaasDoWebhook(tx, {
+      const paramsConta = {
         accountId: webhook.account.id,
         general: webhook.accountStatus.general,
         evento: webhook.event,
-      })
+      }
+      const aplicadaProfessor = await aplicarStatusContaAsaasDoWebhook(tx, paramsConta)
+      const aplicada =
+        aplicadaProfessor || (await aplicarStatusContaAsaasLojaDoWebhook(tx, paramsConta))
       if (!aplicada) {
         await tx.eventoWebhookAsaas.delete({ where: { asaasEventId: webhook.id } })
         return {
@@ -2283,6 +2292,13 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
     }
 
     if (webhook.event.startsWith("PAYMENT_SPLIT_")) {
+      const splitLojaAtualizado = await reconciliarSplitLojaWebhook(tx, {
+        evento: webhook.event,
+        splitId: webhook.additionalInfo?.splitId,
+        splits: webhook.payment?.split,
+        asaasPaymentId: webhook.payment?.id,
+      })
+      if (splitLojaAtualizado) return { ok: true as const, duplicado: false }
       const atualizados = await reconciliarSplitsWebhook(tx, {
         evento: webhook.event,
         splitId: webhook.additionalInfo?.splitId,
@@ -2306,6 +2322,10 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
 
     let contratoIdAfetado: string | null = null
     const statusPagamento = statusCobrancaPorEvento(webhook.event)
+
+    if (webhook.payment && (await aplicarWebhookPagamentoLoja(tx, webhook))) {
+      return { ok: true as const, duplicado: false }
+    }
 
     if (webhook.payment?.split) {
       await reconciliarSplitsWebhook(tx, {

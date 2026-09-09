@@ -42,6 +42,7 @@ export function FormGestor({ aoConcluir }: { aoConcluir?: () => void }) {
         <Select id="papel" name="papel" defaultValue="SECRETARIA">
           <option value="SECRETARIA">Secretaria</option>
           <option value="GESTOR">Gestor</option>
+          <option value="LOJA">Loja</option>
         </Select>
       </div>
       {estado?.erro && <p className="text-sm text-destructive sm:col-span-2">{estado.erro}</p>}

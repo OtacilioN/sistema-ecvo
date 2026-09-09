@@ -39,7 +39,8 @@ financeiro de mensalistas, pagamentos avulsos, importação Wellhub/TotalPass + 
 
 Fora do MVP: integrações automáticas via API de Wellhub/TotalPass/Gympass, conciliação financeira
 automática dessas plataformas, reconhecimento facial, app mobile nativo, papéis separados
-(coordenador/financeiro/contador), aluno experimental. A integração financeira com Asaas descrita em
+(coordenador/financeiro/contador), aluno experimental. O papel isolado de Loja é uma extensão comercial.
+A integração financeira com Asaas descrita em
 RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 
 ## 5. Permissões por papel (resumo)
@@ -53,6 +54,9 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **Aluno**: ver a própria grade; agendar/cancelar agendamento de aula; fazer check-in; consultar check-ins,
   presenças, horas (geral e por modalidade), graduações, perfil e pendências financeiras (se houver plano
   mensal interno).
+- **Loja**: acessar somente `/loja/painel`, consultar pedidos e faturamento comercial e configurar a
+  subconta recebedora. Não acessa dados pedagógicos nem o financeiro escolar. O Gestor pode abrir esse
+  painel diretamente, mas a Loja não aparece em seu menu regular.
 
 ## 6. Requisitos funcionais (RF)
 
@@ -213,6 +217,12 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   manual. O QR inicial do PIX Automático não possui split por limitação do provedor; os ciclos futuros em
   modo `MANUAL` possuem. Splits ainda em processamento ficam fora do saldo manual para impedir pagamento
   duplicado.
+- **RF-053.7** A operação da Loja usa `PedidoLoja`, `CobrancaLojaAsaas` e `SplitLojaAsaas`, sem gravar
+  receitas em `Mensalidade`, `Pagamento`, `CobrancaAsaas` ou relatórios escolares. A conta recebedora é
+  uma subconta Asaas de pessoa física, criada somente após consentimento e aprovação cadastral. Toda
+  cobrança da Loja falha fechada sem wallet habilitada e congela um split percentual único de 100% do
+  valor líquido (`netValue`, após taxas) para essa wallet. Resposta divergente, estorno parcial ou evento
+  sem intenção local exige conciliação e não quita o pedido.
 - **RF-053.2** Da sobra mensal após os professores, são abatidos primeiro R$ 2.670,00 de custos fixos
   (aluguel, água, luz e internet). Um déficit é exibido como valor negativo em vermelho; saldo zero ou
   positivo é exibido em verde. Somente o saldo positivo é dividido igualmente entre Caixa/investimento,

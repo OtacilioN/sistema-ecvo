@@ -14,6 +14,7 @@ import {
   QrCode,
   Settings,
   ShieldCheck,
+  Store,
   UserRound,
   Users,
 } from "lucide-react"
@@ -67,4 +68,8 @@ export const NAV_ALUNO: ItemNav[] = [
     icone: <History className={icMobile} />,
     ativoEm: ["/aluno/graduacoes"],
   },
+]
+
+export const NAV_LOJA: ItemNav[] = [
+  { href: "/loja/painel", rotulo: "Visão geral", icone: <Store className={ic} /> },
 ]

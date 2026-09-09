@@ -7,8 +7,8 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Tema | Entidade(s) | Arquivos |
 | --- | --- | --- |
 | Autenticação usuário+senha, troca própria e redefinição por gestor (RNF-004) | `Usuario`,`LogAuditoria` | `src/lib/auth/{session,senha,dal}.ts`, `src/lib/services/usuario.service.ts`, `src/app/actions/auth.ts`, `src/app/(auth)/login/*`, `{gestao,professor}/perfil`, `aluno/perfil`, `gestao/usuarios` |
-| RBAC por papel (RNF-004) | — | `src/lib/auth/dal.ts` (`exigirPapel`, `exigirGestao`), `src/proxy.ts` |
-| Cadastro/listagem de gestores e secretaria do sistema | `Usuario` | `src/lib/services/gestor.service.ts`, `src/app/actions/cadastros.ts`, `gestao/gestores` |
+| RBAC por papel (RNF-004) | — | `src/lib/auth/dal.ts` (`exigirPapel`, `exigirGestao`, `exigirLoja`), `src/proxy.ts` |
+| Cadastro/listagem de gestores, secretaria e acesso Loja | `Usuario` | `src/lib/services/gestor.service.ts`, `src/app/actions/cadastros.ts`, `gestao/gestores` |
 | Auditoria (RF-079/080) | `LogAuditoria` | `src/lib/services/auditoria.service.ts` |
 | Design system (paleta/logo) | — | `src/app/globals.css`, `src/components/ui/*`, `src/components/marca.tsx` |
 | Configuração da academia (RF-014/022/051) | `ConfiguracaoAcademia` | `prisma/schema.prisma` |
@@ -57,6 +57,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Divisão de receita, custos fixos e repasses (RF-053.1/RF-053.2/RF-064.1/RN-017/RN-018/RN-021) | `Modalidade.valorRepasseProfessor`,`Mensalidade.repasseSnapshot`,`RegistroImportado.valorRepasse` | `calcularRepasseFinanceiro`, `calcularDistribuicaoSobraFinanceira`, `modalidade.service.ts`, `gestao/modalidades`, `gestao/financeiro/repasses` |
 | PIX mensal, PIX Automático semestral e cancelamento conciliado via Asaas (RF-053.3..053.5/RN-022/023/024) | `Aluno.tipoCobrancaPix`,`ClienteAsaas`,`ContratoPixAutomatico`,`CobrancaAsaas`,`EventoWebhookAsaas` | `src/lib/asaas/*`, `src/lib/services/asaas.service.ts`, `src/app/actions/financeiro.ts`, `src/app/api/webhooks/asaas/route.ts`, `src/app/api/tarefas/cobrancas-pix-automatico/route.ts`, `gestao/financeiro`, `aluno/financeiro` |
 | Split automático fixo de mensalidades para wallets aprovadas, com snapshot por tentativa e conciliação idempotente (RF-053.6) | `ContaAsaasProfessor`,`CobrancaMatriculaAsaas.repasseSnapshot`,`SplitPagamentoAsaas`,`EventoWebhookAsaas` | `src/lib/services/split-asaas.service.ts`, `src/lib/services/{asaas,pagamento-matricula,conta-asaas-professor}.service.ts`, `src/lib/asaas/client.ts`, `src/app/api/webhooks/asaas/route.ts`, `gestao/financeiro/repasses`, `gestao/professores` |
+| Painel, faturamento e split percentual isolados da Loja (RF-053.7) | `ContaAsaasLoja`,`PedidoLoja`,`CobrancaLojaAsaas`,`SplitLojaAsaas`,`EventoWebhookAsaas` | `src/lib/services/{conta-asaas-loja,loja-pagamento}.service.ts`, `src/app/actions/conta-asaas-loja.ts`, `src/app/(loja)/loja/painel`, `src/lib/asaas/client.ts`, `src/app/api/webhooks/asaas/route.ts` |
 
 ## Conciliação (Fase 4) — ✅
 | Requisito | Entidade(s) | Arquivos |
