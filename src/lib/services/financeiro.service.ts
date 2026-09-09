@@ -4,6 +4,7 @@ import {
   type Plataforma,
   Prisma,
   type StatusMensalidade,
+  type StatusSplitPagamentoAsaas,
   type TipoAluno,
   type TipoPagamento,
 } from "@prisma/client"
@@ -83,6 +84,13 @@ export type ResultadoDistribuicaoSobraFinanceira = {
   caixaInvestimento: number
   socioA: number
   socioB: number
+}
+
+export type ResultadoComposicaoRepasseProfessor = {
+  direitoTotal: number
+  splitConcluido: number
+  splitEmProcessamento: number
+  repasseManual: number
 }
 
 function cobrancaAsaasBloqueiaAlteracaoManual(
@@ -364,6 +372,49 @@ export function calcularDistribuicaoSobraFinanceira(params: {
     caixaInvestimento: deCentavos(caixaInvestimentoCentavos),
     socioA: deCentavos(socioACentavos),
     socioB: deCentavos(socioBCentavos),
+  }
+}
+
+const STATUS_SPLIT_EM_PROCESSAMENTO = new Set<StatusSplitPagamentoAsaas>([
+  "PREPARADO",
+  "PENDENTE",
+  "AGUARDANDO_CREDITO",
+  "PROCESSANDO",
+])
+
+export function calcularComposicaoRepasseProfessor(params: {
+  direitoTotal: number
+  splits: Array<{ valor: number; status: StatusSplitPagamentoAsaas }>
+}): ResultadoComposicaoRepasseProfessor {
+  const direitoTotalCentavos = paraCentavos(params.direitoTotal)
+  if (direitoTotalCentavos < 0) throw new Error("Direito do professor não pode ser negativo.")
+
+  let splitConcluidoBrutoCentavos = 0
+  let splitEmProcessamentoBrutoCentavos = 0
+  for (const split of params.splits) {
+    const valorCentavos = paraCentavos(split.valor)
+    if (valorCentavos < 0) throw new Error("Valor de split não pode ser negativo.")
+    if (split.status === "CONCLUIDO") {
+      splitConcluidoBrutoCentavos += valorCentavos
+    } else if (STATUS_SPLIT_EM_PROCESSAMENTO.has(split.status)) {
+      splitEmProcessamentoBrutoCentavos += valorCentavos
+    }
+  }
+
+  const splitConcluidoCentavos = Math.min(direitoTotalCentavos, splitConcluidoBrutoCentavos)
+  const saldoAposConcluidoCentavos = direitoTotalCentavos - splitConcluidoCentavos
+  const splitEmProcessamentoCentavos = Math.min(
+    saldoAposConcluidoCentavos,
+    splitEmProcessamentoBrutoCentavos,
+  )
+
+  return {
+    direitoTotal: deCentavos(direitoTotalCentavos),
+    splitConcluido: deCentavos(splitConcluidoCentavos),
+    splitEmProcessamento: deCentavos(splitEmProcessamentoCentavos),
+    repasseManual: deCentavos(
+      direitoTotalCentavos - splitConcluidoCentavos - splitEmProcessamentoCentavos,
+    ),
   }
 }
 

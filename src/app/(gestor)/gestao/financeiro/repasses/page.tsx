@@ -1,4 +1,5 @@
-import type { Prisma } from "@prisma/client"
+import type { Prisma, StatusSplitPagamentoAsaas } from "@prisma/client"
+import { CircleCheckBig, Clock3, HandCoins } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import {
+  calcularComposicaoRepasseProfessor,
   calcularDistribuicaoSobraFinanceira,
   calcularRepasseFinanceiro,
   type ItemRepasseMensalidadeSnapshot,
@@ -31,6 +33,9 @@ type LinhaRepasse = {
   origem: string
   valor: number
   eventos: number
+  splitConcluido: number
+  splitEmProcessamento: number
+  repasseManual: number
 }
 
 type PendenciaRepasse = {
@@ -48,6 +53,9 @@ type LinhaProfessor = {
   total: number
   eventos: number
   origens: string[]
+  splitConcluido: number
+  splitEmProcessamento: number
+  repasseManual: number
 }
 
 type LinhaExtratoRepasse = {
@@ -61,7 +69,18 @@ type LinhaExtratoRepasse = {
   valorRecebido: number
   professores: string
   repasseProfessores: number
+  splitConcluido: number
+  splitEmProcessamento: number
+  repasseManual: number
+  detalheRepasse: string
   sobraAposProfessores: number
+}
+
+type SplitRepasse = {
+  valorFixoSnapshot: Prisma.Decimal
+  status: StatusSplitPagamentoAsaas
+  motivo: string | null
+  contaAsaasProfessor: { professorId: string }
 }
 
 function valorUnico(valor: string | string[] | undefined) {
@@ -94,7 +113,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       include: {
         cobrancaQuitacaoAsaas: {
           select: {
-            splits: { select: { valorFixoSnapshot: true, status: true } },
+            splits: {
+              select: {
+                valorFixoSnapshot: true,
+                status: true,
+                motivo: true,
+                contaAsaasProfessor: { select: { professorId: true } },
+              },
+            },
           },
         },
         aluno: {
@@ -158,12 +184,15 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const pendencias: PendenciaRepasse[] = []
   let totalRecebido = 0
   let totalProfessores = 0
-  let totalSplitConcluido = 0
-  let totalSplitEmProcessamento = 0
-  let totalSplitBloqueado = 0
   const extrato: LinhaExtratoRepasse[] = []
 
-  function somarLinha(params: Omit<LinhaRepasse, "chave" | "eventos">) {
+  function somarLinha(
+    params: Omit<
+      LinhaRepasse,
+      "chave" | "eventos" | "splitConcluido" | "splitEmProcessamento" | "repasseManual"
+    > &
+      Partial<Pick<LinhaRepasse, "splitConcluido" | "splitEmProcessamento" | "repasseManual">>,
+  ) {
     const chave = `${params.papel}:${params.destinatarioId}:${params.origem}`
     const atual =
       linhas.get(chave) ??
@@ -175,23 +204,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         origem: params.origem,
         valor: 0,
         eventos: 0,
+        splitConcluido: 0,
+        splitEmProcessamento: 0,
+        repasseManual: 0,
       } satisfies LinhaRepasse)
     atual.valor += params.valor
     atual.eventos += 1
+    atual.splitConcluido += params.splitConcluido ?? 0
+    atual.splitEmProcessamento += params.splitEmProcessamento ?? 0
+    atual.repasseManual += params.repasseManual ?? 0
     linhas.set(chave, atual)
   }
 
   for (const mensalidade of mensalidades) {
-    for (const split of mensalidade.cobrancaQuitacaoAsaas?.splits ?? []) {
-      const valor = Number(split.valorFixoSnapshot)
-      if (split.status === "CONCLUIDO") totalSplitConcluido += valor
-      else if (split.status === "BLOQUEADO") totalSplitBloqueado += valor
-      else if (
-        ["PREPARADO", "PENDENTE", "AGUARDANDO_CREDITO", "PROCESSANDO"].includes(split.status)
-      ) {
-        totalSplitEmProcessamento += valor
-      }
-    }
+    const splits = mensalidade.cobrancaQuitacaoAsaas?.splits ?? []
     const valorRecebido = mensalidade.status === "PAGA" ? Number(mensalidade.valor) : 0
     const snapshot = lerRepasseSnapshotMensalidade(mensalidade.repasseSnapshot)
     const itens =
@@ -220,6 +246,34 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       (total, professor) => total + professor.valor,
       0,
     )
+    const composicaoPorProfessor = new Map<
+      string,
+      ReturnType<typeof calcularComposicaoRepasseProfessor>
+    >()
+    for (const professor of repasse.professores) {
+      if (professor.professorId.startsWith("pendencia:")) continue
+      composicaoPorProfessor.set(
+        professor.professorId,
+        calcularComposicaoRepasseProfessor({
+          direitoTotal: professor.valor,
+          splits: splits
+            .filter((split) => split.contaAsaasProfessor.professorId === professor.professorId)
+            .map((split) => ({ valor: Number(split.valorFixoSnapshot), status: split.status })),
+        }),
+      )
+    }
+    const splitConcluido = somarComposicao(
+      composicaoPorProfessor,
+      (composicao) => composicao.splitConcluido,
+    )
+    const splitEmProcessamento = somarComposicao(
+      composicaoPorProfessor,
+      (composicao) => composicao.splitEmProcessamento,
+    )
+    const repasseManual = somarComposicao(
+      composicaoPorProfessor,
+      (composicao) => composicao.repasseManual,
+    )
     totalRecebido += repasse.valorRecebido
     totalProfessores += repasseProfessores
     extrato.push({
@@ -233,16 +287,30 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       valorRecebido: repasse.valorRecebido,
       professores: nomesProfessoresRepasse(repasse.professores),
       repasseProfessores,
+      splitConcluido,
+      splitEmProcessamento,
+      repasseManual,
+      detalheRepasse: detalheRepasseMensalidade({
+        formaPagamento: mensalidade.formaPagamento,
+        splits,
+        splitConcluido,
+        splitEmProcessamento,
+        repasseManual,
+      }),
       sobraAposProfessores: repasse.sobraAposProfessores,
     })
 
     for (const professor of repasse.professores) {
+      const composicao = composicaoPorProfessor.get(professor.professorId)
       somarLinha({
         destinatarioId: professor.professorId,
         destinatario: professor.professorNome ?? professor.professorId,
         papel: professor.professorId.startsWith("pendencia:") ? "Pendência" : "Professor",
         origem: "Mensalidade interna",
         valor: professor.valor,
+        splitConcluido: composicao?.splitConcluido,
+        splitEmProcessamento: composicao?.splitEmProcessamento,
+        repasseManual: composicao?.repasseManual,
       })
     }
   }
@@ -280,6 +348,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       (total, professor) => total + professor.valor,
       0,
     )
+    const repasseManual = professorId ? repasseProfessores : 0
     totalRecebido += repasse.valorRecebido
     totalProfessores += repasseProfessores
     extrato.push({
@@ -293,6 +362,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       valorRecebido: repasse.valorRecebido,
       professores: nomesProfessoresRepasse(repasse.professores),
       repasseProfessores,
+      splitConcluido: 0,
+      splitEmProcessamento: 0,
+      repasseManual,
+      detalheRepasse: professorId
+        ? `${rotuloPlataforma(origem)} não utiliza split automático; o repasse é manual.`
+        : `${rotuloPlataforma(origem)} sem professor definido; resolva a pendência antes do repasse manual.`,
       sobraAposProfessores: repasse.sobraAposProfessores,
     })
 
@@ -303,6 +378,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         papel: professor.professorId.startsWith("pendencia:") ? "Pendência" : "Professor",
         origem,
         valor: professor.valor,
+        repasseManual: professor.professorId.startsWith("pendencia:") ? 0 : professor.valor,
       })
     }
   }
@@ -342,6 +418,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       origem: origemSobra,
       valor: destinatario.valor,
       eventos: eventosDaSobra,
+      splitConcluido: 0,
+      splitEmProcessamento: 0,
+      repasseManual: 0,
     })
   }
 
@@ -356,9 +435,21 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const valorPendenteProfessor = linhasOrdenadas
     .filter((linha) => linha.papel === "Pendência")
     .reduce((total, linha) => total + linha.valor, 0)
-  const totalRepasseManual = Math.max(
+  const totalDireitoIdentificado = professoresOrdenados.reduce(
+    (total, professor) => total + professor.total,
     0,
-    totalProfessores - totalSplitConcluido - totalSplitEmProcessamento,
+  )
+  const totalSplitConcluido = professoresOrdenados.reduce(
+    (total, professor) => total + professor.splitConcluido,
+    0,
+  )
+  const totalSplitEmProcessamento = professoresOrdenados.reduce(
+    (total, professor) => total + professor.splitEmProcessamento,
+    0,
+  )
+  const totalRepasseManual = professoresOrdenados.reduce(
+    (total, professor) => total + professor.repasseManual,
+    0,
   )
 
   return (
@@ -389,11 +480,32 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Resumo rotulo="Recebido" valor={formatarBRL(totalRecebido)} />
-        <Resumo rotulo="Professores" valor={formatarBRL(totalProfessores)} />
-        <Resumo rotulo="Split concluído" valor={formatarBRL(totalSplitConcluido)} />
-        <Resumo rotulo="Split em processamento" valor={formatarBRL(totalSplitEmProcessamento)} />
-        <Resumo rotulo="Split bloqueado" valor={formatarBRL(totalSplitBloqueado)} />
-        <Resumo rotulo="A repassar manualmente" valor={formatarBRL(totalRepasseManual)} />
+        <Resumo
+          rotulo="Direito identificado dos professores"
+          valor={formatarBRL(totalDireitoIdentificado)}
+        />
+        <Resumo
+          rotulo="Já repassado por split automático"
+          valor={formatarBRL(totalSplitConcluido)}
+          icone={<CircleCheckBig className="size-4" />}
+          tom="automatico"
+        />
+        <Resumo
+          rotulo="Split automático em processamento"
+          valor={formatarBRL(totalSplitEmProcessamento)}
+          icone={<Clock3 className="size-4" />}
+          tom="processamento"
+        />
+        <Resumo
+          rotulo="A repassar manualmente"
+          valor={formatarBRL(totalRepasseManual)}
+          icone={<HandCoins className="size-4" />}
+          tom="manual"
+        />
+        <Resumo
+          rotulo="Pendências sem professor definido"
+          valor={formatarBRL(valorPendenteProfessor)}
+        />
         <Resumo
           rotulo="Sobra após professores"
           valor={formatarBRL(distribuicaoSobra.sobraAposProfessores)}
@@ -410,7 +522,17 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         />
         <Resumo rotulo="Sócio A" valor={formatarBRL(distribuicaoSobra.socioA)} />
         <Resumo rotulo="Sócio B" valor={formatarBRL(distribuicaoSobra.socioB)} />
-        <Resumo rotulo="Pendências" valor={formatarBRL(valorPendenteProfessor)} />
+      </div>
+
+      <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
+        <p className="font-medium">Como os valores dos professores são classificados</p>
+        <p className="mt-1 text-muted-foreground">
+          Direito total = split concluído + split em processamento + repasse manual. O manual inclui
+          falhas, bloqueios, recusas e estornos do split, contas sem split habilitado, baixas
+          manuais e recebimentos de Wellhub/Gympass ou TotalPass. Valores em processamento ficam
+          separados para evitar pagamento duplicado. Em split bloqueado, confirme no Asaas que ele
+          não será retomado antes de executar o repasse manual.
+        </p>
       </div>
 
       <Card>
@@ -428,6 +550,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   <th className="p-4 text-right font-medium">Mensalidade interna</th>
                   <th className="p-4 text-right font-medium">Plataformas</th>
                   <th className="p-4 text-right font-medium">Direito total</th>
+                  <th className="p-4 text-right font-medium text-emerald-700">Já por split</th>
+                  <th className="p-4 text-right font-medium text-amber-700">Em processamento</th>
+                  <th className="p-4 text-right font-medium text-sky-700">Repasse manual</th>
                 </tr>
               </thead>
               <tbody>
@@ -451,11 +576,29 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     <td className="p-4 text-right font-semibold tabular-nums" data-label="Total">
                       {formatarBRL(professor.total)}
                     </td>
+                    <td
+                      className="p-4 text-right font-semibold text-emerald-700 tabular-nums"
+                      data-label="Já repassado por split"
+                    >
+                      {formatarBRL(professor.splitConcluido)}
+                    </td>
+                    <td
+                      className="p-4 text-right text-amber-700 tabular-nums"
+                      data-label="Split em processamento"
+                    >
+                      {formatarBRL(professor.splitEmProcessamento)}
+                    </td>
+                    <td
+                      className="p-4 text-right font-semibold text-sky-700 tabular-nums"
+                      data-label="Repasse manual"
+                    >
+                      {formatarBRL(professor.repasseManual)}
+                    </td>
                   </tr>
                 ))}
                 {professoresOrdenados.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-10 text-center text-muted-foreground">
+                    <td colSpan={9} className="p-10 text-center text-muted-foreground">
                       Nenhum professor com repasse no mês selecionado.
                     </td>
                   </tr>
@@ -554,9 +697,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   <th className="p-4 font-medium">Competência</th>
                   <th className="p-4 font-medium">Data</th>
                   <th className="p-4 font-medium">Forma</th>
+                  <th className="p-4 font-medium">Situação do repasse</th>
                   <th className="p-4 font-medium">Professores</th>
                   <th className="p-4 text-right font-medium">Recebido</th>
-                  <th className="p-4 text-right font-medium">Professor</th>
+                  <th className="p-4 text-right font-medium">Direito professor</th>
+                  <th className="p-4 text-right font-medium text-emerald-700">Split concluído</th>
+                  <th className="p-4 text-right font-medium text-amber-700">Em processamento</th>
+                  <th className="p-4 text-right font-medium text-sky-700">Manual</th>
                   <th className="p-4 text-right font-medium">Sobra após professor</th>
                 </tr>
               </thead>
@@ -583,6 +730,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     <td className="p-4" data-label="Forma">
                       {linha.formaPagamento ?? "—"}
                     </td>
+                    <td className="min-w-64 p-4 text-muted-foreground" data-label="Situação">
+                      {linha.detalheRepasse}
+                    </td>
                     <td className="p-4" data-label="Professores">
                       {linha.professores}
                     </td>
@@ -592,6 +742,24 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     <td className="p-4 text-right tabular-nums" data-label="Professor">
                       {formatarBRL(linha.repasseProfessores)}
                     </td>
+                    <td
+                      className="p-4 text-right font-medium text-emerald-700 tabular-nums"
+                      data-label="Split concluído"
+                    >
+                      {formatarBRL(linha.splitConcluido)}
+                    </td>
+                    <td
+                      className="p-4 text-right text-amber-700 tabular-nums"
+                      data-label="Em processamento"
+                    >
+                      {formatarBRL(linha.splitEmProcessamento)}
+                    </td>
+                    <td
+                      className="p-4 text-right font-medium text-sky-700 tabular-nums"
+                      data-label="Repasse manual"
+                    >
+                      {formatarBRL(linha.repasseManual)}
+                    </td>
                     <td className="p-4 text-right tabular-nums" data-label="Sobra após professor">
                       {formatarBRL(linha.sobraAposProfessores)}
                     </td>
@@ -599,7 +767,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 ))}
                 {extratoOrdenado.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="p-10 text-center text-muted-foreground">
+                    <td colSpan={14} className="p-10 text-center text-muted-foreground">
                       Nenhuma receita encontrada no mês selecionado.
                     </td>
                   </tr>
@@ -711,6 +879,65 @@ function nomesProfessoresRepasse(
   return nomes.length > 0 ? nomes.join(", ") : "Sem repasse para professor"
 }
 
+function somarComposicao(
+  composicoes: Map<string, ReturnType<typeof calcularComposicaoRepasseProfessor>>,
+  selecionar: (composicao: ReturnType<typeof calcularComposicaoRepasseProfessor>) => number,
+) {
+  return Array.from(composicoes.values()).reduce(
+    (total, composicao) => total + selecionar(composicao),
+    0,
+  )
+}
+
+const ROTULO_STATUS_SPLIT_MANUAL: Partial<Record<StatusSplitPagamentoAsaas, string>> = {
+  BLOQUEADO: "bloqueado",
+  CANCELADO: "cancelado",
+  RECUSADO: "recusado",
+  ESTORNADO: "estornado",
+  ERRO: "com erro",
+}
+
+function detalheRepasseMensalidade(params: {
+  formaPagamento: string | null
+  splits: SplitRepasse[]
+  splitConcluido: number
+  splitEmProcessamento: number
+  repasseManual: number
+}) {
+  const splitsSemCredito = params.splits.filter((split) => ROTULO_STATUS_SPLIT_MANUAL[split.status])
+  if (params.repasseManual > 0 && splitsSemCredito.length > 0) {
+    const estados = Array.from(
+      new Set(splitsSemCredito.map((split) => ROTULO_STATUS_SPLIT_MANUAL[split.status])),
+    ).join(", ")
+    const motivo = splitsSemCredito.find((split) => split.motivo)?.motivo
+    const orientacao = splitsSemCredito.some((split) => split.status === "BLOQUEADO")
+      ? " Confirme o encerramento no Asaas antes de pagar manualmente."
+      : ""
+    return `Repasse manual: split ${estados}${motivo ? ` — ${motivo}` : ""}.${orientacao}`
+  }
+  if (params.repasseManual > 0 && params.splits.length === 0) {
+    return params.formaPagamento === "PIX_ASAAS"
+      ? "Repasse manual: cobrança Asaas sem split associado, seja por configuração, limitação do fluxo ou ativação posterior."
+      : `Repasse manual: pagamento ${params.formaPagamento ?? "registrado por baixa manual"} sem split automático.`
+  }
+  if (params.repasseManual > 0) {
+    return "Repasse manual: parte do direito não foi coberta pelo split automático."
+  }
+  if (params.splitEmProcessamento > 0) {
+    return params.splitConcluido > 0
+      ? "Split parcialmente concluído; o saldo automático ainda está em processamento."
+      : "Split automático em processamento; não fazer repasse manual neste momento."
+  }
+  if (params.splitConcluido > 0) return "Repasse concluído por split automático."
+  return "Professor pendente de definição; o destino do repasse ainda não foi classificado."
+}
+
+function rotuloPlataforma(plataforma: string) {
+  if (plataforma === "WELLHUB") return "Wellhub/Gympass"
+  if (plataforma === "TOTALPASS") return "TotalPass"
+  return plataforma
+}
+
 function consolidarProfessores(linhas: LinhaRepasse[]): LinhaProfessor[] {
   const professores = new Map<string, LinhaProfessor & { origensSet: Set<string> }>()
   for (const linha of linhas) {
@@ -725,6 +952,9 @@ function consolidarProfessores(linhas: LinhaRepasse[]): LinhaProfessor[] {
         total: 0,
         eventos: 0,
         origens: [],
+        splitConcluido: 0,
+        splitEmProcessamento: 0,
+        repasseManual: 0,
         origensSet: new Set<string>(),
       } satisfies LinhaProfessor & { origensSet: Set<string> })
 
@@ -735,6 +965,9 @@ function consolidarProfessores(linhas: LinhaRepasse[]): LinhaProfessor[] {
     }
     atual.total += linha.valor
     atual.eventos += linha.eventos
+    atual.splitConcluido += linha.splitConcluido
+    atual.splitEmProcessamento += linha.splitEmProcessamento
+    atual.repasseManual += linha.repasseManual
     atual.origensSet.add(linha.origem)
     professores.set(linha.destinatarioId, atual)
   }
@@ -750,21 +983,46 @@ function consolidarProfessores(linhas: LinhaRepasse[]): LinhaProfessor[] {
 function Resumo({
   rotulo,
   valor,
+  icone,
   tom = "padrao",
 }: {
   rotulo: string
   valor: string
-  tom?: "padrao" | "positivo" | "negativo"
+  icone?: React.ReactNode
+  tom?: "padrao" | "positivo" | "negativo" | "automatico" | "processamento" | "manual"
 }) {
   return (
-    <Card>
+    <Card
+      className={cn(
+        tom === "automatico" && "border-emerald-200 bg-emerald-50/50",
+        tom === "processamento" && "border-amber-200 bg-amber-50/50",
+        tom === "manual" && "border-sky-200 bg-sky-50/50",
+      )}
+    >
       <CardContent className="py-5">
-        <p className="text-xs text-muted-foreground">{rotulo}</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">{rotulo}</p>
+          {icone && (
+            <span
+              className={cn(
+                "text-muted-foreground",
+                tom === "automatico" && "text-emerald-700",
+                tom === "processamento" && "text-amber-700",
+                tom === "manual" && "text-sky-700",
+              )}
+            >
+              {icone}
+            </span>
+          )}
+        </div>
         <p
           className={cn(
             "mt-1 text-xl font-bold tabular-nums",
             tom === "positivo" && "text-emerald-700",
             tom === "negativo" && "text-destructive",
+            tom === "automatico" && "text-emerald-800",
+            tom === "processamento" && "text-amber-800",
+            tom === "manual" && "text-sky-800",
           )}
         >
           {valor}

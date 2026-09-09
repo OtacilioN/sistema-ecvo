@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   atualizarVencimentosMensalidadesAluno,
+  calcularComposicaoRepasseProfessor,
   calcularDistribuicaoSobraFinanceira,
   calcularRepasseFinanceiro,
   gerarLembretesFinanceiros,
@@ -946,6 +947,78 @@ describe("calcularRepasseFinanceiro", () => {
     ).toMatchObject({
       professores: [{ professorId: "prof-oyama", valor: 50 }],
       sobraAposProfessores: 40,
+    })
+  })
+})
+
+describe("calcularComposicaoRepasseProfessor", () => {
+  it("considera concluído apenas o valor efetivamente repassado pelo split", () => {
+    expect(
+      calcularComposicaoRepasseProfessor({
+        direitoTotal: 50,
+        splits: [{ valor: 50, status: "CONCLUIDO" }],
+      }),
+    ).toEqual({
+      direitoTotal: 50,
+      splitConcluido: 50,
+      splitEmProcessamento: 0,
+      repasseManual: 0,
+    })
+  })
+
+  it("separa split em processamento para impedir repasse manual duplicado", () => {
+    for (const status of ["PREPARADO", "PENDENTE", "AGUARDANDO_CREDITO", "PROCESSANDO"] as const) {
+      expect(
+        calcularComposicaoRepasseProfessor({
+          direitoTotal: 60,
+          splits: [{ valor: 60, status }],
+        }),
+      ).toMatchObject({
+        splitConcluido: 0,
+        splitEmProcessamento: 60,
+        repasseManual: 0,
+      })
+    }
+  })
+
+  it("direciona ao repasse manual quando não existe split", () => {
+    expect(calcularComposicaoRepasseProfessor({ direitoTotal: 50, splits: [] })).toMatchObject({
+      splitConcluido: 0,
+      splitEmProcessamento: 0,
+      repasseManual: 50,
+    })
+  })
+
+  it("direciona ao repasse manual os splits com falha ou encerrados sem crédito", () => {
+    for (const status of ["BLOQUEADO", "CANCELADO", "RECUSADO", "ESTORNADO", "ERRO"] as const) {
+      expect(
+        calcularComposicaoRepasseProfessor({
+          direitoTotal: 50,
+          splits: [{ valor: 50, status }],
+        }),
+      ).toMatchObject({
+        splitConcluido: 0,
+        splitEmProcessamento: 0,
+        repasseManual: 50,
+      })
+    }
+  })
+
+  it("mantém no manual somente o saldo não coberto pelo split", () => {
+    expect(
+      calcularComposicaoRepasseProfessor({
+        direitoTotal: 60,
+        splits: [
+          { valor: 20, status: "CONCLUIDO" },
+          { valor: 15, status: "PROCESSANDO" },
+          { valor: 25, status: "RECUSADO" },
+        ],
+      }),
+    ).toEqual({
+      direitoTotal: 60,
+      splitConcluido: 20,
+      splitEmProcessamento: 15,
+      repasseManual: 25,
     })
   })
 })
