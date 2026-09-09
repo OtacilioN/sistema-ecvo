@@ -225,6 +225,7 @@ enum TipoAcaoAudit {
   TURMA_CRIADA
   DOCUMENTO_ALUNO_ADICIONADO
   PROFESSOR_STATUS_ATUALIZADO
+  CONTA_ASAAS_PROFESSOR_DADOS_ATUALIZADOS
   CONTA_ASAAS_PROFESSOR_SOLICITADA
   TURMA_ATUALIZADA
   CHECKIN_BLOQUEADO_INADIMPLENCIA
@@ -235,6 +236,7 @@ enum TipoAcaoAudit {
 }
 
 enum StatusContaAsaasProfessor {
+  RASCUNHO
   CRIANDO
   RESULTADO_INDETERMINADO
   AGUARDANDO_ATIVACAO
@@ -417,8 +419,8 @@ model ContaAsaasProfessor {
   status              StatusContaAsaasProfessor @default(CRIANDO)
   asaasAccountId      String?                   @unique
   walletId            String?                   @unique
-  consentimentoVersao String
-  consentidoEm        DateTime
+  consentimentoVersao String?
+  consentidoEm        DateTime?
   solicitadoEm        DateTime?
   ultimoErro          String?
   criadoEm            DateTime                  @default(now())

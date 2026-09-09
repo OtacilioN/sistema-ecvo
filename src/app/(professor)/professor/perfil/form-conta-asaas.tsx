@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { cpfValido, interpretarBRL } from "@/lib/utils/formato"
 
 export type StatusContaAsaasProfessorView =
+  | "RASCUNHO"
   | "CRIANDO"
   | "RESULTADO_INDETERMINADO"
   | "AGUARDANDO_ATIVACAO"
@@ -41,7 +42,7 @@ export type DadosContaAsaasProfessorView = {
 }
 
 const STATUS: Record<
-  Exclude<StatusContaAsaasProfessorView, "ERRO">,
+  Exclude<StatusContaAsaasProfessorView, "RASCUNHO" | "ERRO">,
   { descricao: string; rotulo: string; variant: "destructive" | "outline" | "success" | "warning" }
 > = {
   CRIANDO: {
@@ -105,7 +106,7 @@ function formularioValido(form: HTMLFormElement) {
 }
 
 export function FormContaAsaasProfessor({ dados }: { dados: DadosContaAsaasProfessorView }) {
-  if (dados.status && dados.status !== "ERRO") {
+  if (dados.status && dados.status !== "RASCUNHO" && dados.status !== "ERRO") {
     const estado = STATUS[dados.status]
     return (
       <div className="space-y-4">

@@ -12,6 +12,8 @@ sem chave de idempotência documentada, e não significa que ela já esteja apro
   documentos diretamente no Asaas.
 - Separar os dados financeiros em `ContaAsaasProfessor`, sem alterar automaticamente o cadastro
   pedagógico ou o e-mail de login do Sistema ECVO.
+- Permitir um `RASCUNHO` administrativo sem consentimento ou chamada externa. O professor revisa os
+  dados e registra o aceite somente ao solicitar a criação da conta.
 - Exigir consentimento explícito antes do envio.
 - Reservar a operação localmente antes do HTTP e consultar subcontas por CPF e e-mail antes de
   executar `POST /accounts`.

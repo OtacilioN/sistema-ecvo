@@ -122,7 +122,7 @@ async function reservarSolicitacao(params: {
     }
 
     const retomada = await db.contaAsaasProfessor.updateMany({
-      where: { id: atual.id, atualizadoEm: atual.atualizadoEm },
+      where: { id: atual.id, atualizadoEm: atual.atualizadoEm, status: atual.status },
       data: base,
     })
     if (retomada.count === 0) {

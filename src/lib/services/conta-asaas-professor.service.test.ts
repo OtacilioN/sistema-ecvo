@@ -160,6 +160,34 @@ describe("solicitarCriacaoContaAsaasProfessor", () => {
     expect(criarSubconta).not.toHaveBeenCalled()
   })
 
+  it("converte um rascunho em solicitação somente após o consentimento", async () => {
+    mocks.db.contaAsaasProfessor.findUnique.mockResolvedValue({
+      ...reserva,
+      status: "RASCUNHO",
+      consentimentoVersao: null,
+      consentidoEm: null,
+    })
+    mocks.db.contaAsaasProfessor.updateMany.mockResolvedValue({ count: 1 })
+    const listarSubcontas = vi.fn().mockResolvedValue(lista())
+    const criarSubconta = vi.fn().mockResolvedValue({ id: "acc_1", walletId: "wal_1" })
+
+    const resultado = await solicitarCriacaoContaAsaasProfessor(
+      { professorId: "professor-1", autorId: "usuario-1", dados },
+      { agora: () => agora, listarSubcontas, criarSubconta },
+    )
+
+    expect(resultado).toMatchObject({ ok: true })
+    expect(mocks.db.contaAsaasProfessor.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ status: "RASCUNHO" }),
+      data: expect.objectContaining({
+        status: "CRIANDO",
+        consentimentoVersao: "2026-09-09",
+        consentidoEm: agora,
+      }),
+    })
+    expect(criarSubconta).toHaveBeenCalledTimes(1)
+  })
+
   it("transforma uma reserva abandonada em resultado indeterminado sem repetir o POST", async () => {
     mocks.db.contaAsaasProfessor.findUnique.mockResolvedValue({
       ...reserva,
