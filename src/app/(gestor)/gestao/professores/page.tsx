@@ -33,6 +33,7 @@ export default async function ProfessoresPage() {
           dataNascimento: p.usuario.dataNascimento,
           fotoUrl: p.usuario.fotoUrl ?? p.fotoUrl,
           observacoes: p.observacoes,
+          contaAsaasStatus: p.contaAsaas?.status ?? null,
           modalidades: p.modalidades.map((m) => m.id),
           modalidadeNomes: p.modalidades.map((m) => m.nome),
           turmas: p._count.turmas,

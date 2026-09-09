@@ -1,8 +1,17 @@
 "use client"
 
-import { ImagePlus, KeyRound, Pencil, Plus, ToggleLeft, Trash2 } from "lucide-react"
+import {
+  CircleDollarSign,
+  ImagePlus,
+  KeyRound,
+  Pencil,
+  Plus,
+  ToggleLeft,
+  Trash2,
+} from "lucide-react"
 import { useState } from "react"
 import { acaoExcluirProfessor } from "@/app/actions/cadastros"
+import { acaoSolicitarCriacaoContaAsaasProfessorPeloGestor } from "@/app/actions/conta-asaas-professor"
 import { FormRedefinirSenhaUsuario } from "@/components/auth/form-redefinir-senha-usuario"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
@@ -26,6 +35,7 @@ export type ProfessorLinha = {
   dataNascimento: Date | null
   fotoUrl: string | null
   observacoes: string | null
+  contaAsaasStatus: string | null
   modalidades: string[]
 }
 
@@ -49,7 +59,7 @@ export function BotaoNovoProfessor({ modalidades }: { modalidades: Modalidade[] 
   )
 }
 
-type Painel = "editar" | "foto" | "senha" | "situacao" | "excluir" | null
+type Painel = "editar" | "foto" | "senha" | "situacao" | "asaas" | "excluir" | null
 
 export function AcoesProfessor({
   professor,
@@ -103,6 +113,17 @@ export function AcoesProfessor({
             >
               Alterar situação
             </ItemMenu>
+            {professor.contaAsaasStatus === "RASCUNHO" && (
+              <ItemMenu
+                icone={CircleDollarSign}
+                onClick={() => {
+                  fecharMenu()
+                  setPainel("asaas")
+                }}
+              >
+                Solicitar conta Asaas
+              </ItemMenu>
+            )}
             <SeparadorMenu />
             <ItemMenu
               icone={Trash2}
@@ -167,6 +188,29 @@ export function AcoesProfessor({
           aoConcluir={fechar}
         />
       </Dialog>
+
+      <DialogoConfirmacao
+        aberto={painel === "asaas"}
+        aoFechar={fechar}
+        titulo="Criar conta Asaas"
+        acao={acaoSolicitarCriacaoContaAsaasProfessorPeloGestor}
+        campos={{
+          professorId: professor.id,
+          confirmacao: "CONSENTIMENTO_CONFIRMADO",
+        }}
+        rotuloConfirmar="Criar conta Asaas"
+        descricao={
+          <>
+            <p>
+              O professor <strong className="text-foreground">{professor.nome}</strong> confirmou o
+              consentimento para a criação da conta.
+            </p>
+            <p>
+              Esta ação enviará os dados cadastrais armazenados ao Asaas e não deve ser repetida.
+            </p>
+          </>
+        }
+      />
 
       <DialogoConfirmacao
         aberto={painel === "excluir"}

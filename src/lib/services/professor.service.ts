@@ -22,6 +22,7 @@ export function listarProfessores() {
         },
       },
       modalidades: { select: { id: true, nome: true } },
+      contaAsaas: { select: { status: true } },
       _count: { select: { turmas: true } },
     },
   })

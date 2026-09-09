@@ -1,8 +1,11 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { exigirProfessor } from "@/lib/auth/dal"
-import { solicitarCriacaoContaAsaasProfessor } from "@/lib/services/conta-asaas-professor.service"
+import { exigirPapel, exigirProfessor } from "@/lib/auth/dal"
+import {
+  obterContaAsaasProfessor,
+  solicitarCriacaoContaAsaasProfessor,
+} from "@/lib/services/conta-asaas-professor.service"
 import { contaAsaasProfessorSchema } from "@/lib/validations/conta-asaas-professor"
 
 export type EstadoContaAsaasProfessor =
@@ -39,6 +42,58 @@ export async function acaoSolicitarCriacaoContaAsaasProfessor(
     autorId: usuario.id,
     dados: parsed.data,
   })
+  revalidatePath("/professor/perfil")
+
+  if (!resultado.ok) {
+    return {
+      erro: resultado.motivo,
+      resultadoIndeterminado:
+        "resultadoIndeterminado" in resultado ? resultado.resultadoIndeterminado : false,
+    }
+  }
+  return { ok: true }
+}
+
+export async function acaoSolicitarCriacaoContaAsaasProfessorPeloGestor(
+  _: EstadoContaAsaasProfessor,
+  formData: FormData,
+): Promise<EstadoContaAsaasProfessor> {
+  const usuario = await exigirPapel("GESTOR")
+  const professorId = formData.get("professorId")
+  if (typeof professorId !== "string" || !professorId) {
+    return { erro: "Professor inválido." }
+  }
+  if (formData.get("confirmacao") !== "CONSENTIMENTO_CONFIRMADO") {
+    return { erro: "Confirme que o professor autorizou a criação da conta." }
+  }
+
+  const conta = await obterContaAsaasProfessor(professorId)
+  if (conta?.status !== "RASCUNHO") {
+    return { erro: "O professor não possui um rascunho Asaas disponível para solicitação." }
+  }
+
+  const parsed = contaAsaasProfessorSchema.safeParse({
+    nomeTitular: conta.nomeTitular,
+    emailContaAsaas: conta.emailContaAsaas,
+    cpfCnpj: conta.cpfCnpj,
+    dataNascimento: conta.dataNascimento,
+    celular: conta.celular,
+    rendaMensal: conta.rendaMensal.toNumber(),
+    logradouro: conta.logradouro,
+    numeroEndereco: conta.numeroEndereco,
+    complemento: conta.complemento,
+    bairro: conta.bairro,
+    cep: conta.cep,
+    consentimento: "on",
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+
+  const resultado = await solicitarCriacaoContaAsaasProfessor({
+    professorId,
+    autorId: usuario.id,
+    dados: parsed.data,
+  })
+  revalidatePath("/gestao/professores")
   revalidatePath("/professor/perfil")
 
   if (!resultado.ok) {
