@@ -3,6 +3,21 @@ export function formatarBRL(valor: number): string {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor)
 }
 
+/** Interpreta valores digitados como `3000`, `3000.00`, `3.000` ou `3.000,00`. */
+export function interpretarBRL(valor: unknown): unknown {
+  if (typeof valor === "number") return valor
+  if (typeof valor !== "string") return valor
+
+  const limpo = valor
+    .trim()
+    .replace(/R\$\s?/gi, "")
+    .replace(/\s/g, "")
+  if (!limpo) return Number.NaN
+  if (limpo.includes(",")) return Number(limpo.replace(/\./g, "").replace(",", "."))
+  if (/^\d{1,3}(\.\d{3})+$/.test(limpo)) return Number(limpo.replace(/\./g, ""))
+  return Number(limpo)
+}
+
 const formatadorCpf = (digitos: string) =>
   digitos.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
 

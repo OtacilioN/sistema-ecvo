@@ -96,6 +96,9 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 
 ### Gestão de professores
 - **RF-005** Cadastro de professor (nome, CPF, telefone, e-mail, foto, modalidades, status, observações).
+- **RF-005.1** No próprio perfil, o professor pode preencher e consentir o envio dos dados obrigatórios
+  para solicitar uma subconta Asaas. O botão de criação só é habilitado com o formulário válido; a
+  resposta registra `accountId`, `walletId` e o estado de ativação sem expor a chave da subconta.
 - **RF-006** Vínculo professor ↔ turmas/horários.
 - **RF-007** Professor substituto: gestor altera o professor de uma aula, mantendo registro de quem ministrou.
 

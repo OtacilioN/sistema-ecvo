@@ -4,10 +4,12 @@ import {
   criarAutorizacaoPixAutomaticoAsaas,
   criarClienteAsaas,
   criarCobrancaAsaas,
+  criarSubcontaAsaas,
   excluirCobrancaAsaas,
   listarAutorizacoesPixAutomaticoAsaas,
   listarClientesAsaas,
   listarCobrancasAsaas,
+  listarSubcontasAsaas,
   obterAutorizacaoPixAutomaticoAsaas,
   obterCobrancaAsaas,
   obterConfiguracaoAsaas,
@@ -155,6 +157,66 @@ describe("clientes", () => {
       name: "Ana Silva",
       cpfCnpj: "12345678901",
       externalReference: "aluno-1",
+    })
+  })
+})
+
+describe("subcontas", () => {
+  it("consulta primeiro as subcontas da conta-pai por CPF", async () => {
+    const fetchMock = mockFetchCom({
+      object: "list",
+      hasMore: false,
+      totalCount: 0,
+      limit: 10,
+      offset: 0,
+      data: [],
+    })
+
+    await listarSubcontasAsaas(
+      { cpfCnpj: "13353529705", limit: 10 },
+      { env: envSandbox, fetch: fetchMock },
+    )
+
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://api-sandbox.asaas.com/v3/accounts?cpfCnpj=13353529705&limit=10",
+    )
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("GET")
+  })
+
+  it("cria subconta de pessoa física com o contrato exigido pelo Asaas", async () => {
+    const fetchMock = mockFetchCom({
+      object: "account",
+      id: "acc_1",
+      walletId: "wal_1",
+      accessToken: { id: "tok_1", apiKey: "$aact_hmlg_subconta" },
+    })
+
+    await criarSubcontaAsaas(
+      {
+        name: "Marcus Vinicius de Oliveira Ferreira",
+        email: "treinador@exemplo.com",
+        loginEmail: "treinador@exemplo.com",
+        cpfCnpj: "13353529705",
+        birthDate: "1991-01-29",
+        mobilePhone: "21981523409",
+        incomeValue: 3000,
+        address: "Rua Poeta Antônio Pereira Sobrinho",
+        addressNumber: "150",
+        complement: "Ap 102F",
+        province: "Gramame",
+        postalCode: "58068448",
+      },
+      { env: envSandbox, fetch: fetchMock },
+    )
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe("https://api-sandbox.asaas.com/v3/accounts")
+    expect(init?.method).toBe("POST")
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      loginEmail: "treinador@exemplo.com",
+      cpfCnpj: "13353529705",
+      incomeValue: 3000,
+      postalCode: "58068448",
     })
   })
 })

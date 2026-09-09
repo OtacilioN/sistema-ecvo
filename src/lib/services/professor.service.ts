@@ -223,10 +223,17 @@ export async function excluirProfessor(params: { professorId: string; autorId: s
       telefone: true,
       fotoUrl: true,
       observacoes: true,
+      contaAsaas: { select: { id: true } },
       modalidades: { select: { id: true, nome: true } },
     },
   })
   if (!professor) return { ok: false as const, motivo: "Professor não encontrado." }
+  if (professor.contaAsaas) {
+    return {
+      ok: false as const,
+      motivo: "Professor com conta Asaas não pode ser excluído. Inative o cadastro.",
+    }
+  }
 
   await db.$transaction(async (tx) => {
     await tx.usuario.delete({ where: { id: professor.usuario.id } })

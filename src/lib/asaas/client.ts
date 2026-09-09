@@ -47,6 +47,47 @@ export type DadosCriacaoClienteAsaas = {
   notificationDisabled?: boolean
 }
 
+export type SubcontaAsaas = {
+  object?: "account"
+  id?: string
+  name?: string
+  email?: string
+  loginEmail?: string
+  cpfCnpj?: string
+  birthDate?: string
+  mobilePhone?: string
+  walletId?: string
+  apiKey?: string
+  accessToken?: {
+    id?: string
+    apiKey?: string
+  }
+}
+
+export type DadosCriacaoSubcontaAsaas = {
+  name: string
+  email: string
+  loginEmail?: string
+  cpfCnpj: string
+  birthDate: string
+  mobilePhone: string
+  incomeValue: number
+  address: string
+  addressNumber: string
+  complement?: string
+  province: string
+  postalCode: string
+}
+
+export type FiltrosSubcontasAsaas = {
+  offset?: number
+  limit?: number
+  name?: string
+  email?: string
+  cpfCnpj?: string
+  walletId?: string
+}
+
 export type FiltrosClientesAsaas = {
   offset?: number
   limit?: number
@@ -352,6 +393,24 @@ export function criarClienteAsaas(
   dependencias: DependenciasAsaas = {},
 ) {
   return requisitarAsaas<ClienteAsaas>("/customers", { body: dados, method: "POST" }, dependencias)
+}
+
+export function listarSubcontasAsaas(
+  filtros: FiltrosSubcontasAsaas = {},
+  dependencias: DependenciasAsaas = {},
+) {
+  return requisitarAsaas<ListaPaginadaAsaas<SubcontaAsaas>>(
+    "/accounts",
+    { query: filtros },
+    dependencias,
+  )
+}
+
+export function criarSubcontaAsaas(
+  dados: DadosCriacaoSubcontaAsaas,
+  dependencias: DependenciasAsaas = {},
+) {
+  return requisitarAsaas<SubcontaAsaas>("/accounts", { body: dados, method: "POST" }, dependencias)
 }
 
 export function listarCobrancasAsaas(

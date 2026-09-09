@@ -4,11 +4,25 @@ import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { FormMinhaFoto } from "@/components/usuarios/form-foto-usuario"
 import { exigirProfessor } from "@/lib/auth/dal"
+import { db } from "@/lib/db"
+import { formatarDataCivilInput } from "@/lib/utils/datas"
+import { formatarCPF } from "@/lib/utils/formato"
+import { FormContaAsaasProfessor } from "./form-conta-asaas"
 
 export const dynamic = "force-dynamic"
 
 export default async function PerfilProfessorPage() {
-  const { usuario } = await exigirProfessor()
+  const { usuario, professorId } = await exigirProfessor()
+  const professor = await db.professor.findUniqueOrThrow({
+    where: { id: professorId },
+    select: {
+      cpf: true,
+      telefone: true,
+      usuario: { select: { dataNascimento: true } },
+      contaAsaas: true,
+    },
+  })
+  const conta = professor.contaAsaas
 
   return (
     <div className="space-y-6">
@@ -48,6 +62,36 @@ export default async function PerfilProfessorPage() {
           </CardHeader>
           <CardContent>
             <FormMinhaSenha />
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Recebimento automático pelo Asaas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <FormContaAsaasProfessor
+              dados={{
+                nomeTitular: conta?.nomeTitular ?? usuario.nome,
+                emailContaAsaas: conta?.emailContaAsaas ?? "",
+                cpfCnpj: formatarCPF(conta?.cpfCnpj ?? professor.cpf ?? ""),
+                dataNascimento: conta?.dataNascimento
+                  ? formatarDataCivilInput(conta.dataNascimento)
+                  : professor.usuario.dataNascimento
+                    ? formatarDataCivilInput(professor.usuario.dataNascimento)
+                    : "",
+                celular: conta?.celular ?? professor.telefone ?? "",
+                rendaMensal: conta?.rendaMensal.toString() ?? "",
+                logradouro: conta?.logradouro ?? "",
+                numeroEndereco: conta?.numeroEndereco ?? "",
+                complemento: conta?.complemento ?? "",
+                bairro: conta?.bairro ?? "",
+                cep: conta?.cep ?? "",
+                status: conta?.status ?? null,
+                walletFinal: conta?.walletId?.slice(-4) ?? null,
+                ultimoErro: conta?.ultimoErro ?? null,
+              }}
+            />
           </CardContent>
         </Card>
       </div>

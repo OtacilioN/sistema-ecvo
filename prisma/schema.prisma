@@ -225,12 +225,24 @@ enum TipoAcaoAudit {
   TURMA_CRIADA
   DOCUMENTO_ALUNO_ADICIONADO
   PROFESSOR_STATUS_ATUALIZADO
+  CONTA_ASAAS_PROFESSOR_SOLICITADA
   TURMA_ATUALIZADA
   CHECKIN_BLOQUEADO_INADIMPLENCIA
   TERMO_RESPONSABILIDADE_ACEITO
   MATRICULA_SOLICITADA
   MATRICULA_APROVADA
   MATRICULA_REJEITADA
+}
+
+enum StatusContaAsaasProfessor {
+  CRIANDO
+  RESULTADO_INDETERMINADO
+  AGUARDANDO_ATIVACAO
+  AGUARDANDO_APROVACAO
+  HABILITADA
+  BLOQUEADA
+  ERRO
+  DESABILITADA
 }
 
 enum TipoNotificacao {
@@ -369,21 +381,50 @@ model Responsavel {
 }
 
 model Professor {
-  id                   String           @id @default(cuid())
-  usuario              Usuario          @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  usuarioId            String           @unique
-  cpf                  String?          @unique
+  id                   String               @id @default(cuid())
+  usuario              Usuario              @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuarioId            String               @unique
+  cpf                  String?              @unique
   telefone             String?
   fotoUrl              String?
-  ativo                Boolean          @default(true)
+  ativo                Boolean              @default(true)
   observacoes          String?
-  modalidades          Modalidade[]     @relation("ProfessorModalidade")
+  modalidades          Modalidade[]         @relation("ProfessorModalidade")
   turmas               Turma[]
-  aulas                Aula[]           @relation("ProfessorAula")
-  graduacoesConcedidas GraduacaoAluno[] @relation("ProfessorGraduacao")
+  aulas                Aula[]               @relation("ProfessorAula")
+  graduacoesConcedidas GraduacaoAluno[]     @relation("ProfessorGraduacao")
   exames               Exame[]
-  criadoEm             DateTime         @default(now())
-  atualizadoEm         DateTime         @updatedAt
+  contaAsaas           ContaAsaasProfessor?
+  criadoEm             DateTime             @default(now())
+  atualizadoEm         DateTime             @updatedAt
+}
+
+model ContaAsaasProfessor {
+  id                  String                    @id @default(cuid())
+  professor           Professor                 @relation(fields: [professorId], references: [id], onDelete: Restrict)
+  professorId         String                    @unique
+  nomeTitular         String
+  emailContaAsaas     String                    @unique
+  cpfCnpj             String
+  dataNascimento      DateTime
+  celular             String
+  rendaMensal         Decimal                   @db.Decimal(12, 2)
+  logradouro          String
+  numeroEndereco      String
+  complemento         String?
+  bairro              String
+  cep                 String
+  status              StatusContaAsaasProfessor @default(CRIANDO)
+  asaasAccountId      String?                   @unique
+  walletId            String?                   @unique
+  consentimentoVersao String
+  consentidoEm        DateTime
+  solicitadoEm        DateTime?
+  ultimoErro          String?
+  criadoEm            DateTime                  @default(now())
+  atualizadoEm        DateTime                  @updatedAt
+
+  @@index([status])
 }
 
 // ───────────────────────── Modalidade / Turma / Aula ─────────────────────────
