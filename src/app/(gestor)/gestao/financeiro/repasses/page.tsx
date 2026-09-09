@@ -7,8 +7,13 @@ import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
+import {
+  filtrarReceitasPorProfessor,
+  normalizarProfessorFiltro,
+} from "@/lib/financeiro/filtros-repasse"
 import {
   calcularComposicaoRepasseProfessor,
   calcularDistribuicaoSobraFinanceira,
@@ -67,6 +72,7 @@ type LinhaExtratoRepasse = {
   data: Date | null
   formaPagamento: string | null
   valorRecebido: number
+  professorIds: string[]
   professores: string
   repasseProfessores: number
   splitConcluido: number
@@ -285,6 +291,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       data: mensalidade.pagoEm ?? mensalidade.atualizadoEm,
       formaPagamento: mensalidade.formaPagamento,
       valorRecebido: repasse.valorRecebido,
+      professorIds: repasse.professores.map((professor) => professor.professorId),
       professores: nomesProfessoresRepasse(repasse.professores),
       repasseProfessores,
       splitConcluido,
@@ -360,6 +367,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       data: registro.dataReferencia,
       formaPagamento: origem,
       valorRecebido: repasse.valorRecebido,
+      professorIds: repasse.professores.map((professor) => professor.professorId),
       professores: nomesProfessoresRepasse(repasse.professores),
       repasseProfessores,
       splitConcluido: 0,
@@ -432,6 +440,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       (b.data?.getTime() ?? 0) - (a.data?.getTime() ?? 0) || a.pagador.localeCompare(b.pagador),
   )
   const professoresOrdenados = consolidarProfessores(linhasOrdenadas)
+  const opcoesProfessores = [...professoresOrdenados].sort((a, b) =>
+    a.professorNome.localeCompare(b.professorNome, "pt-BR"),
+  )
+  const professorFiltro = normalizarProfessorFiltro(
+    valorUnico(params.professorId),
+    opcoesProfessores.map((professor) => professor.professorId),
+  )
+  const extratoFiltrado = filtrarReceitasPorProfessor(extratoOrdenado, professorFiltro)
   const valorPendenteProfessor = linhasOrdenadas
     .filter((linha) => linha.papel === "Pendência")
     .reduce((total, linha) => total + linha.valor, 0)
@@ -683,8 +699,26 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       )}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="gap-4 lg:flex-row lg:items-end lg:justify-between">
           <CardTitle>Receitas usadas no repasse</CardTitle>
+          <form className="grid gap-3 sm:grid-cols-[minmax(16rem,1fr)_auto_auto] sm:items-end">
+            <input type="hidden" name="competencia" value={mesRepasse} />
+            <div className="grid gap-2">
+              <Label htmlFor="professorId">Professor</Label>
+              <Select id="professorId" name="professorId" defaultValue={professorFiltro ?? ""}>
+                <option value="">Todos os professores</option>
+                {opcoesProfessores.map((professor) => (
+                  <option key={professor.professorId} value={professor.professorId}>
+                    {professor.professorNome}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <Button type="submit">Filtrar</Button>
+            <Button asChild variant="outline">
+              <Link href={`/gestao/financeiro/repasses?competencia=${mesRepasse}`}>Limpar</Link>
+            </Button>
+          </form>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -708,7 +742,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                 </tr>
               </thead>
               <tbody>
-                {extratoOrdenado.map((linha) => (
+                {extratoFiltrado.map((linha) => (
                   <tr key={linha.chave} className="border-b border-border last:border-0">
                     <td className="p-4 font-medium" data-label="Pagador">
                       {linha.pagador}
@@ -765,10 +799,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     </td>
                   </tr>
                 ))}
-                {extratoOrdenado.length === 0 && (
+                {extratoFiltrado.length === 0 && (
                   <tr>
                     <td colSpan={14} className="p-10 text-center text-muted-foreground">
-                      Nenhuma receita encontrada no mês selecionado.
+                      {professorFiltro
+                        ? "Nenhuma receita encontrada para o professor selecionado neste mês."
+                        : "Nenhuma receita encontrada no mês selecionado."}
                     </td>
                   </tr>
                 )}
