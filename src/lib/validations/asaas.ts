@@ -36,6 +36,23 @@ export const webhookAsaasSchema = z
           paymentDate: z.string().nullish(),
           conciliationIdentifier: identificador.nullish(),
           pixAutomaticAuthorizationId: identificador.nullish(),
+          split: z
+            .array(
+              z
+                .object({
+                  id: identificador.optional(),
+                  walletId: identificador,
+                  fixedValue: z.number().positive().optional(),
+                  totalValue: z.number().nonnegative().optional(),
+                  status: identificador.optional(),
+                  refusalReason: z.string().nullish(),
+                  cancellationReason: z.string().nullish(),
+                  externalReference: z.string().nullish(),
+                  description: z.string().nullish(),
+                })
+                .passthrough(),
+            )
+            .optional(),
         })
         .passthrough()
         .optional(),
@@ -51,6 +68,20 @@ export const webhookAsaasSchema = z
         payment: referenciaPorId.optional(),
         paymentId: referenciaPorId.optional(),
         authorization: referenciaPorId.optional(),
+      })
+      .passthrough()
+      .optional(),
+    additionalInfo: z.object({ splitId: identificador.optional() }).passthrough().optional(),
+    account: z
+      .object({ id: identificador, ownerId: identificador.optional() })
+      .passthrough()
+      .optional(),
+    accountStatus: z
+      .object({
+        general: z.enum(["PENDING", "APPROVED", "REJECTED", "AWAITING_APPROVAL"]),
+        commercialInfo: identificador.optional(),
+        bankAccountInfo: identificador.optional(),
+        documentation: identificador.optional(),
       })
       .passthrough()
       .optional(),

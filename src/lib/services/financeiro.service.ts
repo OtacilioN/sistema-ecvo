@@ -410,7 +410,7 @@ export function lerRepasseSnapshotMensalidade(
   return itens
 }
 
-function montarRepasseSnapshotMensalidade(params: {
+export function montarRepasseSnapshotMensalidade(params: {
   modalidadesPlano: Array<{
     plataformaExterna: Plataforma | null
     modalidade: {

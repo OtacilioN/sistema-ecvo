@@ -19,12 +19,21 @@ const mocks = vi.hoisted(() => {
       updateMany: vi.fn(),
       create: vi.fn(),
     },
+    contaAsaasProfessor: { findMany: vi.fn() },
+    splitPagamentoAsaas: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
   }
   const db = {
     plano: { findFirst: vi.fn() },
     solicitacaoMatricula: { findUnique: vi.fn() },
     acessoAulaAvulsa: { findFirst: vi.fn() },
     cobrancaMatriculaAsaas: { updateMany: vi.fn() },
+    splitPagamentoAsaas: { findMany: vi.fn() },
     $transaction: vi.fn(async (callback: (cliente: typeof tx) => unknown) => callback(tx)),
   }
   return {
@@ -55,6 +64,9 @@ vi.mock("@/lib/asaas/client", () => ({
 }))
 vi.mock("@/lib/services/auditoria.service", () => ({ registrarLog: mocks.registrarLog }))
 vi.mock("@/lib/services/financeiro.service", () => ({
+  calcularRepasseFinanceiro: vi.fn(),
+  lerRepasseSnapshotMensalidade: () => [],
+  montarRepasseSnapshotMensalidade: () => [],
   obterOuCriarMensalidadeNaTransacao: mocks.obterOuCriarMensalidadeNaTransacao,
 }))
 vi.mock("@/lib/services/notificacao.service", () => ({
@@ -79,6 +91,13 @@ const solicitacao = {
   cpf: "52998224725",
   telefone: null,
   plano: { id: "plano-1", valor: 100 },
+  modalidades: [],
+  modalidadePrincipal: {
+    id: "modalidade-1",
+    nome: "Jiu-Jitsu",
+    valorRepasseProfessor: new Prisma.Decimal(50),
+    turmas: [],
+  },
 }
 
 const cobrancaAntiga = {
@@ -137,6 +156,9 @@ beforeEach(() => {
   mocks.listarCobrancasAsaas.mockResolvedValue({ data: [], totalCount: 0, hasMore: false })
   mocks.db.cobrancaMatriculaAsaas.updateMany.mockResolvedValue({ count: 1 })
   mocks.tx.cobrancaMatriculaAsaas.updateMany.mockResolvedValue({ count: 1 })
+  mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
+  mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([])
+  mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([])
   mocks.criarNotificacao.mockResolvedValue({ id: "notificacao-1" })
 })
 

@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
     cobrancaAsaas: { create: vi.fn() },
     mensalidade: { update: vi.fn() },
     cobrancaMatriculaAsaas: { update: vi.fn() },
+    splitPagamentoAsaas: { updateMany: vi.fn() },
     acessoAulaAvulsa: { create: vi.fn() },
     comparecimento: { findMany: vi.fn(), create: vi.fn() },
     checkin: { findMany: vi.fn() },

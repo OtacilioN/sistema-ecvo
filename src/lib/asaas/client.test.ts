@@ -244,12 +244,26 @@ describe("cobranças Pix", () => {
         value: 150,
         dueDate: "2026-09-10",
         externalReference: "mensalidade:1:2026-09",
+        split: [
+          {
+            walletId: "wallet-professor",
+            fixedValue: 50,
+            externalReference: "mensalidade:1:2026-09:split:1",
+          },
+        ],
       },
       { env: envSandbox, fetch: fetchCriacao },
     )
     expect(JSON.parse(String(fetchCriacao.mock.calls[0][1]?.body))).toMatchObject({
       billingType: "PIX",
       externalReference: "mensalidade:1:2026-09",
+      split: [
+        {
+          walletId: "wallet-professor",
+          fixedValue: 50,
+          externalReference: "mensalidade:1:2026-09:split:1",
+        },
+      ],
     })
   })
 

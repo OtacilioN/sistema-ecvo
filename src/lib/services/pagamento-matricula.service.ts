@@ -1,5 +1,9 @@
 import "server-only"
-import type { FinalidadeCobrancaMatriculaAsaas, Prisma, StatusCobrancaAsaas } from "@prisma/client"
+import {
+  type FinalidadeCobrancaMatriculaAsaas,
+  Prisma,
+  type StatusCobrancaAsaas,
+} from "@prisma/client"
 import {
   type CobrancaAsaas as CobrancaRemotaAsaas,
   criarClienteAsaas,
@@ -25,8 +29,16 @@ import {
 } from "@/lib/aula-avulsa"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
-import { obterOuCriarMensalidadeNaTransacao } from "@/lib/services/financeiro.service"
+import {
+  montarRepasseSnapshotMensalidade,
+  obterOuCriarMensalidadeNaTransacao,
+} from "@/lib/services/financeiro.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
+import {
+  payloadSplitAsaas,
+  persistirSplitsRemotos,
+  prepararSplitsPagamento,
+} from "@/lib/services/split-asaas.service"
 import {
   chaveCompetencia,
   dataCivilParaDate,
@@ -176,7 +188,42 @@ async function reservarCobranca(tokenAcompanhamento: string) {
     await tx.$queryRaw`SELECT "id" FROM "SolicitacaoMatricula" WHERE "id" = ${identificada.id} FOR UPDATE`
     const solicitacao = await tx.solicitacaoMatricula.findUnique({
       where: { id: identificada.id },
-      include: { plano: true },
+      include: {
+        plano: true,
+        modalidadePrincipal: {
+          select: {
+            id: true,
+            nome: true,
+            valorRepasseProfessor: true,
+            turmas: {
+              where: { ativa: true, professorId: { not: null } },
+              select: {
+                professorId: true,
+                professor: { select: { usuario: { select: { nome: true } } } },
+              },
+            },
+          },
+        },
+        modalidades: {
+          orderBy: { criadoEm: "asc" },
+          select: {
+            modalidade: {
+              select: {
+                id: true,
+                nome: true,
+                valorRepasseProfessor: true,
+                turmas: {
+                  where: { ativa: true, professorId: { not: null } },
+                  select: {
+                    professorId: true,
+                    professor: { select: { usuario: { select: { nome: true } } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     })
     if (solicitacao?.status !== "PENDENTE") {
       return { ok: false as const, motivo: "Esta solicitação não aceita uma nova cobrança." }
@@ -196,6 +243,19 @@ async function reservarCobranca(tokenAcompanhamento: string) {
     if (!solicitacao.cpf) {
       return { ok: false as const, motivo: "Informe um CPF válido para gerar o pagamento." }
     }
+    const modalidadesRepasse =
+      solicitacao.modalidades.length > 0
+        ? solicitacao.modalidades
+        : [{ modalidade: solicitacao.modalidadePrincipal }]
+    const repasseSnapshot =
+      solicitacao.tipoPagamento === "MENSALISTA"
+        ? montarRepasseSnapshotMensalidade({
+            modalidadesPlano: modalidadesRepasse.map(({ modalidade }) => ({
+              plataformaExterna: null,
+              modalidade,
+            })),
+          })
+        : null
 
     const ultima = await tx.cobrancaMatriculaAsaas.findFirst({
       where: {
@@ -215,11 +275,30 @@ async function reservarCobranca(tokenAcompanhamento: string) {
       if (ultima.status !== "ERRO" && reservaEmAndamento(ultima.atualizadoEm)) {
         return { ok: false as const, motivo: "O pagamento está sendo preparado." }
       }
+      const snapshotPersistido = ultima.repasseSnapshot ?? repasseSnapshot
       const retomada = await tx.cobrancaMatriculaAsaas.update({
         where: { id: ultima.id },
-        data: { status: "CRIANDO", ultimoErro: null, ativa: true },
+        data: {
+          status: "CRIANDO",
+          ultimoErro: null,
+          ativa: true,
+          ...(ultima.repasseSnapshot
+            ? {}
+            : { repasseSnapshot: snapshotPersistido ?? Prisma.JsonNull }),
+        },
       })
-      return { ok: true as const, proprietaria: true as const, solicitacao, cobranca: retomada }
+      const splits = await prepararSplitsPagamento(tx, {
+        cobrancaMatriculaAsaasId: retomada.id,
+        repasseSnapshot: snapshotPersistido,
+        valorCobranca: retomada.valor,
+        externalReferenceCobranca: retomada.externalReference,
+      })
+      return {
+        ok: true as const,
+        proprietaria: true as const,
+        solicitacao,
+        cobranca: { ...retomada, splits },
+      }
     }
 
     const geracao = 1
@@ -233,10 +312,22 @@ async function reservarCobranca(tokenAcompanhamento: string) {
         competencia: chaveCompetencia(),
         valor:
           solicitacao.tipoPagamento === "AULA_AVULSA" ? VALOR_AULA_AVULSA : solicitacao.plano.valor,
+        repasseSnapshot: repasseSnapshot ?? Prisma.JsonNull,
         vencimentoAsaas: hoje,
       },
     })
-    return { ok: true as const, proprietaria: true as const, solicitacao, cobranca }
+    const splits = await prepararSplitsPagamento(tx, {
+      cobrancaMatriculaAsaasId: cobranca.id,
+      repasseSnapshot,
+      valorCobranca: cobranca.valor,
+      externalReferenceCobranca: cobranca.externalReference,
+    })
+    return {
+      ok: true as const,
+      proprietaria: true as const,
+      solicitacao,
+      cobranca: { ...cobranca, splits },
+    }
   })
 }
 
@@ -270,6 +361,7 @@ async function criarOuRecuperarCobranca(params: {
   valor: number
   vencimento: Date
   descricao: string
+  split?: ReturnType<typeof payloadSplitAsaas>
 }) {
   const encontradas = await listarCobrancasAsaas({
     externalReference: params.externalReference,
@@ -286,6 +378,7 @@ async function criarOuRecuperarCobranca(params: {
     dueDate: dataAsaas(params.vencimento),
     description: params.descricao,
     externalReference: params.externalReference,
+    split: params.split,
   })
 }
 
@@ -309,10 +402,16 @@ async function persistirCobranca(
     remota.status === "PENDING" && !qrValido
       ? "O QR Code PIX retornado pelo Asaas está vencido ou inválido."
       : motivoStatusRemoto(remota.status)
-  return db.$transaction(async (tx) => {
+  const persistencia = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "CobrancaMatriculaAsaas" WHERE "id" = ${id} FOR UPDATE`
     const anterior = await tx.cobrancaMatriculaAsaas.findUniqueOrThrow({ where: { id } })
-    if (anterior.status === "RECEBIDA" && !recebida) return anterior
+    const splits = await tx.splitPagamentoAsaas.findMany({
+      where: { cobrancaMatriculaAsaasId: id },
+      orderBy: { criadoEm: "asc" },
+    })
+    if (anterior.status === "RECEBIDA" && !recebida) {
+      return { cobranca: anterior, erroSplit: null }
+    }
     const atualizada = await tx.cobrancaMatriculaAsaas.update({
       where: { id },
       data: {
@@ -330,6 +429,20 @@ async function persistirCobranca(
         ultimoErro,
       },
     })
+    const resultadoSplit = await persistirSplitsRemotos(tx, splits, remota)
+    if (!resultadoSplit.ok) {
+      const comErro = await tx.cobrancaMatriculaAsaas.update({
+        where: { id: atualizada.id },
+        data: {
+          status: "ERRO",
+          ativa: false,
+          pixCopiaECola: null,
+          qrCodeExpiraEm: null,
+          ultimoErro: resultadoSplit.motivo,
+        },
+      })
+      return { cobranca: comErro, erroSplit: resultadoSplit.motivo }
+    }
     await registrarLog(
       {
         autorId: null,
@@ -341,8 +454,10 @@ async function persistirCobranca(
       },
       tx,
     )
-    return atualizada
+    return { cobranca: atualizada, erroSplit: null }
   })
+  if (persistencia.erroSplit) throw new Error(persistencia.erroSplit)
+  return persistencia.cobranca
 }
 
 export async function gerarCobrancaMatriculaAsaas(
@@ -376,6 +491,10 @@ export async function gerarCobrancaMatriculaAsaas(
   }
 
   try {
+    const splits = await db.splitPagamentoAsaas.findMany({
+      where: { cobrancaMatriculaAsaasId: reserva.cobranca.id },
+      orderBy: { criadoEm: "asc" },
+    })
     const cliente = await garantirClienteAsaas({
       solicitacaoId: reserva.solicitacao.id,
       nome: reserva.solicitacao.nome,
@@ -394,6 +513,7 @@ export async function gerarCobrancaMatriculaAsaas(
             reserva.cobranca.finalidade === "AULA_AVULSA"
               ? "Aula avulsa ECVO"
               : "Primeira mensalidade ECVO",
+          split: payloadSplitAsaas(splits),
         })
     const cobranca = await persistirCobranca(reserva.cobranca.id, cliente.id, remota)
     return { ok: true as const, cobranca }
@@ -709,8 +829,15 @@ async function criarNovaGeracaoAposEncerramento(params: {
         externalReference: referenciaCobranca(solicitacao.id, geracao),
         competencia: chaveCompetencia(),
         valor: atual.valor,
+        repasseSnapshot: atual.repasseSnapshot ?? Prisma.JsonNull,
         vencimentoAsaas: hoje,
       },
+    })
+    await prepararSplitsPagamento(tx, {
+      cobrancaMatriculaAsaasId: nova.id,
+      repasseSnapshot: atual.repasseSnapshot,
+      valorCobranca: nova.valor,
+      externalReferenceCobranca: nova.externalReference,
     })
     await registrarLog(
       {

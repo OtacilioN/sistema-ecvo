@@ -92,6 +92,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         pagoEm: { gte: inicio, lt: fim },
       },
       include: {
+        cobrancaQuitacaoAsaas: {
+          select: {
+            splits: { select: { valorFixoSnapshot: true, status: true } },
+          },
+        },
         aluno: {
           select: {
             usuario: { select: { nome: true } },
@@ -153,6 +158,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const pendencias: PendenciaRepasse[] = []
   let totalRecebido = 0
   let totalProfessores = 0
+  let totalSplitConcluido = 0
+  let totalSplitEmProcessamento = 0
+  let totalSplitBloqueado = 0
   const extrato: LinhaExtratoRepasse[] = []
 
   function somarLinha(params: Omit<LinhaRepasse, "chave" | "eventos">) {
@@ -174,6 +182,16 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   }
 
   for (const mensalidade of mensalidades) {
+    for (const split of mensalidade.cobrancaQuitacaoAsaas?.splits ?? []) {
+      const valor = Number(split.valorFixoSnapshot)
+      if (split.status === "CONCLUIDO") totalSplitConcluido += valor
+      else if (split.status === "BLOQUEADO") totalSplitBloqueado += valor
+      else if (
+        ["PREPARADO", "PENDENTE", "AGUARDANDO_CREDITO", "PROCESSANDO"].includes(split.status)
+      ) {
+        totalSplitEmProcessamento += valor
+      }
+    }
     const valorRecebido = mensalidade.status === "PAGA" ? Number(mensalidade.valor) : 0
     const snapshot = lerRepasseSnapshotMensalidade(mensalidade.repasseSnapshot)
     const itens =
@@ -338,6 +356,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const valorPendenteProfessor = linhasOrdenadas
     .filter((linha) => linha.papel === "Pendência")
     .reduce((total, linha) => total + linha.valor, 0)
+  const totalRepasseManual = Math.max(
+    0,
+    totalProfessores - totalSplitConcluido - totalSplitEmProcessamento,
+  )
 
   return (
     <div className="space-y-6">
@@ -368,6 +390,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Resumo rotulo="Recebido" valor={formatarBRL(totalRecebido)} />
         <Resumo rotulo="Professores" valor={formatarBRL(totalProfessores)} />
+        <Resumo rotulo="Split concluído" valor={formatarBRL(totalSplitConcluido)} />
+        <Resumo rotulo="Split em processamento" valor={formatarBRL(totalSplitEmProcessamento)} />
+        <Resumo rotulo="Split bloqueado" valor={formatarBRL(totalSplitBloqueado)} />
+        <Resumo rotulo="A repassar manualmente" valor={formatarBRL(totalRepasseManual)} />
         <Resumo
           rotulo="Sobra após professores"
           valor={formatarBRL(distribuicaoSobra.sobraAposProfessores)}
@@ -401,7 +427,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   <th className="p-4 font-medium">Eventos</th>
                   <th className="p-4 text-right font-medium">Mensalidade interna</th>
                   <th className="p-4 text-right font-medium">Plataformas</th>
-                  <th className="p-4 text-right font-medium">Total</th>
+                  <th className="p-4 text-right font-medium">Direito total</th>
                 </tr>
               </thead>
               <tbody>

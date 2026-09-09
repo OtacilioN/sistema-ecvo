@@ -247,6 +247,19 @@ enum StatusContaAsaasProfessor {
   DESABILITADA
 }
 
+enum StatusSplitPagamentoAsaas {
+  PREPARADO
+  PENDENTE
+  AGUARDANDO_CREDITO
+  PROCESSANDO
+  CONCLUIDO
+  BLOQUEADO
+  CANCELADO
+  RECUSADO
+  ESTORNADO
+  ERRO
+}
+
 enum TipoNotificacao {
   MATRICULA
   COMPARECIMENTO
@@ -423,6 +436,9 @@ model ContaAsaasProfessor {
   consentidoEm        DateTime?
   solicitadoEm        DateTime?
   ultimoErro          String?
+  statusGeralAsaas    String?
+  ultimoEventoAsaas   String?
+  splits              SplitPagamentoAsaas[]
   criadoEm            DateTime                  @default(now())
   atualizadoEm        DateTime                  @updatedAt
 
@@ -777,6 +793,7 @@ model CobrancaMatriculaAsaas {
   externalReference        String                           @unique
   competencia              String
   valor                    Decimal                          @db.Decimal(10, 2)
+  repasseSnapshot          Json?
   vencimentoAsaas          DateTime
   statusAsaas              String?
   pixCopiaECola            String?
@@ -788,6 +805,7 @@ model CobrancaMatriculaAsaas {
   estornoParcialPendenteEm DateTime?
   criadoEm                 DateTime                         @default(now())
   atualizadoEm             DateTime                         @updatedAt
+  splits                   SplitPagamentoAsaas[]
 
   @@unique([solicitacaoId, geracao])
   @@index([status])
@@ -921,11 +939,38 @@ model CobrancaAsaas {
   criadoEm                 DateTime               @default(now())
   atualizadoEm             DateTime               @updatedAt
   mensalidadeQuitada       Mensalidade?           @relation("QuitacaoMensalidadeAsaas")
+  splits                   SplitPagamentoAsaas[]
 
   @@unique([mensalidadeId, geracao])
   @@index([contratoPixAutomaticoId])
   @@index([status])
   @@index([mensalidadeId, ativa])
+}
+
+model SplitPagamentoAsaas {
+  id                       String                    @id @default(cuid())
+  cobrancaAsaas            CobrancaAsaas?            @relation(fields: [cobrancaAsaasId], references: [id], onDelete: Restrict)
+  cobrancaAsaasId          String?
+  cobrancaMatriculaAsaas   CobrancaMatriculaAsaas?   @relation(fields: [cobrancaMatriculaAsaasId], references: [id], onDelete: Restrict)
+  cobrancaMatriculaAsaasId String?
+  contaAsaasProfessor      ContaAsaasProfessor       @relation(fields: [contaAsaasProfessorId], references: [id], onDelete: Restrict)
+  contaAsaasProfessorId    String
+  walletIdSnapshot         String
+  valorFixoSnapshot        Decimal                   @db.Decimal(10, 2)
+  modalidadesSnapshot      Json
+  externalReference        String                    @unique
+  asaasSplitId             String?                   @unique
+  status                   StatusSplitPagamentoAsaas @default(PREPARADO)
+  statusAsaas              String?
+  motivo                   String?
+  ultimoEventoAsaas        String?
+  criadoEm                 DateTime                  @default(now())
+  atualizadoEm             DateTime                  @updatedAt
+
+  @@index([cobrancaAsaasId])
+  @@index([cobrancaMatriculaAsaasId])
+  @@index([contaAsaasProfessorId, status])
+  @@index([status])
 }
 
 model EventoWebhookAsaas {

@@ -11,7 +11,10 @@ import {
 } from "lucide-react"
 import { useState } from "react"
 import { acaoExcluirProfessor } from "@/app/actions/cadastros"
-import { acaoSolicitarCriacaoContaAsaasProfessorPeloGestor } from "@/app/actions/conta-asaas-professor"
+import {
+  acaoConfirmarAprovacaoContaAsaasProfessor,
+  acaoSolicitarCriacaoContaAsaasProfessorPeloGestor,
+} from "@/app/actions/conta-asaas-professor"
 import { FormRedefinirSenhaUsuario } from "@/components/auth/form-redefinir-senha-usuario"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
@@ -59,7 +62,15 @@ export function BotaoNovoProfessor({ modalidades }: { modalidades: Modalidade[] 
   )
 }
 
-type Painel = "editar" | "foto" | "senha" | "situacao" | "asaas" | "excluir" | null
+type Painel =
+  | "editar"
+  | "foto"
+  | "senha"
+  | "situacao"
+  | "asaas"
+  | "habilitarSplit"
+  | "excluir"
+  | null
 
 export function AcoesProfessor({
   professor,
@@ -122,6 +133,19 @@ export function AcoesProfessor({
                 }}
               >
                 Solicitar conta Asaas
+              </ItemMenu>
+            )}
+            {["AGUARDANDO_ATIVACAO", "AGUARDANDO_APROVACAO"].includes(
+              professor.contaAsaasStatus ?? "",
+            ) && (
+              <ItemMenu
+                icone={CircleDollarSign}
+                onClick={() => {
+                  fecharMenu()
+                  setPainel("habilitarSplit")
+                }}
+              >
+                Habilitar split automático
               </ItemMenu>
             )}
             <SeparadorMenu />
@@ -208,6 +232,27 @@ export function AcoesProfessor({
             <p>
               Esta ação enviará os dados cadastrais armazenados ao Asaas e não deve ser repetida.
             </p>
+          </>
+        }
+      />
+
+      <DialogoConfirmacao
+        aberto={painel === "habilitarSplit"}
+        aoFechar={fechar}
+        titulo="Habilitar split automático"
+        acao={acaoConfirmarAprovacaoContaAsaasProfessor}
+        campos={{
+          professorId: professor.id,
+          confirmacao: "APROVACAO_ASAAS_CONFIRMADA",
+        }}
+        rotuloConfirmar="Habilitar split"
+        descricao={
+          <>
+            <p>
+              Confirme somente após verificar no painel do Asaas que a aprovação geral da conta de{" "}
+              <strong className="text-foreground">{professor.nome}</strong> está aprovada.
+            </p>
+            <p>As novas cobranças passarão a enviar o valor fixo para a wallet registrada.</p>
           </>
         }
       />

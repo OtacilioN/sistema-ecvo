@@ -26,6 +26,14 @@ const mocks = vi.hoisted(() => {
       updateMany: vi.fn(),
     },
     aluno: { update: vi.fn() },
+    contaAsaasProfessor: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    splitPagamentoAsaas: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
   }
   const db = {
     cobrancaAsaas: {
@@ -44,6 +52,7 @@ const mocks = vi.hoisted(() => {
     },
     mensalidade: { findFirst: vi.fn(), findMany: vi.fn() },
     aluno: { findUnique: vi.fn() },
+    splitPagamentoAsaas: { findMany: vi.fn() },
     $transaction: vi.fn(async (callback: (cliente: typeof tx) => unknown) => callback(tx)),
   }
   return {
@@ -78,7 +87,9 @@ vi.mock("@/lib/asaas/client", () => ({
 }))
 vi.mock("@/lib/services/auditoria.service", () => ({ registrarLog: mocks.registrarLog }))
 vi.mock("@/lib/services/financeiro.service", () => ({
+  calcularRepasseFinanceiro: vi.fn(),
   gerarMensalidade: vi.fn(),
+  lerRepasseSnapshotMensalidade: () => [],
   sincronizarStatusFinanceiroAluno: mocks.sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo: ({ vencimento }: { vencimento: Date }) =>
     vencimento.getTime() < Date.now() ? "VENCIDA" : "EM_ABERTO",
@@ -111,6 +122,12 @@ const cobrancaLocal = {
   contratoPixAutomatico: null,
 }
 
+beforeEach(() => {
+  mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
+  mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([])
+  mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([])
+})
+
 afterEach(() => {
   vi.useRealTimers()
 })
@@ -135,6 +152,9 @@ describe("processarWebhookAsaas", () => {
     vi.clearAllMocks()
     mocks.db.cobrancaAsaas.findFirst.mockResolvedValue({ id: "cobranca-1" })
     mocks.tx.eventoWebhookAsaas.createMany.mockResolvedValue({ count: 1 })
+    mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
+    mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([])
+    mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([])
     mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(null)
     mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
       args?.where?.OR ? cobrancaLocal : null,
@@ -181,6 +201,86 @@ describe("processarWebhookAsaas", () => {
       },
     })
     expect(mocks.sincronizarStatusFinanceiroAluno).toHaveBeenCalledWith(mocks.tx, "aluno-1")
+  })
+
+  it("habilita a wallet somente com aprovação geral da conta", async () => {
+    mocks.tx.contaAsaasProfessor.findUnique.mockResolvedValue({
+      id: "conta-professor-1",
+      status: "AGUARDANDO_APROVACAO",
+      statusGeralAsaas: "AWAITING_APPROVAL",
+    })
+    mocks.tx.contaAsaasProfessor.update.mockResolvedValue({})
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_account_1",
+      event: "ACCOUNT_STATUS_GENERAL_APPROVAL_APPROVED",
+      account: { id: "acc_1" },
+      accountStatus: { general: "APPROVED" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.contaAsaasProfessor.update).toHaveBeenCalledWith({
+      where: { id: "conta-professor-1" },
+      data: {
+        status: "HABILITADA",
+        statusGeralAsaas: "APPROVED",
+        ultimoEventoAsaas: "ACCOUNT_STATUS_GENERAL_APPROVAL_APPROVED",
+      },
+    })
+  })
+
+  it("concilia a liquidação individual do split", async () => {
+    mocks.tx.splitPagamentoAsaas.findFirst.mockResolvedValue({
+      id: "split-local-1",
+      asaasSplitId: "split-remoto-1",
+    })
+    mocks.tx.splitPagamentoAsaas.update.mockResolvedValue({})
+    mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_split_1",
+      event: "PAYMENT_SPLIT_DONE",
+      payment: {
+        id: "pay_1",
+        split: [
+          {
+            id: "split-remoto-1",
+            walletId: "wallet-professor",
+            fixedValue: 50,
+            status: "DONE",
+          },
+        ],
+      },
+      additionalInfo: { splitId: "split-remoto-1" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.splitPagamentoAsaas.update).toHaveBeenCalledWith({
+      where: { id: "split-local-1" },
+      data: expect.objectContaining({ status: "CONCLUIDO", statusAsaas: "DONE" }),
+    })
+  })
+
+  it("solicita reentrega quando o split ainda não foi materializado", async () => {
+    mocks.tx.splitPagamentoAsaas.findFirst.mockResolvedValue(null)
+    mocks.tx.splitPagamentoAsaas.findUnique.mockResolvedValue(null)
+    mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
+    mocks.tx.eventoWebhookAsaas.delete.mockResolvedValue({})
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_split_precoce",
+      event: "PAYMENT_SPLIT_DONE",
+      payment: {
+        id: "pay_precoce",
+        externalReference: "mensalidade:mensalidade-1",
+      },
+      additionalInfo: { splitId: "split-remoto-precoce" },
+    })
+
+    expect(resultado).toMatchObject({ ok: false, duplicado: false })
+    expect(mocks.tx.eventoWebhookAsaas.delete).toHaveBeenCalledWith({
+      where: { asaasEventId: "evt_split_precoce" },
+    })
   })
 
   it("confirma a cobrança da pré-matrícula sem criar uma baixa mensal prematura", async () => {

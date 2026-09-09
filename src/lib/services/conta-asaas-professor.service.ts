@@ -9,6 +9,16 @@ import type { ContaAsaasProfessorInput } from "@/lib/validations/conta-asaas-pro
 
 const VERSAO_CONSENTIMENTO = "2026-09-09"
 const TEMPO_RESERVA_MS = 2 * 60 * 1_000
+const EVENTOS_STATUS_CONTA_ASAAS = [
+  "ACCOUNT_STATUS_DOCUMENT_PENDING",
+  "ACCOUNT_STATUS_DOCUMENT_AWAITING_APPROVAL",
+  "ACCOUNT_STATUS_DOCUMENT_APPROVED",
+  "ACCOUNT_STATUS_DOCUMENT_REJECTED",
+  "ACCOUNT_STATUS_GENERAL_APPROVAL_PENDING",
+  "ACCOUNT_STATUS_GENERAL_APPROVAL_AWAITING_APPROVAL",
+  "ACCOUNT_STATUS_GENERAL_APPROVAL_APPROVED",
+  "ACCOUNT_STATUS_GENERAL_APPROVAL_REJECTED",
+]
 
 type DependenciasContaAsaasProfessor = {
   criarSubconta?: typeof criarSubcontaAsaas
@@ -77,6 +87,32 @@ function dadosPersistidos(dados: ContaAsaasProfessorInput, agora: Date) {
     consentidoEm: agora,
     ultimoErro: null,
   }
+}
+
+function webhookStatusConta(dados: ContaAsaasProfessorInput) {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "")
+  const authToken = process.env.ASAAS_WEBHOOK_TOKEN?.trim()
+  if (
+    !baseUrl?.startsWith("https://") ||
+    !authToken ||
+    authToken.length < 32 ||
+    authToken.length > 255
+  ) {
+    return undefined
+  }
+  return [
+    {
+      name: "Situação cadastral da conta do professor",
+      url: `${baseUrl}/api/webhooks/asaas`,
+      email: dados.emailContaAsaas,
+      enabled: true,
+      interrupted: false,
+      apiVersion: 3,
+      authToken,
+      sendType: "SEQUENTIALLY" as const,
+      events: EVENTOS_STATUS_CONTA_ASAAS,
+    },
+  ]
 }
 
 async function reservarSolicitacao(params: {
@@ -241,6 +277,7 @@ export async function solicitarCriacaoContaAsaasProfessor(
         ...(params.dados.complemento ? { complement: params.dados.complemento } : {}),
         province: params.dados.bairro,
         postalCode: params.dados.cep,
+        webhooks: webhookStatusConta(params.dados),
       }))
 
     if (!idsRemotosValidos(remota)) {
@@ -313,4 +350,87 @@ export async function solicitarCriacaoContaAsaasProfessor(
 
 export function obterContaAsaasProfessor(professorId: string) {
   return db.contaAsaasProfessor.findUnique({ where: { professorId } })
+}
+
+export async function confirmarAprovacaoContaAsaasProfessor(params: {
+  professorId: string
+  autorId: string
+}) {
+  return db.$transaction(async (tx) => {
+    const conta = await tx.contaAsaasProfessor.findUnique({
+      where: { professorId: params.professorId },
+    })
+    if (!conta?.asaasAccountId || !conta.walletId) {
+      return {
+        ok: false as const,
+        motivo: "A conta ainda não possui accountId e walletId do Asaas.",
+      }
+    }
+    if (conta.status === "HABILITADA") return { ok: true as const, conta }
+    if (!["AGUARDANDO_ATIVACAO", "AGUARDANDO_APROVACAO"].includes(conta.status)) {
+      return {
+        ok: false as const,
+        motivo: "O estado atual da conta não permite habilitar o split.",
+      }
+    }
+    const atualizada = await tx.contaAsaasProfessor.update({
+      where: { id: conta.id },
+      data: { status: "HABILITADA", statusGeralAsaas: "APPROVED", ultimoErro: null },
+    })
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "CONFIGURACAO",
+        entidade: "ContaAsaasProfessor",
+        entidadeId: conta.id,
+        valorAntigo: { status: conta.status },
+        valorNovo: { status: atualizada.status, confirmacaoManualAprovacaoAsaas: true },
+        justificativa: "Aprovação cadastral confirmada pelo gestor no painel do Asaas.",
+      },
+      tx,
+    )
+    return { ok: true as const, conta: atualizada }
+  })
+}
+
+export async function aplicarStatusContaAsaasDoWebhook(
+  tx: Prisma.TransactionClient,
+  params: { accountId: string; general: string; evento: string },
+) {
+  const conta = await tx.contaAsaasProfessor.findUnique({
+    where: { asaasAccountId: params.accountId },
+  })
+  if (!conta) return false
+  const statusRecebido: StatusContaAsaasProfessor =
+    params.general === "APPROVED"
+      ? "HABILITADA"
+      : params.general === "AWAITING_APPROVAL"
+        ? "AGUARDANDO_APROVACAO"
+        : params.general === "REJECTED"
+          ? "BLOQUEADA"
+          : "AGUARDANDO_ATIVACAO"
+  const status =
+    conta.status === "HABILITADA" &&
+    ["AGUARDANDO_ATIVACAO", "AGUARDANDO_APROVACAO"].includes(statusRecebido)
+      ? "HABILITADA"
+      : statusRecebido
+  const statusGeralAsaas = status === "HABILITADA" ? "APPROVED" : params.general
+  await tx.contaAsaasProfessor.update({
+    where: { id: conta.id },
+    data: { status, statusGeralAsaas, ultimoEventoAsaas: params.evento },
+  })
+  if (conta.status !== status || conta.statusGeralAsaas !== statusGeralAsaas) {
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "CONFIGURACAO",
+        entidade: "ContaAsaasProfessor",
+        entidadeId: conta.id,
+        valorAntigo: { status: conta.status, statusGeralAsaas: conta.statusGeralAsaas },
+        valorNovo: { status, statusGeralAsaas, evento: params.evento },
+      },
+      tx,
+    )
+  }
+  return true
 }

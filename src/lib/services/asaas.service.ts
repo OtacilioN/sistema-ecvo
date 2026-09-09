@@ -36,12 +36,19 @@ import {
 import { mensagemErroAsaasSegura } from "@/lib/asaas/seguranca"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import { aplicarStatusContaAsaasDoWebhook } from "@/lib/services/conta-asaas-professor.service"
 import {
   gerarMensalidade,
   sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
 } from "@/lib/services/financeiro.service"
 import { aplicarWebhookPagamentoMatricula } from "@/lib/services/pagamento-matricula.service"
+import {
+  payloadSplitAsaas,
+  persistirSplitsRemotos,
+  prepararSplitsPagamento,
+  reconciliarSplitsWebhook,
+} from "@/lib/services/split-asaas.service"
 import { chaveCompetencia, dataCivilParaDate, formatarDataInput } from "@/lib/utils/datas"
 import {
   idAutorizacaoDoWebhook,
@@ -270,7 +277,7 @@ async function reservarIntencaoCobranca(dados: DadosIntencaoCobranca) {
     await bloquearMensalidades(tx, [dados.mensalidadeId])
     const mensalidade = await tx.mensalidade.findUnique({
       where: { id: dados.mensalidadeId },
-      select: { status: true },
+      select: { status: true, valor: true, repasseSnapshot: true },
     })
     if (!mensalidade || !STATUS_MENSALIDADE_COBRAVEL.includes(mensalidade.status as never)) {
       return { ok: false as const, motivo: "Esta mensalidade não aceita uma nova cobrança." }
@@ -279,9 +286,11 @@ async function reservarIntencaoCobranca(dados: DadosIntencaoCobranca) {
     const ultima = await tx.cobrancaAsaas.findFirst({
       where: { mensalidadeId: dados.mensalidadeId },
       orderBy: { geracao: "desc" },
+      include: { splits: { orderBy: { criadoEm: "asc" } } },
     })
     const existenteBase = await tx.cobrancaAsaas.findUnique({
       where: { externalReference: dados.externalReference },
+      include: { splits: { orderBy: { criadoEm: "asc" } } },
     })
     const ultimaCompativel =
       ultima &&
@@ -321,11 +330,18 @@ async function reservarIntencaoCobranca(dados: DadosIntencaoCobranca) {
           data: {
             ativa: true,
             status: "CRIANDO",
+            valorCobrado: mensalidade.valor,
             vencimentoAsaas: dados.vencimentoAsaas,
             ultimoErro: null,
           },
         })
-        return { ok: true as const, proprietaria: true as const, intencao }
+        const splits = await prepararSplitsPagamento(tx, {
+          cobrancaAsaasId: intencao.id,
+          repasseSnapshot: mensalidade.repasseSnapshot,
+          valorCobranca: mensalidade.valor,
+          externalReferenceCobranca: intencao.externalReference,
+        })
+        return { ok: true as const, proprietaria: true as const, intencao: { ...intencao, splits } }
       }
       await tx.cobrancaAsaas.update({
         where: { id: existente.id },
@@ -345,11 +361,18 @@ async function reservarIntencaoCobranca(dados: DadosIntencaoCobranca) {
         contratoPixAutomaticoId: dados.contratoPixAutomaticoId,
         tipo: dados.tipo,
         externalReference,
+        valorCobrado: mensalidade.valor,
         vencimentoAsaas: dados.vencimentoAsaas,
         geracao,
       },
     })
-    return { ok: true as const, proprietaria: true as const, intencao }
+    const splits = await prepararSplitsPagamento(tx, {
+      cobrancaAsaasId: intencao.id,
+      repasseSnapshot: mensalidade.repasseSnapshot,
+      valorCobranca: mensalidade.valor,
+      externalReferenceCobranca: intencao.externalReference,
+    })
+    return { ok: true as const, proprietaria: true as const, intencao: { ...intencao, splits } }
   })
 }
 
@@ -360,6 +383,7 @@ async function criarOuRecuperarCobrancaRemota(params: {
   dueDate: Date
   description: string
   pixAutomaticAuthorizationId?: string
+  split?: ReturnType<typeof payloadSplitAsaas>
 }) {
   const encontradas = await listarCobrancasAsaas({
     externalReference: params.externalReference,
@@ -378,6 +402,7 @@ async function criarOuRecuperarCobrancaRemota(params: {
     description: params.description,
     externalReference: params.externalReference,
     pixAutomaticAuthorizationId: params.pixAutomaticAuthorizationId,
+    split: params.split,
   })
 }
 
@@ -388,10 +413,10 @@ async function persistirCobrancaRemota(
   autorId: string | null = null,
 ) {
   const qrCode = incluirQrCode ? await obterQrCodePixAsaas(remota.id) : null
-  const cobranca = await db.$transaction(async (tx) => {
+  const persistencia = await db.$transaction(async (tx) => {
     const referencia = await tx.cobrancaAsaas.findUniqueOrThrow({
       where: { id: cobrancaId },
-      select: { mensalidadeId: true },
+      select: { mensalidadeId: true, splits: { orderBy: { criadoEm: "asc" } } },
     })
     await bloquearMensalidades(tx, [referencia.mensalidadeId])
     const anterior = await tx.cobrancaAsaas.findUniqueOrThrow({ where: { id: cobrancaId } })
@@ -423,6 +448,20 @@ async function persistirCobrancaRemota(
         ultimoErro: null,
       },
     })
+    const resultadoSplit = await persistirSplitsRemotos(tx, referencia.splits, remota)
+    if (!resultadoSplit.ok) {
+      const comErro = await tx.cobrancaAsaas.update({
+        where: { id: cobranca.id },
+        data: {
+          status: "ERRO",
+          ativa: false,
+          pixCopiaECola: null,
+          qrCodeExpiraEm: null,
+          ultimoErro: resultadoSplit.motivo,
+        },
+      })
+      return { cobranca: comErro, erroSplit: resultadoSplit.motivo }
+    }
     if (anterior.asaasPaymentId !== cobranca.asaasPaymentId) {
       await registrarLog(
         {
@@ -440,8 +479,10 @@ async function persistirCobrancaRemota(
         tx,
       )
     }
-    return cobranca
+    return { cobranca, erroSplit: null }
   })
+  if (persistencia.erroSplit) throw new Error(persistencia.erroSplit)
+  const cobranca = persistencia.cobranca
 
   const evento = eventoPagamentoParaStatusAsaas(remota.status)
   if (evento) {
@@ -460,6 +501,7 @@ async function persistirCobrancaRemota(
         paymentDate: remota.paymentDate,
         conciliationIdentifier: remota.conciliationIdentifier,
         pixAutomaticAuthorizationId: remota.pixAutomaticAuthorizationId,
+        split: remota.split,
       },
     })
     if (!resultado.ok) throw new Error(resultado.motivo)
@@ -563,6 +605,7 @@ export async function gerarCobrancaPixMensal(params: {
           value: Number(mensalidade.valor),
           dueDate: intencao.vencimentoAsaas ?? vencimentoAsaas,
           description: descricaoMensalidade(mensalidade.competencia),
+          split: payloadSplitAsaas(intencao.splits),
         })
     const cobranca = await persistirCobrancaRemota(intencao.id, remota, true, params.autorId)
     return { ok: true as const, cobranca }
@@ -1027,7 +1070,7 @@ async function reservarFallbackAutomatico(params: {
     await bloquearMensalidades(tx, [params.mensalidadeId])
     const mensalidade = await tx.mensalidade.findUnique({
       where: { id: params.mensalidadeId },
-      select: { status: true },
+      select: { status: true, valor: true, repasseSnapshot: true },
     })
     if (!mensalidade || !STATUS_MENSALIDADE_COBRAVEL.includes(mensalidade.status as never)) {
       return { ok: false as const, motivo: "Esta mensalidade não aceita uma nova cobrança." }
@@ -1036,6 +1079,7 @@ async function reservarFallbackAutomatico(params: {
     const ultima = await tx.cobrancaAsaas.findFirst({
       where: { mensalidadeId: params.mensalidadeId },
       orderBy: { geracao: "desc" },
+      include: { splits: { orderBy: { criadoEm: "asc" } } },
     })
     if (ultima?.ativa && ultima.tipo === "PIX_AUTOMATICO_FALLBACK") {
       if (ultima.asaasPaymentId) {
@@ -1046,9 +1090,15 @@ async function reservarFallbackAutomatico(params: {
       }
       const intencao = await tx.cobrancaAsaas.update({
         where: { id: ultima.id },
-        data: { status: "CRIANDO", ultimoErro: null },
+        data: { status: "CRIANDO", valorCobrado: mensalidade.valor, ultimoErro: null },
       })
-      return { ok: true as const, proprietaria: true as const, intencao }
+      const splits = await prepararSplitsPagamento(tx, {
+        cobrancaAsaasId: intencao.id,
+        repasseSnapshot: mensalidade.repasseSnapshot,
+        valorCobranca: mensalidade.valor,
+        externalReferenceCobranca: intencao.externalReference,
+      })
+      return { ok: true as const, proprietaria: true as const, intencao: { ...intencao, splits } }
     }
     if (ultima?.ativa && ultima.asaasPaymentId) {
       return { ok: false as const, motivo: "O ciclo já possui uma cobrança remota ativa." }
@@ -1071,11 +1121,18 @@ async function reservarFallbackAutomatico(params: {
         contratoPixAutomaticoId: params.contratoId,
         tipo: "PIX_AUTOMATICO_FALLBACK",
         externalReference: `pixauto-fallback:${params.contratoId}:${params.numeroCiclo}:${geracao}`,
+        valorCobrado: mensalidade.valor,
         vencimentoAsaas: params.vencimentoAsaas,
         geracao,
       },
     })
-    return { ok: true as const, proprietaria: true as const, intencao }
+    const splits = await prepararSplitsPagamento(tx, {
+      cobrancaAsaasId: intencao.id,
+      repasseSnapshot: mensalidade.repasseSnapshot,
+      valorCobranca: mensalidade.valor,
+      externalReferenceCobranca: intencao.externalReference,
+    })
+    return { ok: true as const, proprietaria: true as const, intencao: { ...intencao, splits } }
   })
 }
 
@@ -1199,6 +1256,7 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
           ? `Mensalidade ${numero} de ${TOTAL_CICLOS_PIX_AUTOMATICO}`
           : `Mensalidade ${numero} de ${TOTAL_CICLOS_PIX_AUTOMATICO} — contingência`,
         pixAutomaticAuthorizationId: dentroDaJanela ? authorizationId : undefined,
+        split: payloadSplitAsaas(intencao.splits),
       })
       await persistirCobrancaRemota(intencao.id, remota, !dentroDaJanela)
       if (!dentroDaJanela && reserva.proprietaria) {
@@ -2207,8 +2265,55 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
     })
     if (inserido.count === 0) return { ok: true as const, duplicado: true }
 
+    if (webhook.account && webhook.accountStatus) {
+      const aplicada = await aplicarStatusContaAsaasDoWebhook(tx, {
+        accountId: webhook.account.id,
+        general: webhook.accountStatus.general,
+        evento: webhook.event,
+      })
+      if (!aplicada) {
+        await tx.eventoWebhookAsaas.delete({ where: { asaasEventId: webhook.id } })
+        return {
+          ok: false as const,
+          duplicado: false,
+          motivo: "A conta ainda não foi materializada localmente; o evento deve ser reenviado.",
+        }
+      }
+      return { ok: true as const, duplicado: false }
+    }
+
+    if (webhook.event.startsWith("PAYMENT_SPLIT_")) {
+      const atualizados = await reconciliarSplitsWebhook(tx, {
+        evento: webhook.event,
+        splitId: webhook.additionalInfo?.splitId,
+        splits: webhook.payment?.split,
+        asaasPaymentId: webhook.payment?.id,
+      })
+      if (
+        atualizados.length === 0 &&
+        (webhook.additionalInfo?.splitId ||
+          referenciaPagamentoEcvo(webhook.payment?.externalReference))
+      ) {
+        await tx.eventoWebhookAsaas.delete({ where: { asaasEventId: webhook.id } })
+        return {
+          ok: false as const,
+          duplicado: false,
+          motivo: "O split ainda não foi materializado localmente; o evento deve ser reenviado.",
+        }
+      }
+      return { ok: true as const, duplicado: false }
+    }
+
     let contratoIdAfetado: string | null = null
     const statusPagamento = statusCobrancaPorEvento(webhook.event)
+
+    if (webhook.payment?.split) {
+      await reconciliarSplitsWebhook(tx, {
+        evento: webhook.event,
+        splits: webhook.payment.split,
+        asaasPaymentId: webhook.payment.id,
+      })
+    }
 
     if (webhook.payment && statusPagamento) {
       const cobrancaMatricula = await tx.cobrancaMatriculaAsaas.findFirst({
@@ -2729,6 +2834,7 @@ export async function processarWebhookAsaas(webhook: WebhookAsaas) {
         paymentDate: remota.paymentDate,
         conciliationIdentifier: remota.conciliationIdentifier,
         pixAutomaticAuthorizationId: remota.pixAutomaticAuthorizationId,
+        split: remota.split,
       },
     })
   }

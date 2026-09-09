@@ -203,6 +203,13 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **RF-053.5** O próprio aluno e o gestor podem cancelar o PIX Automático. Antes de liberar o modo mensal
   ou uma baixa manual, o sistema consulta a conta Asaas, preserva cobranças recebidas, encerra a autorização
   e remove somente cobranças pendentes, com estados transitórios e auditoria para tolerar concorrência.
+- **RF-053.6** Novas cobranças de mensalidade e da primeira mensalidade da matrícula enviam ao Asaas um
+  split fixo por wallet habilitada, usando o `valorRepasseProfessor` congelado para cada modalidade. Itens
+  do mesmo professor são agregados. Modalidade sem professor único ou conta sem aprovação geral permanece
+  como repasse manual, sem impedir o pagamento do aluno. Cada tentativa preserva seus próprios IDs, valores
+  e estados do split. O relatório distingue direito total, split concluído, split em processamento e saldo
+  manual. O QR inicial do PIX Automático não possui split por limitação do provedor; os ciclos futuros em
+  modo `MANUAL` possuem.
 - **RF-053.2** Da sobra mensal após os professores, são abatidos primeiro R$ 2.670,00 de custos fixos
   (aluguel, água, luz e internet). Um déficit é exibido como valor negativo em vermelho; saldo zero ou
   positivo é exibido em verde. Somente o saldo positivo é dividido igualmente entre Caixa/investimento,

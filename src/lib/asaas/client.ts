@@ -77,6 +77,17 @@ export type DadosCriacaoSubcontaAsaas = {
   complement?: string
   province: string
   postalCode: string
+  webhooks?: Array<{
+    name: string
+    url: string
+    email: string
+    enabled: boolean
+    interrupted: boolean
+    apiVersion: number
+    authToken: string
+    sendType: "SEQUENTIALLY" | "NON_SEQUENTIALLY"
+    events: string[]
+  }>
 }
 
 export type FiltrosSubcontasAsaas = {
@@ -136,6 +147,20 @@ export type CobrancaAsaas = {
   pixTransaction?: string | null
   conciliationIdentifier?: string | null
   pixAutomaticAuthorizationId?: string | null
+  split?: SplitCobrancaAsaas[]
+}
+
+export type SplitCobrancaAsaas = {
+  id?: string
+  walletId: string
+  fixedValue?: number
+  percentualValue?: number
+  totalValue?: number
+  status?: string
+  refusalReason?: string | null
+  cancellationReason?: string | null
+  externalReference?: string | null
+  description?: string | null
 }
 
 export type ExclusaoCobrancaAsaas = {
@@ -151,6 +176,12 @@ export type DadosCriacaoCobrancaAsaas = {
   description?: string
   externalReference?: string
   pixAutomaticAuthorizationId?: string
+  split?: Array<{
+    walletId: string
+    fixedValue: number
+    externalReference?: string
+    description?: string
+  }>
 }
 
 export type FiltrosCobrancasAsaas = {

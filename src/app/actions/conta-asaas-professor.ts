@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { exigirPapel, exigirProfessor } from "@/lib/auth/dal"
 import {
+  confirmarAprovacaoContaAsaasProfessor,
   obterContaAsaasProfessor,
   solicitarCriacaoContaAsaasProfessor,
 } from "@/lib/services/conta-asaas-professor.service"
@@ -14,6 +15,25 @@ export type EstadoContaAsaasProfessor =
 
 function primeiroErro(issues: { message: string }[]) {
   return issues[0]?.message ?? "Confira os dados informados."
+}
+
+export async function acaoConfirmarAprovacaoContaAsaasProfessor(
+  _: EstadoContaAsaasProfessor,
+  formData: FormData,
+): Promise<EstadoContaAsaasProfessor> {
+  const usuario = await exigirPapel("GESTOR")
+  const professorId = formData.get("professorId")
+  if (typeof professorId !== "string" || !professorId) return { erro: "Professor inválido." }
+  if (formData.get("confirmacao") !== "APROVACAO_ASAAS_CONFIRMADA") {
+    return { erro: "Confirme a aprovação cadastral exibida no painel do Asaas." }
+  }
+  const resultado = await confirmarAprovacaoContaAsaasProfessor({
+    professorId,
+    autorId: usuario.id,
+  })
+  revalidatePath("/gestao/professores")
+  revalidatePath("/professor/perfil")
+  return resultado.ok ? { ok: true } : { erro: resultado.motivo }
 }
 
 export async function acaoSolicitarCriacaoContaAsaasProfessor(

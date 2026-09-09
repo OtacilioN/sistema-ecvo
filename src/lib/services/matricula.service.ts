@@ -604,6 +604,13 @@ export async function aprovarMatricula(
         })
         if (!mensalidade.ok) throw new ErroMatricula(mensalidade.motivo)
 
+        if (cobrancaMatricula.repasseSnapshot) {
+          await tx.mensalidade.update({
+            where: { id: mensalidade.mensalidade.id },
+            data: { repasseSnapshot: cobrancaMatricula.repasseSnapshot },
+          })
+        }
+
         await tx.clienteAsaas.create({
           data: {
             alunoId: usuario.aluno.id,
@@ -626,7 +633,12 @@ export async function aprovarMatricula(
             invoiceUrl: cobrancaMatricula.invoiceUrl,
             ultimoEventoAsaas: cobrancaMatricula.ultimoEventoAsaas,
             recebidaEmAsaas: cobrancaMatricula.recebidaEmAsaas,
+            valorCobrado: cobrancaMatricula.valor,
           },
+        })
+        await tx.splitPagamentoAsaas.updateMany({
+          where: { cobrancaMatriculaAsaasId: cobrancaMatricula.id },
+          data: { cobrancaMatriculaAsaasId: null, cobrancaAsaasId: cobrancaCanonica.id },
         })
         await tx.mensalidade.update({
           where: { id: mensalidade.mensalidade.id },
