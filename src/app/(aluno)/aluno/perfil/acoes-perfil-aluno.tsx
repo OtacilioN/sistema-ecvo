@@ -40,11 +40,13 @@ type DialogoPerfil = "dados" | "foto" | "senha" | null
 export function AcoesPerfilAluno({
   aluno,
   usuarioFoto,
+  abrirEdicaoInicial = false,
 }: {
   aluno: AlunoPerfil
   usuarioFoto: UsuarioFoto
+  abrirEdicaoInicial?: boolean
 }) {
-  const [dialogo, setDialogo] = useState<DialogoPerfil>(null)
+  const [dialogo, setDialogo] = useState<DialogoPerfil>(abrirEdicaoInicial ? "dados" : null)
 
   return (
     <>

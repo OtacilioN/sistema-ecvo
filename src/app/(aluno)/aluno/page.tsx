@@ -1,4 +1,5 @@
 import { CalendarCheck, CalendarClock, CalendarX, Clock, MapPin } from "lucide-react"
+import { AvisoCpfPendente } from "@/components/aviso-cpf-pendente"
 import { LembreteAtivarNotificacoes } from "@/components/lembrete-ativar-notificacoes"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -18,9 +19,11 @@ export default async function AlunoAgenda() {
     db.aluno.findUnique({
       where: { id: alunoId },
       select: {
+        cpf: true,
         status: true,
         tipo: true,
         planoId: true,
+        responsavel: { select: { cpf: true, responsavelFinanceiro: true } },
         solicitacaoMatricula: { select: { tipoPagamento: true } },
         modalidades: { where: { ativa: true }, select: { id: true } },
         modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
@@ -194,6 +197,8 @@ export default async function AlunoAgenda() {
           </div>
         </div>
       </div>
+
+      {aluno && <AvisoCpfPendente cpf={aluno.cpf} responsavel={aluno.responsavel} />}
 
       <LembreteAtivarNotificacoes />
 

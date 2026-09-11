@@ -1,4 +1,5 @@
 import QRCode from "qrcode"
+import { AvisoCpfPendente } from "@/components/aviso-cpf-pendente"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { situacaoConversaoAulaAvulsa } from "@/lib/aula-avulsa"
@@ -23,6 +24,7 @@ export default async function Page() {
       where: { id: alunoId },
       include: {
         plano: true,
+        responsavel: { select: { cpf: true, responsavelFinanceiro: true } },
         modalidadesPlano: { select: { modalidade: { select: { nome: true } } } },
         mensalidades: {
           orderBy: { vencimento: "desc" },
@@ -115,6 +117,8 @@ export default async function Page() {
         <h1 className="text-xl font-bold tracking-tight">Financeiro</h1>
         <p className="text-sm text-muted-foreground">Plano, mensalidades e pagamentos.</p>
       </div>
+
+      <AvisoCpfPendente cpf={aluno.cpf} responsavel={aluno.responsavel} />
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>

@@ -96,7 +96,12 @@ const VARIANTE_COMPARECIMENTO: Record<StatusComparecimento, BadgeProps["variant"
   NO_SHOW: "warning",
 }
 
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ editar?: string | string[] }>
+}) {
+  const { editar } = await searchParams
   const { alunoId } = await exigirAluno()
   const [aluno, horas, historicoObservacoesTecnicas] = await Promise.all([
     db.aluno.findUnique({
@@ -320,6 +325,7 @@ export default async function Page() {
             </div>
             <AcoesPerfilAluno
               aluno={dadosPessoaisAluno}
+              abrirEdicaoInicial={editar === "dados"}
               usuarioFoto={{
                 id: aluno.usuario.id,
                 nome: aluno.usuario.nome,
