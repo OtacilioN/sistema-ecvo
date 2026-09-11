@@ -16,8 +16,8 @@ export default async function GestoresPage() {
   return (
     <div className="space-y-6">
       <CabecalhoPagina
-        titulo="Acessos"
-        descricao="Contas de gestores, secretaria e operação isolada da loja."
+        titulo="Gestores"
+        descricao="Contas administrativas da academia: gestores e secretaria."
       >
         {podeEditar && <BotaoNovoGestor />}
       </CabecalhoPagina>
@@ -59,11 +59,7 @@ export default async function GestoresPage() {
                     </td>
                     <td className="p-4" data-label="Perfil">
                       <Badge variant={gestor.papel === "GESTOR" ? "default" : "outline"}>
-                        {gestor.papel === "GESTOR"
-                          ? "Gestor"
-                          : gestor.papel === "SECRETARIA"
-                            ? "Secretaria"
-                            : "Loja"}
+                        {gestor.papel === "GESTOR" ? "Gestor" : "Secretaria"}
                       </Badge>
                     </td>
                     <td className="p-4" data-label="Criado em">

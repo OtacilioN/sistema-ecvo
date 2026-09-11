@@ -27,10 +27,6 @@ const mocks = vi.hoisted(() => {
     },
     aluno: { update: vi.fn() },
     contaAsaasProfessor: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-    contaAsaasLoja: { findUnique: vi.fn(), update: vi.fn() },
-    cobrancaLojaAsaas: { findFirst: vi.fn(), update: vi.fn() },
-    pedidoLoja: { update: vi.fn() },
-    splitLojaAsaas: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     splitPagamentoAsaas: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -158,10 +154,6 @@ describe("processarWebhookAsaas", () => {
     mocks.tx.eventoWebhookAsaas.createMany.mockResolvedValue({ count: 1 })
     mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
     mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([])
-    mocks.tx.contaAsaasLoja.findUnique.mockResolvedValue(null)
-    mocks.tx.cobrancaLojaAsaas.findFirst.mockResolvedValue(null)
-    mocks.tx.splitLojaAsaas.findFirst.mockResolvedValue(null)
-    mocks.tx.splitLojaAsaas.findUnique.mockResolvedValue(null)
     mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([])
     mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(null)
     mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
@@ -235,78 +227,6 @@ describe("processarWebhookAsaas", () => {
         ultimoEventoAsaas: "ACCOUNT_STATUS_GENERAL_APPROVAL_APPROVED",
       },
     })
-  })
-
-  it("roteia a aprovação cadastral para a subconta isolada da loja", async () => {
-    mocks.tx.contaAsaasProfessor.findUnique.mockResolvedValue(null)
-    mocks.tx.contaAsaasLoja.findUnique.mockResolvedValue({
-      id: "principal",
-      status: "AGUARDANDO_APROVACAO",
-      statusGeralAsaas: "AWAITING_APPROVAL",
-    })
-    mocks.tx.contaAsaasLoja.update.mockResolvedValue({})
-
-    const resultado = await processarWebhookAsaas({
-      id: "evt_account_loja_1",
-      event: "ACCOUNT_STATUS_GENERAL_APPROVAL_APPROVED",
-      account: { id: "acc_loja" },
-      accountStatus: { general: "APPROVED" },
-    })
-
-    expect(resultado).toEqual({ ok: true, duplicado: false })
-    expect(mocks.tx.contaAsaasLoja.update).toHaveBeenCalledWith({
-      where: { id: "principal" },
-      data: {
-        status: "HABILITADA",
-        statusGeralAsaas: "APPROVED",
-        ultimoEventoAsaas: "ACCOUNT_STATUS_GENERAL_APPROVAL_APPROVED",
-      },
-    })
-  })
-
-  it("quita um pedido da loja sem tocar em mensalidade escolar", async () => {
-    mocks.tx.cobrancaLojaAsaas.findFirst.mockResolvedValue({
-      id: "cobranca-loja-1",
-      pedidoId: "pedido-loja-1",
-      valor: 149.9,
-      status: "PENDENTE",
-      externalReference: "loja:pedido:pedido-loja-1:tentativa:1",
-    })
-    mocks.tx.cobrancaLojaAsaas.update.mockResolvedValue({})
-    mocks.tx.pedidoLoja.update.mockResolvedValue({})
-    mocks.obterCobrancaAsaas.mockResolvedValue({
-      ...pagamentoRemoto(),
-      id: "pay_loja_1",
-      value: 149.9,
-      externalReference: "loja:pedido:pedido-loja-1:tentativa:1",
-    })
-
-    const resultado = await processarWebhookAsaas({
-      id: "evt_loja_1",
-      event: "PAYMENT_RECEIVED",
-      dateCreated: "2026-09-09T15:00:00.000Z",
-      payment: {
-        id: "pay_loja_1",
-        value: 149.9,
-        status: "RECEIVED",
-        externalReference: "loja:pedido:pedido-loja-1:tentativa:1",
-      },
-    })
-
-    expect(resultado).toEqual({ ok: true, duplicado: false })
-    expect(mocks.tx.cobrancaLojaAsaas.update).toHaveBeenCalledWith({
-      where: { id: "cobranca-loja-1" },
-      data: expect.objectContaining({
-        asaasPaymentId: "pay_loja_1",
-        status: "RECEBIDA",
-        ativa: false,
-      }),
-    })
-    expect(mocks.tx.pedidoLoja.update).toHaveBeenCalledWith({
-      where: { id: "pedido-loja-1" },
-      data: { status: "PAGO" },
-    })
-    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
   })
 
   it("concilia a liquidação individual do split", async () => {

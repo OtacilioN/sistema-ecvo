@@ -64,7 +64,6 @@ function expiraEm(expirationTime?: number | null): Date | null {
 function urlNotificacoesPorPapel(papel: Papel): string {
   if (papel === "ALUNO") return "/aluno/notificacoes"
   if (papel === "PROFESSOR") return "/professor/notificacoes"
-  if (papel === "LOJA") return "/loja/painel"
   return "/gestao/notificacoes"
 }
 

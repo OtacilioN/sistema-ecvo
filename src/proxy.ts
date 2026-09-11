@@ -11,14 +11,12 @@ const PREFIXO_POR_PAPEL: Record<string, string> = {
   SECRETARIA: "/gestao",
   PROFESSOR: "/professor",
   ALUNO: "/aluno",
-  LOJA: "/loja/painel",
 }
 
 const PAPEIS_POR_PREFIXO: Record<string, string[]> = {
   "/gestao": ["GESTOR", "SECRETARIA"],
   "/professor": ["PROFESSOR"],
   "/aluno": ["ALUNO"],
-  "/loja/painel": ["LOJA", "GESTOR"],
 }
 
 const ROTAS_PUBLICAS = ["/login", "/matricula"]

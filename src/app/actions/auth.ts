@@ -156,7 +156,7 @@ export async function acaoAtualizarFotoUsuario(
   return { ok: true }
 }
 
-function revalidarFotoUsuario(papel?: "GESTOR" | "SECRETARIA" | "PROFESSOR" | "ALUNO" | "LOJA") {
+function revalidarFotoUsuario(papel?: "GESTOR" | "SECRETARIA" | "PROFESSOR" | "ALUNO") {
   revalidatePath("/gestao/auditoria")
   revalidatePath("/gestao/usuarios")
   revalidatePath("/gestao/gestores")
@@ -170,5 +170,4 @@ function revalidarFotoUsuario(papel?: "GESTOR" | "SECRETARIA" | "PROFESSOR" | "A
     revalidatePath("/aluno/perfil")
     revalidatePath("/gestao/alunos")
   }
-  if (!papel || papel === "LOJA") revalidatePath("/loja/painel")
 }

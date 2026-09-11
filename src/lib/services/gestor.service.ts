@@ -4,11 +4,11 @@ import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 
-// Serviço de acessos administrativos. LOJA permanece isolada da gestão da academia.
+// Serviço de GESTORES. O MVP prevê múltiplos gestores administrando a academia.
 
 export function listarGestores() {
   return db.usuario.findMany({
-    where: { papel: { in: ["GESTOR", "SECRETARIA", "LOJA"] } },
+    where: { papel: { in: ["GESTOR", "SECRETARIA"] } },
     orderBy: [{ papel: "asc" }, { nome: "asc" }],
     select: {
       id: true,
@@ -29,7 +29,7 @@ export async function criarGestor(params: {
   email: string
   senha: string
   dataNascimento?: Date | null
-  papel?: Extract<Papel, "GESTOR" | "SECRETARIA" | "LOJA">
+  papel?: Extract<Papel, "GESTOR" | "SECRETARIA">
   autorId: string
 }) {
   const senhaHash = await gerarHashSenha(params.senha)
@@ -50,12 +50,7 @@ export async function criarGestor(params: {
     await registrarLog(
       {
         autorId: params.autorId,
-        acao:
-          papel === "GESTOR"
-            ? "GESTOR_CRIADO"
-            : papel === "SECRETARIA"
-              ? "SECRETARIA_CRIADA"
-              : "LOJA_CRIADA",
+        acao: papel === "GESTOR" ? "GESTOR_CRIADO" : "SECRETARIA_CRIADA",
         entidade: "Usuario",
         entidadeId: gestor.id,
         valorNovo: {

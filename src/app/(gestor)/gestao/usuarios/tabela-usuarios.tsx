@@ -29,7 +29,6 @@ const ROTULO_PAPEL: Record<Papel, string> = {
   SECRETARIA: "Secretaria",
   PROFESSOR: "Professor",
   ALUNO: "Aluno",
-  LOJA: "Loja",
 }
 
 const VARIANTE_PAPEL: Record<Papel, BadgeProps["variant"]> = {
@@ -37,7 +36,6 @@ const VARIANTE_PAPEL: Record<Papel, BadgeProps["variant"]> = {
   SECRETARIA: "outline",
   PROFESSOR: "outline",
   ALUNO: "secondary",
-  LOJA: "outline",
 }
 
 function detalheOperacional(usuario: UsuarioAcessoLinha) {
@@ -46,7 +44,6 @@ function detalheOperacional(usuario: UsuarioAcessoLinha) {
     if (usuario.professorAtivo === null) return "Sem vínculo"
     return usuario.professorAtivo ? "Professor ativo" : "Professor inativo"
   }
-  if (usuario.papel === "LOJA") return "Acesso exclusivo ao painel da loja"
   return usuario.papel === "SECRETARIA" ? "Acesso de secretaria" : "Acesso administrativo"
 }
 

@@ -17,7 +17,6 @@ export const HOME_POR_PAPEL: Record<Papel, string> = {
   SECRETARIA: "/gestao",
   PROFESSOR: "/professor",
   ALUNO: "/aluno",
-  LOJA: "/loja/painel",
 }
 
 const ROTA_SESSAO_INVALIDA = "/api/auth/sessao-invalida"
@@ -91,9 +90,4 @@ export async function exigirProfessor() {
   const usuario = await exigirPapel("PROFESSOR")
   if (!usuario.professor) redirect(ROTA_SESSAO_INVALIDA)
   return { usuario, professorId: usuario.professor.id }
-}
-
-/** Atalho: painel comercial isolado, acessível pela Loja e diretamente pelo Gestor. */
-export async function exigirLoja() {
-  return exigirPapel("LOJA", "GESTOR")
 }

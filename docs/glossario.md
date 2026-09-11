@@ -30,8 +30,6 @@ O modelo técnico legado `Comparecimento` representa o agendamento da aula pelo 
 | **Avulso** | Aluno que paga por aula, diária, pacote, seminário ou evento pontual. |
 | **Adimplência / Inadimplência** | Situação de pagamento de plano mensal interno (em dia / em atraso). Pode bloquear agendamento/check-in conforme configuração (RF-051). |
 | **Repasse financeiro** | Divisão da arrecadação: primeiro o repasse dos professores; depois R$ 2.670,00 de custos fixos mensais; por fim, o saldo positivo é dividido igualmente entre Caixa/investimento, Sócio A e Sócio B. |
-| **ECVO Loja** | Operação comercial separada da escola. Seus pedidos, cobranças e splits não compõem mensalidades, pagamentos avulsos ou relatórios escolares. |
-| **Split da Loja** | Repasse automático de 100% do valor líquido da cobrança, depois das taxas do Asaas, para a wallet aprovada da subconta da Loja. |
 | **Conciliação** | Comparação dos registros importados (Wellhub/TotalPass) com o histórico interno de check-ins (RF-060). |
 | **Divergência** | Registro importado que não casa com o histórico interno (aluno não identificado, data/horário divergente, check-in invalidado etc.). |
 | **No-show** | Aluno agendou a aula mas não fez check-in (RF-018). |
