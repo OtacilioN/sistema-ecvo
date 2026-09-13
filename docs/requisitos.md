@@ -193,6 +193,10 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   uma cobrança dinâmica e um QR Code de uso único, sem alterar o valor histórico da mensalidade. A primeira
   cobrança também pode nascer na solicitação pública, antes da existência do aluno, e é transferida para a
   mensalidade canônica durante a aprovação.
+  Na geração mensal, o CPF do pagador efetivo deve ser válido antes de reservar uma intenção local:
+  quando há responsável financeiro, seu CPF é obrigatório e não é substituído pelo CPF do aluno.
+  Se o cadastro se tornar inválido após a reserva, somente a tentativa ainda sob responsabilidade
+  daquela operação é marcada como erro, com auditoria.
 - **RF-053.4** O gestor pode habilitar PIX Automático semestral para um aluno, e o próprio aluno pode
   habilitá-lo para si. O sistema materializa exatamente seis competências mensais pelo valor da mensalidade:
   o QR inicial paga a primeira e solicita a autorização; após a autorização ativa, somente as cinco
@@ -200,6 +204,11 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   confirmados na API e idempotentes conciliam pagamento, vencimento, estorno e autorização. Se a janela
   de uma instrução for perdida, o sistema emite uma única cobrança PIX de contingência para a mesma
   competência, alerta aluno e gestores e mantém os ciclos seguintes automáticos.
+  A intenção do QR inicial sem ID de pagamento é conciliada pela autorização; após o vínculo, o
+  pagamento inicial é consultado por seu ID remoto. Cobranças mensais continuam sendo pesquisadas
+  pela referência externa, incluindo a detecção de duplicidade. Intenções antigas sem cobrança
+  remota preservam a causa original do erro; a reconciliação não pode sobrescrever pagamentos
+  recebidos ou tentativas retomadas enquanto a consulta está em andamento.
 - **RF-053.5** O próprio aluno e o gestor podem cancelar o PIX Automático. Antes de liberar o modo mensal
   ou uma baixa manual, o sistema consulta a conta Asaas, preserva cobranças recebidas, encerra a autorização
   e remove somente cobranças pendentes, com estados transitórios e auditoria para tolerar concorrência.

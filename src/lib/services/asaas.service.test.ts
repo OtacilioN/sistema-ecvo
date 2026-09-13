@@ -492,6 +492,62 @@ describe("processarWebhookAsaas", () => {
     })
   })
 
+  it("limpa somente o aviso falso quando a autorização inicial continua pendente", async () => {
+    const contrato = {
+      id: "contrato-1",
+      alunoId: "aluno-1",
+      status: "PENDENTE_AUTORIZACAO" as const,
+      valor: 150,
+      inicio: new Date("2026-09-10T15:00:00.000Z"),
+      fim: new Date("2027-02-10T15:00:00.000Z"),
+      aluno: { clienteAsaas: { asaasCustomerId: "cus_1" } },
+    }
+    const cobrancaInicial = {
+      id: "cobranca-inicial",
+      status: "PENDENTE" as const,
+      externalReference: "pixauto:contrato-1:1",
+      ultimoErro: "A intenção local não possui cobrança correspondente no Asaas.",
+    }
+    mocks.db.contratoPixAutomatico.findUnique.mockResolvedValue(contrato)
+    mocks.obterAutorizacaoPixAutomaticoAsaas.mockResolvedValue({
+      id: "auth-1",
+      customerId: "cus_1",
+      contractId: "ecvo-contrato-1",
+      status: "CREATED",
+      frequency: "MONTHLY",
+      paymentCreationMode: "MANUAL",
+      retryPolicy: "NOT_ALLOWED",
+      value: 150,
+      startDate: "2026-09-10",
+      finishDate: "2027-02-10",
+    })
+    mocks.tx.contratoPixAutomatico.findUnique.mockResolvedValue({
+      ...contrato,
+      mensalidades: [
+        {
+          id: "mensalidade-1",
+          cobrancasAsaas: [cobrancaInicial],
+        },
+      ],
+    })
+    mocks.tx.contratoPixAutomatico.update.mockResolvedValue(contrato)
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_auth_created",
+      event: "PIX_AUTOMATIC_RECURRING_AUTHORIZATION_CREATED",
+      authorization: { id: "auth-1" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.cobrancaAsaas.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: cobrancaInicial.id,
+        ultimoErro: "A intenção local não possui cobrança correspondente no Asaas.",
+      },
+      data: { ultimoErro: null },
+    })
+  })
+
   it("não consome instrução automática antes de a cobrança local receber o ID remoto", async () => {
     mocks.db.cobrancaAsaas.findUnique.mockResolvedValue(null)
     mocks.db.contratoPixAutomatico.findUnique.mockResolvedValue(null)
@@ -979,6 +1035,250 @@ describe("processarWebhookAsaas", () => {
 })
 
 describe("reconciliarPendenciasAsaas", () => {
+  it("não trata a intenção inicial sem pagamento remoto como uma cobrança convencional", async () => {
+    vi.clearAllMocks()
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+
+    const resultado = await reconciliarPendenciasAsaas()
+
+    expect(resultado).toMatchObject({ ok: true, pagamentosAnalisados: 0 })
+    const consulta = mocks.db.cobrancaAsaas.findMany.mock.calls[0]?.[0]
+    expect(consulta.where.AND).toContainEqual({
+      OR: [{ tipo: { not: "PIX_AUTOMATICO_INICIAL" } }, { asaasPaymentId: { not: null } }],
+    })
+    expect(mocks.listarCobrancasAsaas).not.toHaveBeenCalled()
+  })
+
+  it("marca como erro a intenção antiga ausente no Asaas sem apagar a causa original", async () => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"))
+    const intencao = {
+      ...cobrancaLocal,
+      asaasPaymentId: null,
+      status: "CRIANDO" as const,
+      ultimoErro: "Informe um CPF válido para o aluno.",
+      atualizadoEm: new Date("2026-09-11T11:00:00.000Z"),
+    }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([intencao])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockResolvedValue({ data: [], totalCount: 0, hasMore: false })
+    mocks.tx.cobrancaAsaas.updateMany.mockReset().mockResolvedValue({ count: 1 })
+
+    const resultado = await reconciliarPendenciasAsaas()
+
+    expect(resultado).toMatchObject({
+      ok: false,
+      falhasPagamentos: [
+        { cobrancaId: intencao.id, motivo: "Informe um CPF válido para o aluno." },
+      ],
+    })
+    expect(mocks.tx.cobrancaAsaas.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: intencao.id,
+        status: intencao.status,
+        asaasPaymentId: null,
+        atualizadoEm: intencao.atualizadoEm,
+      },
+      data: { status: "ERRO", ultimoErro: "Informe um CPF válido para o aluno." },
+    })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autorId: null,
+        entidadeId: intencao.id,
+        valorAntigo: { status: "CRIANDO", ultimoErro: intencao.ultimoErro },
+        valorNovo: { status: "ERRO", ultimoErro: intencao.ultimoErro },
+      }),
+      mocks.tx,
+    )
+  })
+
+  it("usa a mensagem genérica somente quando a intenção antiga não possui causa", async () => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"))
+    const intencao = {
+      ...cobrancaLocal,
+      asaasPaymentId: null,
+      status: "CRIANDO" as const,
+      ultimoErro: null,
+      atualizadoEm: new Date("2026-09-11T11:00:00.000Z"),
+    }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([intencao])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockResolvedValue({ data: [], totalCount: 0, hasMore: false })
+    mocks.tx.cobrancaAsaas.updateMany.mockReset().mockResolvedValue({ count: 1 })
+
+    const resultado = await reconciliarPendenciasAsaas()
+
+    expect(resultado.falhasPagamentos).toEqual([
+      {
+        cobrancaId: intencao.id,
+        motivo: "A intenção local não possui cobrança correspondente no Asaas.",
+      },
+    ])
+    expect(mocks.tx.cobrancaAsaas.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: intencao.id,
+        status: intencao.status,
+        asaasPaymentId: null,
+        atualizadoEm: intencao.atualizadoEm,
+      },
+      data: {
+        status: "ERRO",
+        ultimoErro: "A intenção local não possui cobrança correspondente no Asaas.",
+      },
+    })
+  })
+
+  it("aguarda o prazo da reserva antes de classificar a intenção como ausente", async () => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"))
+    const intencao = {
+      ...cobrancaLocal,
+      asaasPaymentId: null,
+      status: "CRIANDO" as const,
+      ultimoErro: null,
+      atualizadoEm: new Date("2026-09-11T11:59:00.000Z"),
+    }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([intencao])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockResolvedValue({ data: [], totalCount: 0, hasMore: false })
+    mocks.tx.cobrancaAsaas.updateMany.mockReset().mockResolvedValue({ count: 1 })
+
+    const resultado = await reconciliarPendenciasAsaas()
+
+    expect(resultado).toMatchObject({ ok: true, falhasPagamentos: [] })
+    expect(mocks.db.cobrancaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaAsaas.updateMany).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "webhook",
+    "retomada",
+  ])("preserva o estado alterado por %s durante a consulta remota", async (concorrente) => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"))
+    const intencao = {
+      ...cobrancaLocal,
+      asaasPaymentId: null as string | null,
+      status: "CRIANDO",
+      ultimoErro: null,
+      atualizadoEm: new Date("2026-09-11T11:00:00.000Z"),
+    }
+    const persistida = { ...intencao }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([intencao])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockImplementationOnce(async () => {
+      persistida.atualizadoEm = new Date()
+      if (concorrente === "webhook") {
+        persistida.status = "RECEBIDA"
+        persistida.asaasPaymentId = "pay_recebido"
+      }
+      return { data: [], totalCount: 0, hasMore: false }
+    })
+    mocks.tx.cobrancaAsaas.updateMany.mockReset().mockImplementation(async ({ where, data }) => {
+      const corresponde =
+        where.id === persistida.id &&
+        where.status === persistida.status &&
+        where.asaasPaymentId === persistida.asaasPaymentId &&
+        where.atualizadoEm.getTime() === persistida.atualizadoEm.getTime()
+      if (corresponde) Object.assign(persistida, data)
+      return { count: corresponde ? 1 : 0 }
+    })
+
+    const resultado = await reconciliarPendenciasAsaas()
+
+    expect(resultado).toMatchObject({ ok: true, falhasPagamentos: [] })
+    expect(persistida.status).toBe(concorrente === "webhook" ? "RECEBIDA" : "CRIANDO")
+    expect(persistida.ultimoErro).toBeNull()
+    expect(mocks.registrarLog).not.toHaveBeenCalled()
+    expect(mocks.db.cobrancaAsaas.update).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "PENDENTE",
+    "RECEBIDA",
+    "CANCELADA",
+    "ESTORNADA",
+  ])("preserva o status %s da cobrança com ID remoto ausente na listagem", async (status) => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-11T12:00:00.000Z"))
+    const cobranca = {
+      ...cobrancaLocal,
+      status,
+      ultimoErro: null,
+      atualizadoEm: new Date("2026-09-11T11:00:00.000Z"),
+    }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([cobranca])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockResolvedValue({ data: [], totalCount: 0, hasMore: false })
+    mocks.tx.cobrancaAsaas.updateMany.mockReset().mockResolvedValue({ count: 1 })
+
+    const resultado = await reconciliarPendenciasAsaas()
+
+    expect(resultado.ok).toBe(false)
+    expect(mocks.tx.cobrancaAsaas.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: cobranca.id,
+        status,
+        asaasPaymentId: "pay_1",
+        atualizadoEm: cobranca.atualizadoEm,
+      },
+      data: {
+        status,
+        ultimoErro: "A intenção local não possui cobrança correspondente no Asaas.",
+      },
+    })
+    expect(mocks.registrarLog).not.toHaveBeenCalled()
+  })
+
+  it("exige conciliação manual quando duas cobranças convencionais usam a mesma referência", async () => {
+    vi.clearAllMocks()
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([cobrancaLocal])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockResolvedValue({
+      data: [pagamentoRemoto(), { ...pagamentoRemoto(), id: "pay_2" }],
+      totalCount: 2,
+      hasMore: false,
+    })
+
+    const resultado = await reconciliarPendenciasAsaas()
+
+    expect(resultado.falhasPagamentos).toEqual([
+      {
+        cobrancaId: cobrancaLocal.id,
+        motivo: "Mais de uma cobrança Asaas usa a mesma referência; concilie manualmente.",
+      },
+    ])
+    expect(mocks.tx.cobrancaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaAsaas.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("consulta pelo ID remoto quando a intenção inicial já possui pagamento", async () => {
+    vi.clearAllMocks()
+    const intencaoInicial = {
+      ...cobrancaLocal,
+      tipo: "PIX_AUTOMATICO_INICIAL" as const,
+      status: "PENDENTE" as const,
+      ultimoErro: null,
+      atualizadoEm: new Date("2026-09-11T11:00:00.000Z"),
+    }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([intencaoInicial])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.obterCobrancaAsaas.mockRejectedValue(new Error("falha remota"))
+
+    const resultado = await reconciliarPendenciasAsaas()
+
+    expect(resultado.ok).toBe(false)
+    expect(mocks.obterCobrancaAsaas).toHaveBeenCalledWith("pay_1")
+    expect(mocks.listarCobrancasAsaas).not.toHaveBeenCalled()
+  })
+
   it("não promove a tentativa histórica antes da eleição protegida pelo lock", async () => {
     vi.clearAllMocks()
     const tentativaHistorica = {
@@ -1132,6 +1432,196 @@ describe("processarCobrancasPixAutomaticoPendentes", () => {
 })
 
 describe("gerarCobrancaPixMensal", () => {
+  it.each([
+    null,
+    "11111111111",
+    "39053344700",
+    "12345678901234",
+  ])("rejeita o CPF inválido %s antes de reservar a intenção", async (cpf) => {
+    vi.clearAllMocks()
+    mocks.db.mensalidade.findFirst.mockResolvedValue({
+      id: "mensalidade-cpf",
+      alunoId: "aluno-cpf",
+      status: "EM_ABERTO",
+      valor: 100,
+      vencimento,
+      competencia: "2026-09",
+      contratoPixAutomaticoId: null,
+      aluno: { tipoCobrancaPix: "MENSAL" },
+      cobrancasAsaas: [],
+      contratoPixAutomatico: null,
+    })
+    mocks.db.aluno.findUnique.mockResolvedValue({
+      id: "aluno-cpf",
+      cpf,
+      telefone: null,
+      usuario: { nome: "Aluno", email: "aluno@example.com" },
+      responsavel: null,
+      clienteAsaas: null,
+    })
+
+    const resultado = await gerarCobrancaPixMensal({
+      alunoId: "aluno-cpf",
+      mensalidadeId: "mensalidade-cpf",
+      autorId: "usuario-cpf",
+    })
+
+    expect(resultado).toEqual({ ok: false, motivo: "Informe um CPF válido para o aluno." })
+    expect(mocks.tx.$queryRaw).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaAsaas.create).not.toHaveBeenCalled()
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    null,
+    "",
+    "11111111111",
+  ])("valida o CPF %s do responsável quando ele é o pagador financeiro", async (cpf) => {
+    vi.clearAllMocks()
+    mocks.db.mensalidade.findFirst.mockResolvedValue({
+      id: "mensalidade-responsavel",
+      alunoId: "aluno-responsavel",
+      status: "EM_ABERTO",
+      valor: 100,
+      vencimento,
+      competencia: "2026-09",
+      contratoPixAutomaticoId: null,
+      aluno: { tipoCobrancaPix: "MENSAL" },
+      cobrancasAsaas: [],
+      contratoPixAutomatico: null,
+    })
+    mocks.db.aluno.findUnique.mockResolvedValue({
+      id: "aluno-responsavel",
+      cpf: "39053344705",
+      telefone: null,
+      usuario: { nome: "Aluno", email: "aluno@example.com" },
+      responsavel: {
+        nome: "Responsável",
+        cpf,
+        email: "responsavel@example.com",
+        telefone: null,
+        responsavelFinanceiro: true,
+      },
+      clienteAsaas: null,
+    })
+
+    const resultado = await gerarCobrancaPixMensal({
+      alunoId: "aluno-responsavel",
+      mensalidadeId: "mensalidade-responsavel",
+      autorId: "usuario-responsavel",
+    })
+
+    expect(resultado).toEqual({
+      ok: false,
+      motivo: "Informe um CPF válido para o responsável financeiro.",
+    })
+    expect(mocks.tx.cobrancaAsaas.create).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "sucesso",
+    "concorrencia",
+    "falha auditoria",
+  ])("trata cadastro invalidado após a reserva com %s", async (cenario) => {
+    vi.clearAllMocks()
+    const intencao = {
+      id: "cobranca-cpf-corrida",
+      mensalidadeId: "mensalidade-cpf-corrida",
+      contratoPixAutomaticoId: null,
+      tipo: "PIX_MENSAL" as const,
+      status: "CRIANDO" as const,
+      geracao: 1,
+      ativa: true,
+      asaasPaymentId: null,
+      externalReference: "mensalidade:mensalidade-cpf-corrida",
+      vencimentoAsaas: vencimento,
+      ultimoErro: null,
+      atualizadoEm: new Date("2026-09-10T12:00:00.000Z"),
+    }
+    mocks.db.mensalidade.findFirst.mockResolvedValue({
+      id: "mensalidade-cpf-corrida",
+      alunoId: "aluno-cpf-corrida",
+      status: "EM_ABERTO",
+      valor: 100,
+      vencimento,
+      competencia: "2026-09",
+      contratoPixAutomaticoId: null,
+      aluno: { tipoCobrancaPix: "MENSAL" },
+      cobrancasAsaas: [],
+      contratoPixAutomatico: null,
+    })
+    mocks.db.aluno.findUnique
+      .mockReset()
+      .mockResolvedValueOnce({
+        id: "aluno-cpf-corrida",
+        cpf: "39053344705",
+        telefone: null,
+        usuario: { nome: "Aluno", email: "aluno@example.com" },
+        responsavel: null,
+        clienteAsaas: null,
+      })
+      .mockResolvedValueOnce({
+        id: "aluno-cpf-corrida",
+        cpf: null,
+        telefone: null,
+        usuario: { nome: "Aluno", email: "aluno@example.com" },
+        responsavel: null,
+        clienteAsaas: null,
+      })
+    mocks.tx.mensalidade.findUnique.mockReset().mockResolvedValue({
+      status: "EM_ABERTO",
+      valor: 100,
+      repasseSnapshot: null,
+    })
+    mocks.tx.cobrancaAsaas.findFirst.mockReset().mockResolvedValue(null)
+    mocks.tx.cobrancaAsaas.findUnique.mockReset().mockResolvedValue(null)
+    mocks.tx.cobrancaAsaas.create.mockReset().mockResolvedValue(intencao)
+    mocks.tx.cobrancaAsaas.updateMany
+      .mockReset()
+      .mockResolvedValue({ count: cenario === "concorrencia" ? 0 : 1 })
+    if (cenario === "falha auditoria") {
+      mocks.registrarLog.mockRejectedValueOnce(new Error("Falha ao registrar auditoria."))
+    }
+
+    const resultado = await gerarCobrancaPixMensal({
+      alunoId: "aluno-cpf-corrida",
+      mensalidadeId: "mensalidade-cpf-corrida",
+      autorId: "usuario-cpf-corrida",
+    })
+
+    expect(resultado).toEqual({
+      ok: false,
+      motivo:
+        cenario === "falha auditoria"
+          ? "Falha ao registrar auditoria."
+          : "Informe um CPF válido para o aluno.",
+    })
+    expect(mocks.tx.cobrancaAsaas.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: intencao.id,
+        status: "CRIANDO",
+        asaasPaymentId: null,
+        atualizadoEm: intencao.atualizadoEm,
+      },
+      data: { status: "ERRO", ultimoErro: "Informe um CPF válido para o aluno." },
+    })
+    expect(mocks.db.cobrancaAsaas.update).not.toHaveBeenCalled()
+    if (cenario === "concorrencia") {
+      expect(mocks.registrarLog).not.toHaveBeenCalled()
+    } else {
+      expect(mocks.registrarLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          autorId: "usuario-cpf-corrida",
+          entidadeId: intencao.id,
+          valorAntigo: { status: "CRIANDO", ultimoErro: null },
+          valorNovo: { status: "ERRO", ultimoErro: "Informe um CPF válido para o aluno." },
+        }),
+        mocks.tx,
+      )
+    }
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+  })
+
   it("preserva a tentativa estornada e cria uma nova geração sob lock da mensalidade", async () => {
     vi.clearAllMocks()
     vi.useFakeTimers()
@@ -1192,7 +1682,7 @@ describe("gerarCobrancaPixMensal", () => {
     mocks.tx.cobrancaAsaas.findUniqueOrThrow.mockResolvedValue(nova)
     mocks.db.aluno.findUnique.mockResolvedValue({
       id: "aluno-3",
-      cpf: "12345678901",
+      cpf: "39053344705",
       telefone: null,
       usuario: { nome: "Aluno", email: "aluno@example.com" },
       responsavel: null,
@@ -1295,7 +1785,7 @@ describe("gerarCobrancaPixMensal", () => {
     mocks.tx.cobrancaAsaas.findUniqueOrThrow.mockResolvedValue(retomada)
     mocks.db.aluno.findUnique.mockResolvedValue({
       id: "aluno-4",
-      cpf: "12345678901",
+      cpf: "39053344705",
       telefone: null,
       usuario: { nome: "Aluno", email: "aluno@example.com" },
       responsavel: null,

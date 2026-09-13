@@ -50,6 +50,7 @@ import {
   reconciliarSplitsWebhook,
 } from "@/lib/services/split-asaas.service"
 import { chaveCompetencia, dataCivilParaDate, formatarDataInput } from "@/lib/utils/datas"
+import { cpfValido } from "@/lib/utils/formato"
 import {
   idAutorizacaoDoWebhook,
   idPagamentoInstrucaoDoWebhook,
@@ -61,6 +62,7 @@ const EXPIRACAO_QR_AUTORIZACAO_SEGUNDOS = 86_400
 const TEMPO_RESERVA_OPERACAO_MS = 2 * 60 * 1_000
 const STATUS_MENSALIDADE_COBRAVEL = ["EM_ABERTO", "VENCIDA"] as const
 const STATUS_COBRANCA_TERMINAL = ["RECEBIDA", "CANCELADA", "ESTORNADA"] as const
+const ERRO_COBRANCA_AUSENTE_ASAAS = "A intenção local não possui cobrança correspondente no Asaas."
 
 class ErroEscolhaPagamento extends Error {}
 
@@ -156,8 +158,8 @@ async function obterPagador(alunoId: string) {
 
   const responsavel = aluno.responsavel?.responsavelFinanceiro ? aluno.responsavel : null
   const tipoPagador = responsavel ? ("RESPONSAVEL" as const) : ("ALUNO" as const)
-  const cpfCnpj = somenteDigitos(responsavel?.cpf ?? aluno.cpf)
-  if (!cpfCnpj || ![11, 14].includes(cpfCnpj.length)) {
+  const cpfCnpj = somenteDigitos(responsavel ? responsavel.cpf : aluno.cpf)
+  if (!cpfCnpj || !cpfValido(cpfCnpj)) {
     return {
       ok: false as const,
       motivo: responsavel
@@ -568,6 +570,9 @@ export async function gerarCobrancaPixMensal(params: {
     return { ok: false as const, motivo: "Mensalidade vinculada ao PIX Automático." }
   }
 
+  const pagador = await obterPagador(params.alunoId)
+  if (!pagador.ok) return pagador
+
   const externalReference = referenciaMensalidade(mensalidade.id)
   const vencimentoAsaas = vencimentoAceitoPeloAsaas(mensalidade.vencimento)
   const reserva = await reservarIntencaoCobranca({
@@ -596,7 +601,40 @@ export async function gerarCobrancaPixMensal(params: {
 
   try {
     const cliente = await garantirClienteAsaas(params.alunoId, params.autorId)
-    if (!cliente.ok) return cliente
+    if (!cliente.ok) {
+      if (reserva.proprietaria) {
+        try {
+          await db.$transaction(async (tx) => {
+            const resultado = await tx.cobrancaAsaas.updateMany({
+              where: {
+                id: intencao.id,
+                status: "CRIANDO",
+                asaasPaymentId: null,
+                atualizadoEm: intencao.atualizadoEm,
+              },
+              data: { status: "ERRO", ultimoErro: cliente.motivo },
+            })
+            if (resultado.count > 0) {
+              await registrarLog(
+                {
+                  autorId: params.autorId,
+                  acao: "PAGAMENTO",
+                  entidade: "CobrancaAsaas",
+                  entidadeId: intencao.id,
+                  valorAntigo: { status: "CRIANDO", ultimoErro: intencao.ultimoErro },
+                  valorNovo: { status: "ERRO", ultimoErro: cliente.motivo },
+                  justificativa: "Falha no cadastro do pagador após a reserva da cobrança.",
+                },
+                tx,
+              )
+            }
+          })
+        } catch (erro) {
+          return { ok: false as const, motivo: mensagemErroAsaasSegura(erro) }
+        }
+      }
+      return cliente
+    }
     const remota = intencao.asaasPaymentId
       ? await obterCobrancaAsaas(intencao.asaasPaymentId)
       : await criarOuRecuperarCobrancaRemota({
@@ -970,6 +1008,7 @@ export async function configurarTipoCobrancaPix(params: {
           status: "PENDENTE",
           pixCopiaECola: autorizacao.payload ?? null,
           qrCodeExpiraEm: interpretarDataAsaas(autorizacao.immediateQrCode.expirationDate),
+          ultimoErro: null,
         },
       })
       await tx.aluno.update({
@@ -1291,6 +1330,9 @@ export async function reconciliarPendenciasAsaas() {
             },
           ],
         },
+        {
+          OR: [{ tipo: { not: "PIX_AUTOMATICO_INICIAL" } }, { asaasPaymentId: { not: null } }],
+        },
         { OR: [{ ativa: true }, { asaasPaymentId: { not: null } }] },
       ],
     },
@@ -1301,17 +1343,57 @@ export async function reconciliarPendenciasAsaas() {
   const falhasPagamentos: Array<{ cobrancaId: string; motivo: string }> = []
   for (const cobranca of cobrancas) {
     try {
-      const encontradas = await listarCobrancasAsaas({
-        externalReference: cobranca.externalReference,
-        limit: 2,
-      })
-      if (encontradas.data.length > 1) {
-        throw new Error("Mais de uma cobrança Asaas usa a mesma referência; concilie manualmente.")
+      let remota: CobrancaRemotaAsaas | undefined
+      if (cobranca.tipo === "PIX_AUTOMATICO_INICIAL" && cobranca.asaasPaymentId) {
+        remota = await obterCobrancaAsaas(cobranca.asaasPaymentId)
+      } else {
+        const encontradas = await listarCobrancasAsaas({
+          externalReference: cobranca.externalReference,
+          limit: 2,
+        })
+        if (encontradas.data.length > 1) {
+          throw new Error(
+            "Mais de uma cobrança Asaas usa a mesma referência; concilie manualmente.",
+          )
+        }
+        remota = encontradas.data[0]
       }
-      const remota = encontradas.data[0]
       if (!remota) {
         if (cobranca.status === "ERRO" || !reservaAindaEmAndamento(cobranca.atualizadoEm)) {
-          throw new Error("A intenção local não possui cobrança correspondente no Asaas.")
+          const motivo = cobranca.ultimoErro ?? ERRO_COBRANCA_AUSENTE_ASAAS
+          const status =
+            !cobranca.asaasPaymentId && !STATUS_COBRANCA_TERMINAL.includes(cobranca.status as never)
+              ? "ERRO"
+              : cobranca.status
+          const atualizada = await db.$transaction(async (tx) => {
+            const resultado = await tx.cobrancaAsaas.updateMany({
+              where: {
+                id: cobranca.id,
+                status: cobranca.status,
+                asaasPaymentId: cobranca.asaasPaymentId,
+                atualizadoEm: cobranca.atualizadoEm,
+              },
+              data: { status, ultimoErro: motivo },
+            })
+            if (resultado.count > 0 && status !== cobranca.status) {
+              await registrarLog(
+                {
+                  autorId: null,
+                  acao: "PAGAMENTO",
+                  entidade: "CobrancaAsaas",
+                  entidadeId: cobranca.id,
+                  valorAntigo: { status: cobranca.status, ultimoErro: cobranca.ultimoErro },
+                  valorNovo: { status, ultimoErro: motivo },
+                  justificativa: "Reconciliação de intenção sem cobrança correspondente no Asaas.",
+                },
+                tx,
+              )
+            }
+            return resultado.count > 0
+          })
+          if (atualizada) {
+            falhasPagamentos.push({ cobrancaId: cobranca.id, motivo })
+          }
         }
         continue
       }
@@ -2622,6 +2704,7 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
                   interpretarDataAsaas(webhook.payment?.paymentDate ?? webhook.dateCreated) ??
                   new Date(),
                 ultimoEventoAsaas: webhook.event,
+                ultimoErro: null,
               },
             })
             await auditarEstadoCobranca(tx, {
@@ -2647,7 +2730,12 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
               const statusInicial = statusAplicado === "RECUSADO" ? "RECUSADA" : "CANCELADA"
               await tx.cobrancaAsaas.update({
                 where: { id: cobrancaInicial.id },
-                data: { ativa: false, status: statusInicial, ultimoEventoAsaas: webhook.event },
+                data: {
+                  ativa: false,
+                  status: statusInicial,
+                  ultimoEventoAsaas: webhook.event,
+                  ultimoErro: null,
+                },
               })
               await auditarEstadoCobranca(tx, {
                 cobrancaId: cobrancaInicial.id,
@@ -2669,6 +2757,14 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
                 qrCodeExpiraEm: null,
                 ultimoErro: null,
               },
+            })
+          } else if (statusAplicado !== "ATIVO" && cobrancaInicial) {
+            await tx.cobrancaAsaas.updateMany({
+              where: {
+                id: cobrancaInicial.id,
+                ultimoErro: ERRO_COBRANCA_AUSENTE_ASAAS,
+              },
+              data: { ultimoErro: null },
             })
           }
         }
