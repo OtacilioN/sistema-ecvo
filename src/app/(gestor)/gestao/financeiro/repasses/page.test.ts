@@ -120,6 +120,10 @@ describe("repasses de resumos mensais Wellhub", () => {
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
     expect(mocks.exclusoes).toHaveBeenCalledWith({ where: { competencia: "2026-08" } })
     expect(resumo(pagina, "Recebido")).toMatch(/358,50/)
+    expect(resumo(pagina, "Receita de mensalistas")).toMatch(/90,00/)
+    expect(resumo(pagina, "Receita de plataformas")).toMatch(/268,50/)
+    expect(resumo(pagina, "Plataformas: repasse aos professores")).toMatch(/105,00/)
+    expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/163,50/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/165,00/)
     expect(resumo(pagina, "Sobra após professores")).toMatch(/193,50/)
     expect(textoPagina(pagina)).toContain("Ajuste desta competência: muay-thai fora do repasse")
@@ -129,6 +133,14 @@ describe("repasses de resumos mensais Wellhub", () => {
     expect(textoPagina(filtrada)).toContain("Aluno mensalidade")
     expect(textoPagina(filtrada)).not.toContain("Aluno A")
     expect(resumo(filtrada, "Direito identificado dos professores")).toMatch(/165,00/)
+    for (const rotulo of [
+      "Receita de mensalistas",
+      "Receita de plataformas",
+      "Plataformas: repasse aos professores",
+      "Plataformas: sobra após professores",
+    ]) {
+      expect(resumo(filtrada, rotulo)).toBe(resumo(pagina, rotulo))
+    }
   })
 
   it("mantém o cálculo normal de setembro mesmo se receber uma exclusão de agosto", async () => {
@@ -208,6 +220,10 @@ describe("repasses de resumos mensais Wellhub", () => {
     ])
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
     expect(resumo(pagina, "Recebido")).toMatch(/281,00/)
+    expect(resumo(pagina, "Receita de mensalistas")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Receita de plataformas")).toMatch(/281,00/)
+    expect(resumo(pagina, "Plataformas: repasse aos professores")).toMatch(/110,00/)
+    expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/90,00/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/110,00/)
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/110,00/)
     expect(resumo(pagina, "Pendências sem professor definido")).toMatch(/81,00/)
@@ -247,6 +263,9 @@ describe("repasses de resumos mensais TotalPass", () => {
     )
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
     expect(resumo(pagina, "Recebido")).toMatch(/222,86/)
+    expect(resumo(pagina, "Receita de plataformas")).toMatch(/222,86/)
+    expect(resumo(pagina, "Plataformas: repasse aos professores")).toMatch(/133,72/)
+    expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/89,14/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/133,72/)
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/133,72/)
     expect(resumo(pagina, "Sobra após professores")).toMatch(/89,14/)
@@ -327,6 +346,9 @@ describe("repasses de resumos mensais TotalPass", () => {
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
     expect(resumo(pagina, "Recebido")).toMatch(/200,00/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/120,00/)
+    expect(resumo(pagina, "Receita de plataformas")).toMatch(/200,00/)
+    expect(resumo(pagina, "Plataformas: repasse aos professores")).toMatch(/120,00/)
+    expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/80,00/)
     expect(resumo(pagina, "Sobra após professores")).toMatch(/80,00/)
   })
 })

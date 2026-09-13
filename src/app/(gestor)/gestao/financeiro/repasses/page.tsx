@@ -586,6 +586,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     }
   }
 
+  const resumoReceitas = extrato.reduce(
+    (totais, receita) => {
+      if (receita.origem === "Mensalidade interna") {
+        totais.mensalistas += Math.round(receita.valorRecebido * 100)
+      } else {
+        totais.plataformas += Math.round(receita.valorRecebido * 100)
+        totais.professoresPlataformas += Math.round(receita.repasseProfessores * 100)
+        totais.sobraPlataformas += Math.round(receita.sobraAposProfessores * 100)
+      }
+      return totais
+    },
+    { mensalistas: 0, plataformas: 0, professoresPlataformas: 0, sobraPlataformas: 0 },
+  )
+
   const distribuicaoSobra = calcularDistribuicaoSobraFinanceira({
     totalRecebido,
     totalProfessores: totalProfessores + totalReservadoPendente,
@@ -697,6 +711,33 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         personalizado={custosMensais.personalizado}
         somenteLeitura={usuario.papel !== "GESTOR"}
       />
+
+      <section
+        aria-label="Receitas por origem"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+      >
+        <Resumo
+          rotulo="Receita de mensalistas"
+          valor={formatarBRL(resumoReceitas.mensalistas / 100)}
+          descricao="Mensalidades recebidas no mês e incluídas no repasse."
+        />
+        <Resumo
+          rotulo="Receita de plataformas"
+          valor={formatarBRL(resumoReceitas.plataformas / 100)}
+          descricao="Receita de plataformas incluída no repasse, inclusive valores reservados."
+        />
+        <Resumo
+          rotulo="Plataformas: repasse aos professores"
+          valor={formatarBRL(resumoReceitas.professoresPlataformas / 100)}
+          descricao="Valor destinado aos professores, incluindo pendências de identificação; não confirma pagamento."
+        />
+        <Resumo
+          rotulo="Plataformas: sobra após professores"
+          valor={formatarBRL(resumoReceitas.sobraPlataformas / 100)}
+          descricao="Após descontar os repasses e as reservas por pendências, antes dos custos fixos."
+          tom={resumoReceitas.sobraPlataformas < 0 ? "negativo" : "positivo"}
+        />
+      </section>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Resumo rotulo="Recebido" valor={formatarBRL(totalRecebido)} />
@@ -1226,11 +1267,13 @@ function consolidarProfessores(linhas: LinhaRepasse[]): LinhaProfessor[] {
 function Resumo({
   rotulo,
   valor,
+  descricao,
   icone,
   tom = "padrao",
 }: {
   rotulo: string
   valor: string
+  descricao?: string
   icone?: React.ReactNode
   tom?: "padrao" | "positivo" | "negativo" | "automatico" | "processamento" | "manual"
 }) {
@@ -1270,6 +1313,7 @@ function Resumo({
         >
           {valor}
         </p>
+        {descricao && <p className="mt-2 text-xs text-muted-foreground">{descricao}</p>}
       </CardContent>
     </Card>
   )
