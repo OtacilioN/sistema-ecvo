@@ -405,6 +405,14 @@ async function persistirCobranca(
   const persistencia = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "CobrancaMatriculaAsaas" WHERE "id" = ${id} FOR UPDATE`
     const anterior = await tx.cobrancaMatriculaAsaas.findUniqueOrThrow({ where: { id } })
+    if (
+      anterior.finalidade === "COMPLEMENTO_MENSALIDADE" &&
+      (anterior.mensalidadeId ||
+        anterior.status === "ESTORNADA" ||
+        anterior.estornoParcialPendenteEm)
+    ) {
+      return { cobranca: anterior, erroSplit: null }
+    }
     const splits = await tx.splitPagamentoAsaas.findMany({
       where: { cobrancaMatriculaAsaasId: id },
       orderBy: { criadoEm: "asc" },
@@ -412,6 +420,15 @@ async function persistirCobranca(
     if (anterior.status === "RECEBIDA" && !recebida) {
       return { cobranca: anterior, erroSplit: null }
     }
+    const converterComplemento = recebida && anterior.finalidade === "COMPLEMENTO_MENSALIDADE"
+    if (converterComplemento) {
+      const divergencia = divergenciaWebhook(anterior, remota)
+      if (divergencia) throw new Error(divergencia)
+      if (remota.customer !== customerId) {
+        throw new Error("Cliente da cobrança de matrícula divergente.")
+      }
+    }
+    const recebidaEm = interpretarDataAsaas(remota.paymentDate) ?? new Date()
     const atualizada = await tx.cobrancaMatriculaAsaas.update({
       where: { id },
       data: {
@@ -423,9 +440,7 @@ async function persistirCobranca(
         pixCopiaECola: qrValido ? qrCode?.payload : recebida ? anterior.pixCopiaECola : null,
         qrCodeExpiraEm: qrValido ? qrCodeExpiraEm : recebida ? anterior.qrCodeExpiraEm : null,
         invoiceUrl: remota.invoiceUrl ?? null,
-        recebidaEmAsaas: recebida
-          ? (interpretarDataAsaas(remota.paymentDate) ?? new Date())
-          : undefined,
+        recebidaEmAsaas: recebida ? recebidaEm : undefined,
         ultimoErro,
       },
     })
@@ -454,6 +469,17 @@ async function persistirCobranca(
       },
       tx,
     )
+    if (converterComplemento) {
+      await concluirConversaoAulaAvulsa(tx, {
+        cobrancaId: id,
+        recebidaEm,
+        origem: "CONSULTA_ASAAS",
+      })
+      return {
+        cobranca: await tx.cobrancaMatriculaAsaas.findUniqueOrThrow({ where: { id } }),
+        erroSplit: null,
+      }
+    }
     return { cobranca: atualizada, erroSplit: null }
   })
   if (persistencia.erroSplit) throw new Error(persistencia.erroSplit)
@@ -659,7 +685,7 @@ export async function gerarCobrancaComplementoAulaAvulsaAsaas(
   const reserva = await reservarComplementoAulaAvulsa(alunoId, opcoes.agora ?? new Date())
   if (!reserva.ok) return reserva
   if (
-    reserva.cobranca.status === "RECEBIDA" ||
+    (reserva.cobranca.status === "RECEBIDA" && reserva.cobranca.mensalidadeId) ||
     (!opcoes.verificar && pixCobrancaMatriculaDisponivel(reserva.cobranca))
   ) {
     return { ok: true as const, cobranca: reserva.cobranca }
@@ -1047,7 +1073,11 @@ function statusMatriculaPorEvento(evento: string): StatusCobrancaAsaas | null {
 
 async function concluirConversaoAulaAvulsa(
   tx: Prisma.TransactionClient,
-  params: { cobrancaId: string; recebidaEm: Date },
+  params: {
+    cobrancaId: string
+    recebidaEm: Date
+    origem?: "WEBHOOK_ASAAS" | "CONSULTA_ASAAS"
+  },
 ) {
   const cobranca = await tx.cobrancaMatriculaAsaas.findUnique({
     where: { id: params.cobrancaId },
@@ -1191,7 +1221,10 @@ async function concluirConversaoAulaAvulsa(
         valorComplemento: Number(acesso.valorComplemento),
         asaasPaymentId: cobranca.asaasPaymentId,
       },
-      justificativa: "Conversão da aula avulsa confirmada pelo webhook Asaas.",
+      justificativa:
+        params.origem === "CONSULTA_ASAAS"
+          ? "Conversão da aula avulsa confirmada por consulta ao Asaas."
+          : "Conversão da aula avulsa confirmada pelo webhook Asaas.",
     },
     tx,
   )

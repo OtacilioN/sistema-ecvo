@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => {
     $queryRaw: vi.fn(),
     eventoWebhookAsaas: { createMany: vi.fn(), delete: vi.fn() },
     clienteAsaas: { findUnique: vi.fn() },
-    cobrancaMatriculaAsaas: { findFirst: vi.fn(), update: vi.fn() },
+    cobrancaMatriculaAsaas: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     cobrancaAsaas: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -112,6 +112,7 @@ const cobrancaLocal = {
   contratoPixAutomaticoId: null,
   asaasPaymentId: "pay_1",
   externalReference: "mensalidade:mensalidade-1",
+  valorCobrado: null,
   tipo: "PIX_MENSAL" as const,
   status: "PENDENTE" as const,
   mensalidade: {
@@ -156,6 +157,9 @@ describe("processarWebhookAsaas", () => {
     mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([])
     mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([])
     mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(null)
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockImplementation(() =>
+      mocks.tx.cobrancaMatriculaAsaas.findFirst(),
+    )
     mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
       args?.where?.OR ? cobrancaLocal : null,
     )
@@ -201,6 +205,67 @@ describe("processarWebhookAsaas", () => {
       },
     })
     expect(mocks.sincronizarStatusFinanceiroAluno).toHaveBeenCalledWith(mocks.tx, "aluno-1")
+  })
+
+  it.each([
+    "PAYMENT_RECEIVED",
+    "PAYMENT_CONFIRMED",
+  ])("%s baixa a mensalidade pelo valor cobrado do complemento após aula avulsa", async (event) => {
+    mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
+      args?.where?.OR
+        ? {
+            ...cobrancaLocal,
+            valorCobrado: 80,
+            mensalidade: { ...cobrancaLocal.mensalidade, valor: 100 },
+          }
+        : null,
+    )
+    mocks.tx.mensalidade.findUnique.mockResolvedValue({
+      id: "mensalidade-1",
+      alunoId: "aluno-1",
+      competencia: "2026-09",
+      valor: 100,
+      status: "VENCIDA",
+      aluno: { usuarioId: "usuario-1" },
+    })
+    mocks.obterCobrancaAsaas.mockResolvedValue({ ...pagamentoRemoto(), value: 80 })
+
+    const resultado = await processarWebhookAsaas({
+      id: `evt_complemento_${event}`,
+      event,
+      payment: { id: "pay_1" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.mensalidade.updateMany).toHaveBeenCalledWith({
+      where: { id: "mensalidade-1", status: { in: ["EM_ABERTO", "VENCIDA"] } },
+      data: {
+        status: "PAGA",
+        pagoEm: new Date("2026-09-10T15:00:00.000Z"),
+        formaPagamento: "PIX_ASAAS",
+        cobrancaQuitacaoAsaasId: "cobranca-1",
+      },
+    })
+    expect(mocks.sincronizarStatusFinanceiroAluno).toHaveBeenCalledWith(mocks.tx, "aluno-1")
+    expect(mocks.tx.cobrancaAsaas.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "ERRO" }) }),
+    )
+  })
+
+  it("rejeita valor diferente do complemento mesmo quando coincide com a mensalidade", async () => {
+    mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
+      args?.where?.OR ? { ...cobrancaLocal, valorCobrado: 80 } : null,
+    )
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_complemento_divergente",
+      event: "PAYMENT_RECEIVED",
+      payment: { id: "pay_1" },
+    })
+
+    expect(resultado).toMatchObject({ ok: false, motivo: "Valor divergente no webhook." })
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+    expect(mocks.sincronizarStatusFinanceiroAluno).not.toHaveBeenCalled()
   })
 
   it("habilita a wallet somente com aprovação geral da conta", async () => {
@@ -632,6 +697,65 @@ describe("processarWebhookAsaas", () => {
     })
     expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
     expect(mocks.tx.notificacao.createMany).toHaveBeenCalled()
+  })
+
+  it("encaminha o estorno à cobrança canônica criada enquanto aguardava a conversão", async () => {
+    const complemento = {
+      id: "complemento-1",
+      solicitacaoId: "solicitacao-1",
+      finalidade: "COMPLEMENTO_MENSALIDADE",
+      mensalidadeId: null,
+      status: "PENDENTE",
+      asaasPaymentId: "pay_1",
+      asaasCustomerId: "cus_1",
+      externalReference: "matricula:solicitacao-1:complemento:2",
+      valor: 80,
+      vencimentoAsaas: vencimento,
+    }
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(complemento)
+    mocks.tx.$queryRaw.mockResolvedValueOnce([{ id: complemento.id }])
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockImplementationOnce(async () => {
+      expect(mocks.tx.$queryRaw).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          'SELECT "id" FROM "CobrancaMatriculaAsaas" WHERE "id" = ',
+          " FOR UPDATE",
+        ]),
+        complemento.id,
+      )
+      return { ...complemento, status: "RECEBIDA", mensalidadeId: "mensalidade-1" }
+    })
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto("REFUNDED"),
+      value: 80,
+      externalReference: complemento.externalReference,
+    })
+    mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
+      args?.where?.OR
+        ? {
+            ...cobrancaLocal,
+            status: "RECEBIDA",
+            valorCobrado: 80,
+            externalReference: complemento.externalReference,
+          }
+        : null,
+    )
+    mocks.tx.cobrancaAsaas.findUnique.mockResolvedValue({ status: "RECEBIDA", ativa: true })
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_estorno_conversao_concorrente",
+      event: "PAYMENT_REFUNDED",
+      payment: { id: "pay_1" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.cobrancaMatriculaAsaas.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: complemento.id } }),
+    )
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaAsaas.update).toHaveBeenCalledWith({
+      where: { id: "cobranca-1" },
+      data: expect.objectContaining({ status: "ESTORNADA", ultimoEventoAsaas: "PAYMENT_REFUNDED" }),
+    })
   })
 
   it("reabre a mensalidade quando o Asaas confirma estorno integral", async () => {

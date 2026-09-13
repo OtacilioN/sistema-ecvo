@@ -765,3 +765,198 @@ describe("sincronização e reemissão", () => {
     })
   })
 })
+
+describe("conversão do complemento confirmado por consulta ao Asaas", () => {
+  function prepararConsulta(statusLocal = "PENDENTE") {
+    vi.setSystemTime(new Date("2026-09-13T12:00:00.000Z"))
+    const aluno = {
+      id: "aluno-1",
+      usuarioId: "usuario-1",
+      tipo: "AVULSO",
+      planoId: null,
+      cpf: "52998224725",
+      telefone: null,
+      usuario: { id: "usuario-1", nome: "Aluno", email: "aluno@example.com" },
+    }
+    const plano = { id: "plano-1", ativo: true, periodicidade: "MENSAL", valor: 100 }
+    const acesso = {
+      id: "acesso-1",
+      solicitacaoId: "solicitacao-1",
+      status: "ATIVO",
+      prazoConversao: new Date("2026-09-14T03:00:00.000Z"),
+      valorPago: new Prisma.Decimal(20),
+      valorPlanoSnapshot: new Prisma.Decimal(100),
+      valorComplemento: new Prisma.Decimal(80),
+      aluno,
+      aula: {
+        inicio: new Date("2026-09-11T23:00:00.000Z"),
+        turma: { modalidadeId: "modalidade-1" },
+      },
+      solicitacao: { plano },
+    }
+    let cobranca = {
+      ...cobrancaAntiga,
+      status: statusLocal,
+      finalidade: "COMPLEMENTO_MENSALIDADE",
+      mensalidadeId: null as string | null,
+      estornoParcialPendenteEm: null as Date | null,
+      competencia: "2026-09",
+      valor: new Prisma.Decimal(80),
+      vencimentoAsaas: new Date("2026-09-14T02:59:59.999Z"),
+      externalReference: "matricula:solicitacao-1:complemento:2",
+    }
+    const remota = {
+      ...pagamentoRemoto("RECEIVED"),
+      value: 80,
+      dueDate: "2026-09-13",
+      externalReference: cobranca.externalReference,
+      paymentDate: "2026-09-11 17:05:00",
+    }
+    mocks.tx.acessoAulaAvulsa.findFirst.mockResolvedValue({ id: acesso.id })
+    mocks.tx.acessoAulaAvulsa.findUnique.mockImplementation(async () => acesso)
+    mocks.tx.acessoAulaAvulsa.update.mockImplementation(async ({ data }) =>
+      Object.assign(acesso, data),
+    )
+    mocks.tx.aluno.findUnique.mockResolvedValue(aluno)
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockImplementation(async () => cobranca)
+    mocks.tx.cobrancaMatriculaAsaas.findUniqueOrThrow.mockImplementation(async () => cobranca)
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockImplementation(async () => ({
+      ...cobranca,
+      solicitacao: { plano, aluno, acessoAulaAvulsa: acesso },
+    }))
+    mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(async ({ data }) => {
+      cobranca = { ...cobranca, ...data }
+      return cobranca
+    })
+    mocks.obterCobrancaAsaas.mockResolvedValue(remota)
+    mocks.obterOuCriarMensalidadeNaTransacao.mockResolvedValue({
+      ok: true,
+      criada: true,
+      mensalidade: { id: "mensalidade-1" },
+    })
+    mocks.tx.mensalidade.update.mockResolvedValue({ id: "mensalidade-1" })
+    mocks.tx.cobrancaAsaas.create.mockResolvedValue({ id: "cobranca-canonica-1" })
+    return {
+      acesso,
+      remota,
+      atualizarCobrancaLocal: (data: Partial<typeof cobranca>) => {
+        cobranca = { ...cobranca, ...data }
+      },
+    }
+  }
+
+  it.each([
+    "PENDENTE",
+    "RECEBIDA",
+  ])("quita setembro ao consultar complemento %s ainda sem mensalidade", async (statusLocal) => {
+    prepararConsulta(statusLocal)
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", { verificar: true })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      cobranca: { status: "RECEBIDA", mensalidadeId: "mensalidade-1", ativa: false },
+    })
+    expect(mocks.obterOuCriarMensalidadeNaTransacao).toHaveBeenCalledWith(mocks.tx, {
+      alunoId: "aluno-1",
+      competencia: "2026-09",
+    })
+    expect(mocks.tx.mensalidade.update).toHaveBeenNthCalledWith(1, {
+      where: { id: "mensalidade-1" },
+      data: expect.objectContaining({
+        status: "PAGA",
+        valor: new Prisma.Decimal(100),
+        pagoEm: new Date("2026-09-11T20:05:00.000Z"),
+        formaPagamento: "PIX_ASAAS_COMPLEMENTO_AULA_AVULSA",
+      }),
+    })
+    expect(mocks.tx.aluno.update).toHaveBeenCalledWith({
+      where: { id: "aluno-1" },
+      data: { tipo: "MENSALISTA", planoId: "plano-1", diaVencimento: 11 },
+    })
+    expect(mocks.tx.cobrancaAsaas.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ valorCobrado: new Prisma.Decimal(80), status: "RECEBIDA" }),
+    })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        justificativa: "Conversão da aula avulsa confirmada por consulta ao Asaas.",
+      }),
+      mocks.tx,
+    )
+
+    await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", { verificar: true })
+    expect(mocks.obterOuCriarMensalidadeNaTransacao).toHaveBeenCalledTimes(1)
+    expect(mocks.tx.cobrancaAsaas.create).toHaveBeenCalledTimes(1)
+  })
+
+  it("aguarda recebimento quando o Asaas retorna apenas CONFIRMED", async () => {
+    const { remota } = prepararConsulta()
+    mocks.obterCobrancaAsaas.mockResolvedValue({ ...remota, status: "CONFIRMED" })
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", { verificar: true })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      cobranca: { status: "PENDENTE", mensalidadeId: null },
+    })
+    expect(mocks.tx.aluno.update).not.toHaveBeenCalled()
+    expect(mocks.obterOuCriarMensalidadeNaTransacao).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { status: "ESTORNADA", statusAsaas: "REFUNDED", ativa: false },
+    {
+      status: "ERRO",
+      statusAsaas: "PARTIALLY_REFUNDED",
+      estornoParcialPendenteEm: new Date("2026-09-13T12:00:00.000Z"),
+      ativa: false,
+    },
+    { status: "RECEBIDA", mensalidadeId: "mensalidade-concorrente", ativa: false },
+  ])("preserva atualização concorrente durante consulta RECEIVED: %j", async (estadoAtual) => {
+    const { remota, atualizarCobrancaLocal } = prepararConsulta()
+    mocks.obterCobrancaAsaas.mockImplementation(async () => {
+      atualizarCobrancaLocal(estadoAtual)
+      return remota
+    })
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", { verificar: true })
+
+    expect(resultado).toMatchObject({ ok: true, cobranca: estadoAtual })
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.tx.aluno.update).not.toHaveBeenCalled()
+    expect(mocks.obterOuCriarMensalidadeNaTransacao).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaAsaas.create).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { value: 20 },
+    { customer: "cus-outro" },
+    { id: "pay-outro" },
+    { externalReference: "matricula:outra" },
+    { dueDate: "2026-09-12" },
+    { billingType: "BOLETO" },
+  ])("rejeita recebimento com dados divergentes: %j", async (divergencia) => {
+    const { remota } = prepararConsulta()
+    mocks.obterCobrancaAsaas.mockResolvedValue({ ...remota, ...divergencia })
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", { verificar: true })
+
+    expect(resultado.ok).toBe(false)
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.tx.aluno.update).not.toHaveBeenCalled()
+    expect(mocks.obterOuCriarMensalidadeNaTransacao).not.toHaveBeenCalled()
+  })
+
+  it("preserva a validação da semana elegível do recebimento", async () => {
+    const { remota } = prepararConsulta()
+    mocks.obterCobrancaAsaas.mockResolvedValue({ ...remota, paymentDate: "2026-09-06 17:05:00" })
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", { verificar: true })
+
+    expect(resultado).toMatchObject({
+      ok: false,
+      motivo: expect.stringContaining("fora da semana elegível"),
+    })
+    expect(mocks.tx.aluno.update).not.toHaveBeenCalled()
+    expect(mocks.obterOuCriarMensalidadeNaTransacao).not.toHaveBeenCalled()
+  })
+})

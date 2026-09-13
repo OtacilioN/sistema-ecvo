@@ -1483,7 +1483,12 @@ function statusCobrancaPorInstrucao(evento: string): StatusCobrancaAsaas | null 
 
 async function baixarMensalidadePeloAsaas(
   tx: Prisma.TransactionClient,
-  cobranca: { id: string; mensalidadeId: string; externalReference: string },
+  cobranca: {
+    id: string
+    mensalidadeId: string
+    externalReference: string
+    valorCobrado: Prisma.Decimal | null
+  },
   webhook: WebhookAsaas,
 ) {
   const mensalidade = await tx.mensalidade.findUnique({
@@ -1543,7 +1548,7 @@ async function baixarMensalidadePeloAsaas(
   }
   if (
     webhook.payment?.value !== undefined &&
-    Math.abs(webhook.payment.value - Number(mensalidade.valor)) > 0.001
+    Math.abs(webhook.payment.value - Number(cobranca.valorCobrado ?? mensalidade.valor)) > 0.001
   ) {
     await tx.cobrancaAsaas.update({
       where: { id: cobranca.id },
@@ -2398,7 +2403,7 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
     }
 
     if (webhook.payment && statusPagamento) {
-      const cobrancaMatricula = await tx.cobrancaMatriculaAsaas.findFirst({
+      const matriculaIdentificada = await tx.cobrancaMatriculaAsaas.findFirst({
         where: {
           mensalidadeId: null,
           OR: [
@@ -2408,24 +2413,33 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
               : []),
           ],
         },
-        select: {
-          id: true,
-          solicitacaoId: true,
-          status: true,
-          asaasPaymentId: true,
-          asaasCustomerId: true,
-          externalReference: true,
-          finalidade: true,
-          valor: true,
-          vencimentoAsaas: true,
-        },
+        select: { id: true },
       })
-      if (cobrancaMatricula) {
-        const resultado = await aplicarWebhookPagamentoMatricula(tx, cobrancaMatricula, webhook)
-        if (!resultado.ok) {
-          await tx.eventoWebhookAsaas.delete({ where: { asaasEventId: webhook.id } })
+      if (matriculaIdentificada) {
+        await tx.$queryRaw`SELECT "id" FROM "CobrancaMatriculaAsaas" WHERE "id" = ${matriculaIdentificada.id} FOR UPDATE`
+        const cobrancaMatricula = await tx.cobrancaMatriculaAsaas.findUnique({
+          where: { id: matriculaIdentificada.id },
+          select: {
+            id: true,
+            solicitacaoId: true,
+            mensalidadeId: true,
+            status: true,
+            asaasPaymentId: true,
+            asaasCustomerId: true,
+            externalReference: true,
+            finalidade: true,
+            valor: true,
+            vencimentoAsaas: true,
+          },
+        })
+        // A consulta ao Asaas pode ter convertido o complemento enquanto o lock era aguardado.
+        if (cobrancaMatricula && !cobrancaMatricula.mensalidadeId) {
+          const resultado = await aplicarWebhookPagamentoMatricula(tx, cobrancaMatricula, webhook)
+          if (!resultado.ok) {
+            await tx.eventoWebhookAsaas.delete({ where: { asaasEventId: webhook.id } })
+          }
+          return resultado
         }
-        return resultado
       }
 
       const cobranca = await localizarCobrancaWebhook(tx, webhook.payment)
@@ -2689,6 +2703,7 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
               id: cobrancaInicial.id,
               mensalidadeId: primeira.id,
               externalReference: cobrancaInicial.externalReference,
+              valorCobrado: cobrancaInicial.valorCobrado,
             }
             const statusCobrancaAplicado = proximoStatusCobrancaAsaas(
               cobrancaInicial.status,

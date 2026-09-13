@@ -84,9 +84,12 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   turma recorrente ativa da modalidade selecionada. O Asaas cobra R$ 20,00; após `PAYMENT_RECEIVED` e
   aprovação administrativa, o aluno recebe reserva e check-in somente para essa `Aula`. Na semana civil
   da aula (segunda a domingo, em `America/Sao_Paulo`), o aluno pode fechar o plano mensal padrão de
-  R$ 100,00 pagando um complemento Asaas de R$ 80,00. Somente `PAYMENT_RECEIVED` do complemento converte
-  o vínculo para mensalista e cria a mensalidade canônica paga de R$ 100,00, com crédito de R$ 20,00 e
-  recebimento complementar de R$ 80,00 preservados para auditoria.
+  R$ 100,00 pagando um complemento Asaas de R$ 80,00. O recebimento efetivo do complemento, confirmado
+  por `PAYMENT_RECEIVED` ou pelo status `RECEIVED` em consulta autenticada ao Asaas, converte o vínculo
+  para mensalista e cria a mensalidade canônica paga de R$ 100,00 na mesma transação, com crédito de
+  R$ 20,00 e recebimento complementar de R$ 80,00 preservados para auditoria. A consulta valida
+  identificador, cliente, referência, meio, valor e vencimento da cobrança; `CONFIRMED` não converte
+  o acesso. A competência da cobrança e a data efetiva do pagamento são preservadas.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,
