@@ -268,6 +268,47 @@ describe("processarWebhookAsaas", () => {
     expect(mocks.sincronizarStatusFinanceiroAluno).not.toHaveBeenCalled()
   })
 
+  it.each([
+    { referencia: "matricula:solicitacao-1:complemento:1", dueDate: "2026-09-13", aceita: true },
+    { referencia: "matricula:solicitacao-1:complemento:1", dueDate: "2026-09-14", aceita: false },
+    { referencia: "mensalidade:mensalidade-1", dueDate: "2026-09-14", aceita: true },
+    { referencia: "mensalidade:mensalidade-1", dueDate: "2026-09-13", aceita: false },
+  ])("confere a data emitida por cada origem no limite do dia: %o", async (cenario) => {
+    const cobranca = {
+      ...cobrancaLocal,
+      externalReference: cenario.referencia,
+      vencimentoAsaas: new Date("2026-09-14T02:59:59.999Z"),
+      valorCobrado: 80,
+      mensalidade: { ...cobrancaLocal.mensalidade, valor: 100 },
+    }
+    mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
+      args?.where?.OR ? cobranca : null,
+    )
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      externalReference: cenario.referencia,
+      value: 80,
+      dueDate: cenario.dueDate,
+    })
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_vencimento_fim_dia",
+      event: "PAYMENT_RECEIVED",
+      payment: { id: "pay_1" },
+    })
+
+    if (cenario.aceita) {
+      expect(resultado).toEqual({ ok: true, duplicado: false })
+      expect(mocks.tx.mensalidade.updateMany).toHaveBeenCalledOnce()
+    } else {
+      expect(resultado).toMatchObject({ ok: false, motivo: "Vencimento divergente no webhook." })
+      expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+      expect(mocks.tx.eventoWebhookAsaas.delete).toHaveBeenCalledWith({
+        where: { asaasEventId: "evt_vencimento_fim_dia" },
+      })
+    }
+  })
+
   it("habilita a wallet somente com aprovação geral da conta", async () => {
     mocks.tx.contaAsaasProfessor.findUnique.mockResolvedValue({
       id: "conta-professor-1",

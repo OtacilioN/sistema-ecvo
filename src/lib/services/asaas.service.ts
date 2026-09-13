@@ -2020,10 +2020,15 @@ function divergenciaPagamentoWebhook(
   ) {
     return "Valor divergente no webhook."
   }
+  // Cobranças de matrícula mantêm a data enviada pelo seu emissor no fuso da academia.
+  // As demais cobranças preservam a serialização UTC usada na criação neste serviço.
+  const vencimento = cobranca.vencimentoAsaas ?? cobranca.mensalidade.vencimento
+  const vencimentoEsperado = cobranca.externalReference.startsWith("matricula:")
+    ? formatarDataInput(vencimento)
+    : dataAsaas(vencimento)
   if (
     cobranca.tipo !== "PIX_AUTOMATICO_INICIAL" &&
-    (!pagamento.dueDate ||
-      pagamento.dueDate !== dataAsaas(cobranca.vencimentoAsaas ?? cobranca.mensalidade.vencimento))
+    (!pagamento.dueDate || pagamento.dueDate !== vencimentoEsperado)
   ) {
     return "Vencimento divergente no webhook."
   }
