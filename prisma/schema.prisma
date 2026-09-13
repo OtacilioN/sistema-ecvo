@@ -290,6 +290,7 @@ model Usuario {
   notificacoes         Notificacao[]
   inscricoesPush       InscricaoPush[]
   matriculasAnalisadas SolicitacaoMatricula[] @relation("AnalisadorMatricula")
+  exclusoesRepasseCriadas ExclusaoRepasseExternoMensal[]
   criadoEm             DateTime               @default(now())
   atualizadoEm         DateTime               @updatedAt
 }
@@ -328,6 +329,7 @@ model Aluno {
   pagamentos                    Pagamento[]
   inscricoesExame               InscricaoExame[]
   registrosImportados           RegistroImportado[]
+  exclusoesRepasseExterno        ExclusaoRepasseExternoMensal[]
   documentos                    DocumentoAluno[]
   aceitesTermoResponsabilidade  AceiteTermoResponsabilidade[]
   plano                         Plano?                         @relation(fields: [planoId], references: [id])
@@ -410,6 +412,7 @@ model Professor {
   graduacoesConcedidas GraduacaoAluno[]     @relation("ProfessorGraduacao")
   exames               Exame[]
   contaAsaas           ContaAsaasProfessor?
+  exclusoesRepasseExterno ExclusaoRepasseExternoMensal[]
   criadoEm             DateTime             @default(now())
   atualizadoEm         DateTime             @updatedAt
 }
@@ -469,6 +472,7 @@ model Modalidade {
   ofensivasTreino                  OfensivaTreino[]
   exames                           Exame[]
   alunosPlanos                     AlunoPlanoModalidade[]
+  exclusoesRepasseExterno           ExclusaoRepasseExternoMensal[]
   solicitacoesMatriculaPrincipais  SolicitacaoMatricula[]            @relation("ModalidadePrincipalSolicitacaoMatricula")
   solicitacoesMatricula            SolicitacaoMatriculaModalidade[]
   criadoEm                         DateTime                          @default(now())
@@ -1060,6 +1064,29 @@ model RegistroImportado {
 }
 
 // ───────────────────────── Configuração / Auditoria / Notificações ─────────────────────────
+
+// Correção de elegibilidade mensal externa, sem alterar receitas ou vínculos atuais.
+model ExclusaoRepasseExternoMensal {
+  id            String      @id @default(cuid())
+  competencia   String
+  plataforma    Plataforma
+  aluno         Aluno       @relation(fields: [alunoId], references: [id], onDelete: Restrict)
+  alunoId       String
+  modalidade    Modalidade  @relation(fields: [modalidadeId], references: [id], onDelete: Restrict)
+  modalidadeId  String
+  professor     Professor   @relation(fields: [professorId], references: [id], onDelete: Restrict)
+  professorId   String
+  justificativa String
+  criadoPor     Usuario     @relation(fields: [criadoPorId], references: [id], onDelete: Restrict)
+  criadoPorId   String
+  criadoEm      DateTime    @default(now())
+
+  @@unique([competencia, plataforma, alunoId, modalidadeId, professorId], map: "ExclusaoRepasseExternoMensal_escopo_key")
+  @@index([alunoId])
+  @@index([modalidadeId])
+  @@index([professorId])
+  @@index([criadoPorId])
+}
 
 // Configuração da academia (singleton: id="default") — RF-014/022/051
 model ConfiguracaoAcademia {

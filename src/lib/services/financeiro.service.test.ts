@@ -3,6 +3,7 @@ import {
   atualizarVencimentosMensalidadesAluno,
   calcularComposicaoRepasseProfessor,
   calcularDistribuicaoSobraFinanceira,
+  calcularRepasseExternoMensal,
   calcularRepasseFinanceiro,
   consolidarReceitasExternasMensais,
   consolidarReceitasWellhubMensais,
@@ -800,6 +801,100 @@ describe("consolidarReceitasWellhubMensais", () => {
     { alunoId: "a", competencia: "2026-08", valorRepasse: Number.NaN },
   ])("rejeita receita sem identificação, competência ou valor válidos: %o", (receita) => {
     expect(() => consolidarReceitasWellhubMensais([receita])).toThrow()
+  })
+})
+
+describe("exclusões de repasse externo por competência", () => {
+  const itens = [
+    { professorId: "vinicius", modalidadeId: "kickboxing", valorRepasseProfessor: 60 },
+    { professorId: "oyama", modalidadeId: "muay-thai", valorRepasseProfessor: 50 },
+  ]
+  const exclusao = {
+    competencia: "2026-08",
+    plataforma: "WELLHUB" as const,
+    alunoId: "aluno-a",
+    modalidadeId: "muay-thai",
+    professorId: "oyama",
+  }
+  const params = { ...exclusao, valorRecebido: 75, itens, exclusoes: [exclusao] }
+
+  it("soma as duas contas e recalcula apenas Kickboxing sem perder receita", () => {
+    const [grupo] = consolidarReceitasExternasMensais([
+      { ...exclusao, valorRepasse: 54 },
+      { ...exclusao, valorRepasse: 21 },
+    ])
+    expect(
+      calcularRepasseExternoMensal({ ...params, valorRecebido: grupo.valorRecebido }),
+    ).toMatchObject({
+      valorRecebido: 75,
+      professores: [{ professorId: "vinicius", valor: 45 }],
+      sobraAposProfessores: 30,
+      modalidadesExcluidas: [itens[1]],
+    })
+  })
+
+  it("mantém o teto do Kickboxing para receita de R$ 193,50", () => {
+    expect(calcularRepasseExternoMensal({ ...params, valorRecebido: 193.5 })).toMatchObject({
+      valorRecebido: 193.5,
+      professores: [{ professorId: "vinicius", valor: 60 }],
+      sobraAposProfessores: 133.5,
+    })
+  })
+
+  it.each([
+    { competencia: "2026-09" },
+    { plataforma: "TOTALPASS" as const },
+    { alunoId: "outro-aluno" },
+  ])("não aplica a exceção fora do mês, plataforma ou aluno: %o", (escopo) => {
+    const resultado = calcularRepasseExternoMensal({ ...params, ...escopo })
+    expect(resultado.professores).toMatchObject([
+      { professorId: "vinicius", valor: 24.55 },
+      { professorId: "oyama", valor: 20.45 },
+    ])
+    expect(resultado.modalidadesExcluidas).toEqual([])
+  })
+
+  it.each([
+    { professorId: "outro-professor" },
+    { modalidadeId: "outra-modalidade" },
+  ])("exige correspondência exata de professor e modalidade: %o", (destino) => {
+    expect(
+      calcularRepasseExternoMensal({ ...params, exclusoes: [{ ...exclusao, ...destino }] })
+        .professores,
+    ).toHaveLength(2)
+  })
+
+  it("preserva outra modalidade do mesmo professor", () => {
+    const resultado = calcularRepasseExternoMensal({
+      ...params,
+      itens: [itens[1], { ...itens[1], modalidadeId: "boxe" }],
+    })
+    expect(resultado.professores).toMatchObject([
+      { professorId: "oyama", valor: 45, modalidades: [{ modalidadeId: "boxe" }] },
+    ])
+  })
+
+  it("mantém toda a receita no caixa se todas as modalidades forem explicitamente excluídas", () => {
+    expect(calcularRepasseExternoMensal({ ...params, itens: [itens[1]] })).toMatchObject({
+      valorRecebido: 75,
+      professores: [],
+      sobraAposProfessores: 75,
+    })
+    expect(() => calcularRepasseExternoMensal({ ...params, itens: [] })).toThrow(
+      "Informe ao menos uma modalidade",
+    )
+  })
+
+  it("não interfere no cálculo da mensalidade interna já paga", () => {
+    calcularRepasseExternoMensal(params)
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: 90,
+        politica: "MENSALIDADE_INTERNA",
+        itens: [{ professorId: "oyama", modalidadeId: "muay-thai", valorBase: 100 }],
+      }),
+    ).toMatchObject({ professores: [{ professorId: "oyama", valor: 60 }] })
+    expect(params.itens).toEqual(itens)
   })
 })
 

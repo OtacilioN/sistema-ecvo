@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   mensalidades: vi.fn(),
   registros: vi.fn(),
+  exclusoes: vi.fn(),
 }))
 vi.mock("@/lib/auth/dal", () => ({ exigirGestao: async () => ({ papel: "GESTOR" }) }))
 vi.mock("@/lib/db", () => ({
   db: {
     mensalidade: { findMany: mocks.mensalidades },
     registroImportado: { findMany: mocks.registros },
+    exclusaoRepasseExternoMensal: { findMany: mocks.exclusoes },
   },
 }))
 vi.mock("@/lib/services/custos-fixos.service", () => ({
@@ -74,9 +76,84 @@ function registro(
 beforeEach(() => {
   mocks.mensalidades.mockResolvedValue([])
   mocks.registros.mockReset()
+  mocks.exclusoes.mockResolvedValue([])
 })
 
 describe("repasses de resumos mensais Wellhub", () => {
+  const exclusao = {
+    competencia: "2026-08",
+    plataforma: "WELLHUB",
+    alunoId: "aluno-a",
+    modalidadeId: "muay-thai",
+    professorId: "prof-muay-thai",
+  }
+
+  it("corrige o mês após consolidar contas, mantém mensalidade interna e retira a receita do filtro de Oyama", async () => {
+    mocks.registros.mockResolvedValue([
+      registro(54, "conta-a"),
+      registro(21, "conta-b"),
+      { ...registro(67.5, "conta-c"), alunoId: "aluno-b" },
+      { ...registro(126, "conta-d"), alunoId: "aluno-b" },
+    ])
+    mocks.exclusoes.mockResolvedValue([exclusao, { ...exclusao, alunoId: "aluno-b" }])
+    mocks.mensalidades.mockResolvedValue([
+      {
+        id: "mensalidade-interna",
+        competencia: "2026-08",
+        valor: 90,
+        status: "PAGA",
+        pagoEm: new Date("2026-08-11T12:00:00Z"),
+        formaPagamento: "Pix",
+        aluno: { usuario: { nome: "Aluno mensalidade" }, modalidadesPlano: [] },
+        repasseSnapshot: [
+          {
+            modalidadeId: "muay-thai",
+            modalidadeNome: "muay-thai",
+            professorId: "prof-muay-thai",
+            professorNome: "Professor muay-thai",
+            plataformaExterna: null,
+            valorBase: 100,
+          },
+        ],
+      },
+    ])
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
+    expect(mocks.exclusoes).toHaveBeenCalledWith({ where: { competencia: "2026-08" } })
+    expect(resumo(pagina, "Recebido")).toMatch(/358,50/)
+    expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/165,00/)
+    expect(resumo(pagina, "Sobra após professores")).toMatch(/193,50/)
+    expect(textoPagina(pagina)).toContain("Ajuste desta competência: muay-thai fora do repasse")
+    const filtrada = await Page({
+      searchParams: Promise.resolve({ competencia: "2026-08", professorId: "prof-muay-thai" }),
+    })
+    expect(textoPagina(filtrada)).toContain("Aluno mensalidade")
+    expect(textoPagina(filtrada)).not.toContain("Aluno A")
+    expect(resumo(filtrada, "Direito identificado dos professores")).toMatch(/165,00/)
+  })
+
+  it("mantém o cálculo normal de setembro mesmo se receber uma exclusão de agosto", async () => {
+    const base = registro(75, "setembro")
+    mocks.registros.mockResolvedValue([
+      { ...base, importacao: { ...base.importacao, competencia: "2026-09" } },
+    ])
+    mocks.exclusoes.mockResolvedValue([exclusao])
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+    expect(mocks.exclusoes).toHaveBeenCalledWith({ where: { competencia: "2026-09" } })
+    expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/45,00/)
+    expect(textoPagina(pagina)).toContain("Professor muay-thai")
+    expect(textoPagina(pagina)).not.toContain("Ajuste desta competência")
+  })
+
+  it("mantém a receita no caixa sem criar pendência quando todas as modalidades foram excluídas", async () => {
+    mocks.registros.mockResolvedValue([registro(75, "conta-a", [modalidade("muay-thai", 50)])])
+    mocks.exclusoes.mockResolvedValue([exclusao])
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
+    expect(resumo(pagina, "Recebido")).toMatch(/75,00/)
+    expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Sobra após professores")).toMatch(/75,00/)
+    expect(resumo(pagina, "Pendências sem professor definido")).toMatch(/\s0,00$/)
+  })
+
   it("consulta a competência informada e soma contas com cadastro legado, sem check-in individual", async () => {
     mocks.registros.mockResolvedValue([registro(120, "conta-a"), registro(80, "conta-b")])
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })

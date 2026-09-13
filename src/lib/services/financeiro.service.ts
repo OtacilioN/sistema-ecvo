@@ -352,6 +352,62 @@ export function calcularRepasseFinanceiro(params: {
   }
 }
 
+export type ExclusaoModalidadeRepasseMensal = {
+  competencia: string
+  plataforma: Plataforma
+  alunoId: string
+  modalidadeId: string
+  professorId: string
+}
+
+/** Corrige a elegibilidade de um mês sem alterar matrícula, receita ou mensalidade interna. */
+export function calcularRepasseExternoMensal(params: {
+  competencia: string
+  plataforma: Plataforma
+  alunoId: string
+  valorRecebido: number
+  itens: ItemRepasseModalidade[]
+  exclusoes: ExclusaoModalidadeRepasseMensal[]
+}): ResultadoRepasseFinanceiro & { modalidadesExcluidas: ItemRepasseModalidade[] } {
+  const exclusoes = params.exclusoes.filter(
+    (exclusao) =>
+      exclusao.competencia === params.competencia &&
+      exclusao.plataforma === params.plataforma &&
+      exclusao.alunoId === params.alunoId,
+  )
+  const excluida = (item: ItemRepasseModalidade) =>
+    exclusoes.some(
+      (exclusao) =>
+        exclusao.modalidadeId === item.modalidadeId && exclusao.professorId === item.professorId,
+    )
+  const modalidadesExcluidas = params.itens.filter(excluida)
+  const itens = params.itens.filter((item) => !excluida(item))
+  // Nenhuma matrícula continua sendo uma pendência. Uma exclusão explícita de todas
+  // as modalidades é diferente: mantém a receita no caixa, sem professor elegível.
+  if (itens.length === 0 && modalidadesExcluidas.length > 0) {
+    if (!Number.isFinite(params.valorRecebido) || params.valorRecebido < 0) {
+      throw new Error("Valor recebido inválido.")
+    }
+    const valorRecebido = deCentavos(paraCentavos(params.valorRecebido))
+    return {
+      valorRecebido,
+      valorBaseTotal: 0,
+      desconto: 0,
+      professores: [],
+      sobraAposProfessores: valorRecebido,
+      modalidadesExcluidas,
+    }
+  }
+  return {
+    ...calcularRepasseFinanceiro({
+      valorRecebido: params.valorRecebido,
+      itens,
+      politica: "REPASSE_EXTERNO_MENSAL",
+    }),
+    modalidadesExcluidas,
+  }
+}
+
 /** Preserva cadastro legado somente quando não há cobertura financeira explícita. */
 export function modalidadesExternasParaRepasse<T>(
   aluno: {

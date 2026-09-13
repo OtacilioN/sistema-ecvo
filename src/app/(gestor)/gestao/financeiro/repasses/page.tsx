@@ -19,6 +19,7 @@ import { obterCustosFixosMensais } from "@/lib/services/custos-fixos.service"
 import {
   calcularComposicaoRepasseProfessor,
   calcularDistribuicaoSobraFinanceira,
+  calcularRepasseExternoMensal,
   calcularRepasseFinanceiro,
   consolidarReceitasExternasMensais,
   type ItemRepasseMensalidadeSnapshot,
@@ -130,7 +131,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const mesRepasse = mesRepasseValido(valorUnico(params.competencia))
   const { inicio, fim } = intervaloMesRepasse(mesRepasse)
 
-  const [mensalidades, registrosExternos, custosMensais] = await Promise.all([
+  const [mensalidades, registrosExternos, custosMensais, exclusoesExternas] = await Promise.all([
     db.mensalidade.findMany({
       where: {
         status: "PAGA",
@@ -230,6 +231,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       },
     }),
     obterCustosFixosMensais(mesRepasse),
+    db.exclusaoRepasseExternoMensal.findMany({ where: { competencia: mesRepasse } }),
   ])
 
   const linhas = new Map<string, LinhaRepasse>()
@@ -429,10 +431,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       })
       continue
     }
-    const repasse = calcularRepasseFinanceiro({
+    const repasse = calcularRepasseExternoMensal({
       valorRecebido: grupo.valorRecebido,
       itens,
-      politica: "REPASSE_EXTERNO_MENSAL",
+      competencia: grupo.competencia,
+      plataforma: grupo.plataforma,
+      alunoId: grupo.alunoId,
+      exclusoes: exclusoesExternas,
     })
     const repasseProfessores = repasse.professores.reduce((total, item) => total + item.valor, 0)
     const repasseManual = repasse.professores.reduce(
@@ -456,7 +461,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       splitConcluido: 0,
       splitEmProcessamento: 0,
       repasseManual,
-      detalheRepasse: `${grupo.registros.length} registro(s) somados na competência; 60% da receita, limitado ao repasse de cada modalidade. Pagamento manual.`,
+      detalheRepasse: `${grupo.registros.length} registro(s) somados na competência; 60% da receita, limitado ao repasse de cada modalidade. Pagamento manual.${
+        repasse.modalidadesExcluidas.length > 0
+          ? ` Ajuste desta competência: ${repasse.modalidadesExcluidas.map((item) => item.modalidadeNome ?? item.modalidadeId).join(", ")} fora do repasse; cálculo apenas com as modalidades elegíveis.`
+          : ""
+      }`,
       sobraAposProfessores: repasse.sobraAposProfessores,
     })
     for (const professor of repasse.professores) {

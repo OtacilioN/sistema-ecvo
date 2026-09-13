@@ -275,6 +275,12 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   cálculo, com a receita exibida e integralmente reservada até definir a cobertura. Resumos mensais
   sem aluno identificado ou ainda pendentes também integram o recebido, com reserva integral e sem
   pagamento manual nem distribuição da sobra. O cálculo usa os vínculos e valores cadastrados no momento da consulta.
+  Correções históricas podem excluir uma combinação de aluno, plataforma, competência, modalidade e
+  professor em `ExclusaoRepasseExternoMensal`, com justificativa e auditoria na mesma transação.
+  A exclusão é aplicada após somar as contas e antes de ratear: os 60% e tetos são recalculados
+  somente entre modalidades elegíveis. A receita importada, os vínculos atuais, mensalidades internas
+  e outras competências são preservados. Se todas as modalidades forem explicitamente excluídas,
+  a receita permanece integralmente no caixa, sem gerar pendência. O extrato identifica o ajuste.
   Importações diárias legadas de ambas as plataformas preservam o repasse de 60% por registro conciliado.
   A sobra após professores integra o resultado mensal sujeito aos custos fixos e à RF-053.2.
 
