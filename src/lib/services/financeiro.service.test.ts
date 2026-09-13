@@ -1024,6 +1024,35 @@ describe("calcularComposicaoRepasseProfessor", () => {
 })
 
 describe("calcularDistribuicaoSobraFinanceira", () => {
+  it("usa o custo configurado do mês inclusive quando todos os custos são zero", () => {
+    expect(
+      calcularDistribuicaoSobraFinanceira({
+        totalRecebido: 6000,
+        totalProfessores: 3000,
+        custosFixos: 2400,
+      }),
+    ).toMatchObject({
+      custosFixos: 2400,
+      saldoAposCustosFixos: 600,
+      caixaInvestimento: 200,
+      socioA: 200,
+      socioB: 200,
+    })
+    expect(
+      calcularDistribuicaoSobraFinanceira({
+        totalRecebido: 6000,
+        totalProfessores: 3000,
+        custosFixos: 0,
+      }),
+    ).toMatchObject({
+      custosFixos: 0,
+      saldoAposCustosFixos: 3000,
+      caixaInvestimento: 1000,
+      socioA: 1000,
+      socioB: 1000,
+    })
+  })
+
   it("desconta os custos fixos e divide o saldo igualmente em três partes", () => {
     expect(
       calcularDistribuicaoSobraFinanceira({
@@ -1032,12 +1061,12 @@ describe("calcularDistribuicaoSobraFinanceira", () => {
       }),
     ).toEqual({
       sobraAposProfessores: 3000,
-      custosFixos: 2670,
-      saldoAposCustosFixos: 330,
-      valorDistribuivel: 330,
-      caixaInvestimento: 110,
-      socioA: 110,
-      socioB: 110,
+      custosFixos: 2640,
+      saldoAposCustosFixos: 360,
+      valorDistribuivel: 360,
+      caixaInvestimento: 120,
+      socioA: 120,
+      socioB: 120,
     })
   })
 
@@ -1049,8 +1078,8 @@ describe("calcularDistribuicaoSobraFinanceira", () => {
       }),
     ).toEqual({
       sobraAposProfessores: 2000,
-      custosFixos: 2670,
-      saldoAposCustosFixos: -670,
+      custosFixos: 2640,
+      saldoAposCustosFixos: -640,
       valorDistribuivel: 0,
       caixaInvestimento: 0,
       socioA: 0,
@@ -1061,7 +1090,7 @@ describe("calcularDistribuicaoSobraFinanceira", () => {
   it("considera o custo fixo quitado quando o saldo é exatamente zero", () => {
     expect(
       calcularDistribuicaoSobraFinanceira({
-        totalRecebido: 3670,
+        totalRecebido: 3640,
         totalProfessores: 1000,
       }),
     ).toMatchObject({
@@ -1074,7 +1103,7 @@ describe("calcularDistribuicaoSobraFinanceira", () => {
 
   it("preserva todos os centavos na divisão em três partes", () => {
     const resultado = calcularDistribuicaoSobraFinanceira({
-      totalRecebido: 2670.01,
+      totalRecebido: 2640.01,
       totalProfessores: 0,
     })
 

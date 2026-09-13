@@ -778,6 +778,19 @@ model SolicitacaoMatriculaModalidade {
   @@index([modalidadeId])
 }
 
+// Custos fixos da competência. Meses sem registro usam os valores padrão da aplicação.
+model CustoFixoMensal {
+  competencia  String   @id // "2026-09"
+  aluguel      Decimal  @db.Decimal(12, 2)
+  energia      Decimal  @db.Decimal(12, 2)
+  agua         Decimal  @db.Decimal(12, 2)
+  internet     Decimal  @db.Decimal(12, 2)
+  limpeza      Decimal  @db.Decimal(12, 2)
+  outros       Decimal  @db.Decimal(12, 2)
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+}
+
 model CobrancaMatriculaAsaas {
   id                       String                           @id @default(cuid())
   solicitacao              SolicitacaoMatricula             @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)

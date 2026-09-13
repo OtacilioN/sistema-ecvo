@@ -1,6 +1,7 @@
 "use client"
 
 import { Save } from "lucide-react"
+import Link from "next/link"
 import { useActionState } from "react"
 import { acaoAtualizarConfiguracao, type EstadoConfiguracao } from "@/app/actions/configuracoes"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
@@ -157,7 +158,15 @@ export function FormConfiguracao({
               />
             </div>
             <CampoSomenteLeitura rotulo="Professor" valor="60%" />
-            <CampoSomenteLeitura rotulo="Custos fixos mensais" valor="R$ 2.670,00" />
+            <div className="space-y-1.5">
+              <span className="text-sm font-medium">Custos fixos mensais</span>
+              <Link
+                href="/gestao/financeiro/repasses#custos-fixos"
+                className="block text-sm text-primary underline underline-offset-4"
+              >
+                Configurar por mês no financeiro
+              </Link>
+            </div>
             <CampoSomenteLeitura rotulo="Divisão após custos" valor="Caixa + Sócio A + Sócio B" />
           </fieldset>
 

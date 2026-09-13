@@ -213,8 +213,12 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   manual. O QR inicial do PIX Automático não possui split por limitação do provedor; os ciclos futuros em
   modo `MANUAL` possuem. Splits ainda em processamento ficam fora do saldo manual para impedir pagamento
   duplicado.
-- **RF-053.2** Da sobra mensal após os professores, são abatidos primeiro R$ 2.670,00 de custos fixos
-  (aluguel, água, luz e internet). Um déficit é exibido como valor negativo em vermelho; saldo zero ou
+- **RF-053.2** Da sobra mensal após os professores, são abatidos primeiro os custos fixos configurados
+  para o mês do repasse. O gestor pode editar no financeiro aluguel, energia, água, internet, limpeza
+  e outros custos, com valores não negativos e até duas casas decimais. Meses sem configuração usam
+  aluguel R$ 2.200,00, energia R$ 150,00, água R$ 120,00, internet R$ 90,00, limpeza R$ 80,00 e outros
+  R$ 0,00 (total R$ 2.640,00). Salvar altera apenas o mês selecionado, registra auditoria na mesma
+  transação e recalcula a sobra; a secretaria tem somente leitura. Um déficit é exibido como valor negativo em vermelho; saldo zero ou
   positivo é exibido em verde. Somente o saldo positivo é dividido igualmente entre Caixa/investimento,
   Sócio A e Sócio B.
 
@@ -253,7 +257,7 @@ RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 co
 RN-020 plano é um pacote comercial disponível para qualquer modalidade; as modalidades contratadas são
 definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno. A quantidade opcional
 configurada no plano apenas associa a oferta ao autocadastro mensalista; não fixa quais modalidades podem ser escolhidas.
-RN-021 a sobra mensal paga primeiro R$ 2.670,00 de custos fixos; apenas o saldo positivo é dividido
+RN-021 a sobra mensal paga primeiro os custos fixos do mês (R$ 2.640,00 por padrão); apenas o saldo positivo é dividido
 igualmente entre Caixa/investimento, Sócio A e Sócio B.
 
 RN-022 o PIX Automático semestral possui exatamente seis ciclos; o pagamento imediato conta como ciclo 1

@@ -157,6 +157,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <Button asChild variant="outline">
           <Link href="/gestao/financeiro/repasses">Ver repasses</Link>
         </Button>
+        <Button asChild variant="outline">
+          <Link href="/gestao/financeiro/repasses#custos-fixos">Custos fixos do mês</Link>
+        </Button>
         {podeEditar && <AcoesFinanceiro planos={planosOpcao} alunos={alunosOpcao} />}
       </CabecalhoPagina>
 

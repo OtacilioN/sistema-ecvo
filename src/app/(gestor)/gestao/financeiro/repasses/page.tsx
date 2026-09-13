@@ -10,10 +10,12 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
+import { competenciaCustosFixosSchema } from "@/lib/financeiro/custos-fixos"
 import {
   filtrarReceitasPorProfessor,
   normalizarProfessorFiltro,
 } from "@/lib/financeiro/filtros-repasse"
+import { obterCustosFixosMensais } from "@/lib/services/custos-fixos.service"
 import {
   calcularComposicaoRepasseProfessor,
   calcularDistribuicaoSobraFinanceira,
@@ -25,6 +27,7 @@ import {
 import { cn } from "@/lib/utils"
 import { chaveCompetencia, formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
+import { FormCustosFixos } from "./form-custos-fixos"
 
 export const dynamic = "force-dynamic"
 
@@ -94,7 +97,8 @@ function valorUnico(valor: string | string[] | undefined) {
 }
 
 function mesRepasseValido(valor: string | undefined) {
-  return valor && /^\d{4}-\d{2}$/.test(valor) ? valor : chaveCompetencia()
+  const resultado = competenciaCustosFixosSchema.safeParse(valor)
+  return resultado.success ? resultado.data : chaveCompetencia()
 }
 
 function intervaloMesRepasse(mesRepasse: string) {
@@ -105,12 +109,12 @@ function intervaloMesRepasse(mesRepasse: string) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
-  await exigirGestao()
+  const usuario = await exigirGestao()
   const params = await searchParams
   const mesRepasse = mesRepasseValido(valorUnico(params.competencia))
   const { inicio, fim } = intervaloMesRepasse(mesRepasse)
 
-  const [mensalidades, registrosExternos] = await Promise.all([
+  const [mensalidades, registrosExternos, custosMensais] = await Promise.all([
     db.mensalidade.findMany({
       where: {
         status: "PAGA",
@@ -184,6 +188,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         },
       },
     }),
+    obterCustosFixosMensais(mesRepasse),
   ])
 
   const linhas = new Map<string, LinhaRepasse>()
@@ -394,6 +399,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const distribuicaoSobra = calcularDistribuicaoSobraFinanceira({
     totalRecebido,
     totalProfessores,
+    custosFixos: custosMensais.total,
   })
   const eventosDaSobra = extrato.length
   const origemSobra = "Resultado mensal após custos fixos"
@@ -493,6 +499,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           </form>
         </CardContent>
       </Card>
+
+      <FormCustosFixos
+        key={mesRepasse}
+        competencia={mesRepasse}
+        valores={custosMensais.valores}
+        personalizado={custosMensais.personalizado}
+        somenteLeitura={usuario.papel !== "GESTOR"}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Resumo rotulo="Recebido" valor={formatarBRL(totalRecebido)} />

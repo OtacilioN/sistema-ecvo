@@ -10,6 +10,7 @@ import {
 } from "@prisma/client"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
+import { CUSTOS_FIXOS_PADRAO, totalizarCustosFixos } from "@/lib/financeiro/custos-fixos"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
 import {
@@ -115,7 +116,7 @@ export const CONFIGURACAO_REPASSE_PADRAO: ConfiguracaoRepasseFinanceiro = {
   percentualProfessor: 60,
 }
 
-export const CUSTOS_FIXOS_MENSAIS = 2670
+export const CUSTOS_FIXOS_MENSAIS = totalizarCustosFixos(CUSTOS_FIXOS_PADRAO)
 
 export function statusMensalidadeEfetivo(
   mensalidade: MensalidadeResumo,
