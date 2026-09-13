@@ -2,6 +2,24 @@ import { describe, expect, it } from "vitest"
 import { idAutorizacaoDoWebhook, idPagamentoInstrucaoDoWebhook, webhookAsaasSchema } from "./asaas"
 
 describe("webhook Asaas", () => {
+  it("aceita ownerId nulo conforme o payload oficial de cobrança", () => {
+    const resultado = webhookAsaasSchema.parse({
+      id: "evt_split",
+      event: "PAYMENT_SPLIT_DONE",
+      account: { id: "conta", ownerId: null },
+      payment: { id: "pay_1" },
+      additionalInfo: { splitId: "split_1" },
+    })
+    expect(resultado.account?.ownerId).toBeNull()
+    expect(resultado.additionalInfo?.splitId).toBe("split_1")
+    expect(
+      webhookAsaasSchema.safeParse({
+        ...resultado,
+        account: { id: "conta", ownerId: "" },
+      }).success,
+    ).toBe(false)
+  })
+
   it("aceita campos futuros sem relaxar os identificadores usados", () => {
     const resultado = webhookAsaasSchema.parse({
       id: "evt_1",

@@ -40,6 +40,10 @@ somente porque o build passou.
   `PIX_AUTOMATIC_RECURRING_PAYMENT_INSTRUCTION_SCHEDULED`,
   `PIX_AUTOMATIC_RECURRING_PAYMENT_INSTRUCTION_REFUSED`,
   `PIX_AUTOMATIC_RECURRING_PAYMENT_INSTRUCTION_CANCELLED`) do PIX Automático, com envio sequencial.
+- [ ] Habilitar também `PAYMENT_SPLIT_DONE`, `PAYMENT_SPLIT_CANCELLED`,
+  `PAYMENT_SPLIT_DIVERGENCE_BLOCK` e `PAYMENT_SPLIT_DIVERGENCE_BLOCK_FINISHED` no webhook da conta
+  emissora. Conferir a entrega dos eventos individuais por `additionalInfo.splitId` e a mudança do
+  split local para `CONCLUIDO` após a liquidação.
 - [ ] Configurar `ASAAS_TIMEOUT_MS=8000` em Production para que a consulta canônica ao Asaas ainda permita
   responder ao webhook dentro do limite de 10 segundos do provedor.
 - [ ] Configurar `CRON_SECRET` Production e confirmar execução diária de

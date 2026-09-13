@@ -70,6 +70,38 @@ describe("webhook Asaas", () => {
     expect(processarWebhookAsaas).toHaveBeenCalledOnce()
   })
 
+  it("aceita a estrutura do split de produção com ownerId nulo e campos opcionais nulos", async () => {
+    // Estrutura observada na entrega rejeitada; identificadores saneados.
+    const evento = {
+      id: "evt_split_producao",
+      event: "PAYMENT_SPLIT_DONE",
+      account: { id: "conta-emissora", ownerId: null },
+      payment: {
+        id: "pay_split",
+        customer: "cus_aluno",
+        billingType: "PIX",
+        status: "RECEIVED",
+        dueDate: "2026-09-09",
+        split: [
+          {
+            id: "split-liquidado",
+            walletId: "wallet-professor",
+            fixedValue: 60,
+            percentualValue: null,
+            status: "DONE",
+            cancellationReason: null,
+          },
+        ],
+      },
+      additionalInfo: { splitId: "split-liquidado" },
+    }
+    const resposta = await POST(request(JSON.stringify(evento)))
+
+    expect(resposta.status).toBe(200)
+    expect(await resposta.json()).toEqual({ received: true })
+    expect(processarWebhookAsaas).toHaveBeenCalledWith(evento)
+  })
+
   it("solicita reentrega quando o evento autenticado não foi processado", async () => {
     vi.mocked(processarWebhookAsaas).mockResolvedValueOnce({
       ok: false,

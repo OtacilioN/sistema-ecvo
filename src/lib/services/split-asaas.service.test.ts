@@ -8,6 +8,7 @@ import {
   persistirSplitsRemotos,
   prepararSplitsPagamento,
   proximoStatusSplitAsaas,
+  reconciliarSplitsWebhook,
   statusLocalSplitAsaas,
 } from "./split-asaas.service"
 
@@ -198,5 +199,120 @@ describe("split de pagamento Asaas", () => {
     expect(statusLocalSplitAsaas("NOVO_STATUS")).toBe("ERRO")
     expect(proximoStatusSplitAsaas("CONCLUIDO", "PENDENTE")).toBe("CONCLUIDO")
     expect(proximoStatusSplitAsaas("CONCLUIDO", "ESTORNADO")).toBe("ESTORNADO")
+  })
+
+  it.each([
+    "PENDING",
+    "AWAITING_CREDIT",
+    undefined,
+  ])("conclui o split individual mesmo com snapshot %s", async (status) => {
+    const update = vi.fn().mockResolvedValue({})
+    const tx = {
+      splitPagamentoAsaas: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "split-local",
+          asaasSplitId: "split-remoto",
+          status: "PENDENTE",
+        }),
+        update,
+      },
+    } as never
+    expect(
+      await reconciliarSplitsWebhook(tx, {
+        evento: "PAYMENT_SPLIT_DONE",
+        splitId: "split-remoto",
+        splits: [{ id: "split-remoto", walletId: "wallet", fixedValue: 60, status }],
+      }),
+    ).toEqual(["split-local"])
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "split-local" },
+      data: expect.objectContaining({ status: "CONCLUIDO", statusAsaas: "DONE" }),
+    })
+  })
+
+  it("conclui somente o split identificado quando o snapshot contém outro recebedor", async () => {
+    const update = vi.fn().mockResolvedValue({})
+    const tx = {
+      splitPagamentoAsaas: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "split-outro",
+          asaasSplitId: "remoto-outro",
+          status: "PENDENTE",
+        }),
+        findUnique: vi.fn().mockResolvedValue({
+          id: "split-alvo",
+          asaasSplitId: "remoto-alvo",
+          status: "PENDENTE",
+        }),
+        update,
+      },
+    } as never
+    expect(
+      await reconciliarSplitsWebhook(tx, {
+        evento: "PAYMENT_SPLIT_DONE",
+        splitId: "remoto-alvo",
+        splits: [{ id: "remoto-outro", walletId: "wallet-outro", status: "PENDING" }],
+      }),
+    ).toEqual(["split-outro", "split-alvo"])
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "split-outro" },
+      data: expect.objectContaining({ status: "PENDENTE" }),
+    })
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "split-alvo" },
+      data: expect.objectContaining({ status: "CONCLUIDO", statusAsaas: "DONE" }),
+    })
+  })
+
+  it("não confirma evento cujo alvo está ausente nem substitui o ID de outro split", async () => {
+    const outro = { id: "split-outro", asaasSplitId: "remoto-outro", status: "PENDENTE" }
+    const update = vi.fn().mockResolvedValue({})
+    const tx = {
+      splitPagamentoAsaas: {
+        findFirst: vi.fn().mockResolvedValue(outro),
+        findUnique: vi.fn().mockResolvedValue(null),
+        findMany: vi.fn().mockResolvedValue([outro]),
+        update,
+      },
+    } as never
+    expect(
+      await reconciliarSplitsWebhook(tx, {
+        evento: "PAYMENT_SPLIT_DONE",
+        splitId: "remoto-ausente",
+        asaasPaymentId: "pay_1",
+        splits: [{ id: "remoto-outro", walletId: "wallet-outro", status: "PENDING" }],
+      }),
+    ).toEqual([])
+    expect(update).toHaveBeenCalledTimes(1)
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "split-outro" },
+      data: expect.objectContaining({ asaasSplitId: "remoto-outro", status: "PENDENTE" }),
+    })
+  })
+
+  it.each([
+    { local: "ESTORNADO", remoto: "PENDING" },
+    { local: "PENDENTE", remoto: "REFUNDED" },
+  ])("preserva o estorno local ou remoto em liquidação atrasada: %o", async (status) => {
+    const update = vi.fn().mockResolvedValue({})
+    const tx = {
+      splitPagamentoAsaas: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "split-local",
+          asaasSplitId: "split-remoto",
+          status: status.local,
+        }),
+        update,
+      },
+    } as never
+    await reconciliarSplitsWebhook(tx, {
+      evento: "PAYMENT_SPLIT_DONE",
+      splitId: "split-remoto",
+      splits: [{ id: "split-remoto", walletId: "wallet", status: status.remoto }],
+    })
+    expect(update).toHaveBeenCalledWith({
+      where: { id: "split-local" },
+      data: expect.objectContaining({ status: "ESTORNADO" }),
+    })
   })
 })

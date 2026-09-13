@@ -232,6 +232,15 @@ export async function reconciliarSplitsWebhook(
   },
 ) {
   const idsAtualizados: string[] = []
+  const statusEvento =
+    params.evento === "PAYMENT_SPLIT_DONE"
+      ? "DONE"
+      : params.evento === "PAYMENT_SPLIT_CANCELLED"
+        ? "CANCELLED"
+        : params.evento === "PAYMENT_SPLIT_DIVERGENCE_BLOCK"
+          ? "BLOCKED_BY_VALUE_DIVERGENCE"
+          : undefined
+  let splitIndividualAtualizado = false
   for (const remoto of params.splits ?? []) {
     const local = await tx.splitPagamentoAsaas.findFirst({
       where: {
@@ -242,43 +251,45 @@ export async function reconciliarSplitsWebhook(
       },
     })
     if (!local) continue
+    // O evento individual confirma somente seu split, mesmo com um snapshot ainda pendente.
+    const alvoDoEvento = Boolean(
+      params.splitId && (remoto.id === params.splitId || local.asaasSplitId === params.splitId),
+    )
+    const statusAsaas =
+      alvoDoEvento && statusEvento && remoto.status !== "REFUNDED" ? statusEvento : remoto.status
     await tx.splitPagamentoAsaas.update({
       where: { id: local.id },
       data: {
         asaasSplitId: remoto.id ?? local.asaasSplitId,
-        status: proximoStatusSplitAsaas(local.status, statusLocalSplitAsaas(remoto.status)),
-        statusAsaas: remoto.status,
+        status: proximoStatusSplitAsaas(local.status, statusLocalSplitAsaas(statusAsaas)),
+        statusAsaas,
         motivo: remoto.refusalReason ?? remoto.cancellationReason ?? null,
         ultimoEventoAsaas: params.evento,
       },
     })
     idsAtualizados.push(local.id)
+    if (alvoDoEvento) splitIndividualAtualizado = true
   }
 
-  if (idsAtualizados.length === 0 && params.splitId) {
+  if (!splitIndividualAtualizado && params.splitId) {
     const local = await tx.splitPagamentoAsaas.findUnique({
       where: { asaasSplitId: params.splitId },
     })
     if (local) {
-      const status =
-        params.evento === "PAYMENT_SPLIT_DONE"
-          ? "CONCLUIDO"
-          : params.evento === "PAYMENT_SPLIT_CANCELLED"
-            ? "CANCELADO"
-            : params.evento === "PAYMENT_SPLIT_DIVERGENCE_BLOCK"
-              ? "BLOQUEADO"
-              : "PENDENTE"
+      const status = statusEvento ? statusLocalSplitAsaas(statusEvento) : "PENDENTE"
       await tx.splitPagamentoAsaas.update({
         where: { id: local.id },
         data: {
           status: proximoStatusSplitAsaas(local.status, status),
+          statusAsaas: statusEvento,
           ultimoEventoAsaas: params.evento,
         },
       })
       idsAtualizados.push(local.id)
+      splitIndividualAtualizado = true
     }
   }
-  if (idsAtualizados.length === 0 && params.splitId && params.asaasPaymentId) {
+  if (!splitIndividualAtualizado && params.splitId && params.asaasPaymentId) {
     const candidatos = await tx.splitPagamentoAsaas.findMany({
       where: {
         OR: [
@@ -287,19 +298,26 @@ export async function reconciliarSplitsWebhook(
         ],
       },
     })
-    if (candidatos.length === 1) {
+    if (
+      candidatos.length === 1 &&
+      (!candidatos[0].asaasSplitId || candidatos[0].asaasSplitId === params.splitId)
+    ) {
       const local = candidatos[0]
-      const status = params.evento === "PAYMENT_SPLIT_DONE" ? "CONCLUIDO" : "PENDENTE"
+      const status = statusEvento ? statusLocalSplitAsaas(statusEvento) : "PENDENTE"
       await tx.splitPagamentoAsaas.update({
         where: { id: local.id },
         data: {
           asaasSplitId: params.splitId,
           status: proximoStatusSplitAsaas(local.status, status),
+          statusAsaas: statusEvento,
           ultimoEventoAsaas: params.evento,
         },
       })
       idsAtualizados.push(local.id)
+      splitIndividualAtualizado = true
     }
   }
+  // Atualizar outro split da cobrança não confirma a entrega do evento individual.
+  if (params.splitId && !splitIndividualAtualizado) return []
   return idsAtualizados
 }

@@ -73,7 +73,7 @@ export const webhookAsaasSchema = z
       .optional(),
     additionalInfo: z.object({ splitId: identificador.optional() }).passthrough().optional(),
     account: z
-      .object({ id: identificador, ownerId: identificador.optional() })
+      .object({ id: identificador, ownerId: identificador.nullish() })
       .passthrough()
       .optional(),
     accountStatus: z
