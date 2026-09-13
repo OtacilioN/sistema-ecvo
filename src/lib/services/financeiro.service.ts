@@ -56,7 +56,11 @@ export type ItemRepasseMensalidadeSnapshot = {
   valorRepasseProfessor?: number
 }
 
-export type PoliticaRepasseFinanceiro = "MENSALIDADE_INTERNA" | "REPASSE_EXTERNO"
+export type PoliticaRepasseFinanceiro =
+  | "MENSALIDADE_INTERNA"
+  | "REPASSE_EXTERNO"
+  | "REPASSE_EXTERNO_MENSAL"
+  | "WELLHUB_MENSAL"
 
 export type ResultadoRepasseFinanceiro = {
   valorRecebido: number
@@ -264,7 +268,7 @@ export function calcularRepasseFinanceiro(params: {
     const valorBaseCentavos = paraCentavos(item.valorBase ?? config.valorBaseModalidade)
     if (valorBaseCentavos <= 0) throw new Error("Valor base da modalidade deve ser positivo.")
     const valorRepasseProfessorCentavos =
-      politica === "MENSALIDADE_INTERNA" &&
+      politica !== "REPASSE_EXTERNO" &&
       item.valorRepasseProfessor !== null &&
       item.valorRepasseProfessor !== undefined
         ? paraCentavos(item.valorRepasseProfessor)
@@ -285,10 +289,14 @@ export function calcularRepasseFinanceiro(params: {
     (total, item) => total + item.tetoProfessorCentavos,
     0,
   )
+  const resumoMensal = politica === "REPASSE_EXTERNO_MENSAL" || politica === "WELLHUB_MENSAL"
   const valoresProfessor =
-    politica === "REPASSE_EXTERNO"
+    politica === "REPASSE_EXTERNO" || resumoMensal
       ? dividirProporcionalmente(
-          Math.round((valorRecebidoCentavos * config.percentualProfessor) / 100),
+          Math.min(
+            Math.round((valorRecebidoCentavos * config.percentualProfessor) / 100),
+            resumoMensal ? tetoProfessoresCentavos : Number.POSITIVE_INFINITY,
+          ),
           itens.map((item) => item.tetoProfessorCentavos),
         )
       : valorRecebidoCentavos >= tetoProfessoresCentavos
@@ -342,6 +350,86 @@ export function calcularRepasseFinanceiro(params: {
     })),
     sobraAposProfessores: deCentavos(sobraAposProfessoresCentavos),
   }
+}
+
+/** Preserva cadastro legado somente quando não há cobertura financeira explícita. */
+export function modalidadesExternasParaRepasse<T>(
+  aluno: {
+    tipo: TipoAluno
+    modalidadesPlano: Array<{ plataformaExterna: Plataforma | null; modalidade: T }>
+    modalidades: T[]
+  },
+  plataforma: Plataforma,
+): T[] {
+  if (aluno.modalidadesPlano.length > 0) {
+    return aluno.modalidadesPlano
+      .filter((item) => item.plataformaExterna === plataforma)
+      .map((item) => item.modalidade)
+  }
+  return aluno.tipo === plataforma ? aluno.modalidades : []
+}
+
+export function modalidadesWellhubParaRepasse<T>(aluno: {
+  tipo: TipoAluno
+  modalidadesPlano: Array<{ plataformaExterna: Plataforma | null; modalidade: T }>
+  modalidades: T[]
+}): T[] {
+  return modalidadesExternasParaRepasse(aluno, "WELLHUB")
+}
+
+/** Soma as contas por plataforma antes de aplicar o teto mensal de cada modalidade. */
+export function consolidarReceitasExternasMensais<
+  T extends { plataforma: Plataforma; alunoId: string; competencia: string; valorRepasse: number },
+>(registros: T[]) {
+  const grupos = new Map<
+    string,
+    {
+      plataforma: Plataforma
+      alunoId: string
+      competencia: string
+      valorCentavos: number
+      registros: T[]
+    }
+  >()
+  for (const registro of registros) {
+    if (!registro.alunoId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(registro.competencia)) {
+      throw new Error("Receita externa mensal exige aluno e competência válidos.")
+    }
+    if (!Number.isFinite(registro.valorRepasse) || registro.valorRepasse < 0) {
+      throw new Error("Receita externa mensal deve ser um valor não negativo.")
+    }
+    const chave = `${registro.plataforma}:${registro.alunoId}:${registro.competencia}`
+    const grupo = grupos.get(chave) ?? {
+      plataforma: registro.plataforma,
+      alunoId: registro.alunoId,
+      competencia: registro.competencia,
+      valorCentavos: 0,
+      registros: [],
+    }
+    grupo.valorCentavos += paraCentavos(registro.valorRepasse)
+    grupo.registros.push(registro)
+    grupos.set(chave, grupo)
+  }
+  return Array.from(grupos.values()).map(({ valorCentavos, ...grupo }) => ({
+    ...grupo,
+    valorRecebido: deCentavos(valorCentavos),
+  }))
+}
+
+/** Compatibilidade com consumidores do resumo mensal Wellhub. */
+export function consolidarReceitasWellhubMensais<
+  T extends { alunoId: string; competencia: string; valorRepasse: number },
+>(registros: T[]) {
+  return consolidarReceitasExternasMensais(
+    registros.map((registro) => ({
+      ...registro,
+      plataforma: "WELLHUB" as const,
+      registroOriginal: registro,
+    })),
+  ).map(({ plataforma: _, registros: registrosGrupo, ...grupo }) => ({
+    ...grupo,
+    registros: registrosGrupo.map(({ registroOriginal }) => registroOriginal),
+  }))
 }
 
 export function calcularDistribuicaoSobraFinanceira(params: {

@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache"
 import { exigirPapel } from "@/lib/auth/dal"
+import { ErroArquivoConciliacao, lerArquivosConciliacao } from "@/lib/conciliacao/arquivos"
 import {
-  importarPlanilhaConciliacao,
+  ErroImportacaoConciliacao,
+  importarPlanilhasConciliacao,
   resolverConciliacaoManual,
 } from "@/lib/services/conciliacao.service"
 import { importarConciliacaoSchema, resolverConciliacaoSchema } from "@/lib/validations/conciliacao"
@@ -17,27 +19,27 @@ export async function acaoImportarConciliacao(
   const usuario = await exigirPapel("GESTOR")
   const parsed = importarConciliacaoSchema.safeParse({
     plataforma: formData.get("plataforma"),
+    competencia: formData.get("competencia"),
   })
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." }
 
-  const arquivo = formData.get("arquivo")
-  if (!(arquivo instanceof File) || arquivo.size === 0) {
-    return { erro: "Envie um arquivo CSV ou XLSX." }
+  try {
+    await importarPlanilhasConciliacao({
+      ...parsed.data,
+      arquivos: await lerArquivosConciliacao(formData),
+      autorId: usuario.id,
+    })
+  } catch (erro) {
+    return {
+      erro:
+        erro instanceof ErroImportacaoConciliacao || erro instanceof ErroArquivoConciliacao
+          ? erro.message
+          : "Não foi possível importar as planilhas.",
+    }
   }
-  const tipoArquivo = tipoArquivoConciliacao(arquivo.name)
-  if (!tipoArquivo) {
-    return { erro: "Envie uma planilha CSV ou XLSX." }
-  }
-
-  await importarPlanilhaConciliacao({
-    plataforma: parsed.data.plataforma,
-    arquivo: arquivo.name,
-    conteudo:
-      tipoArquivo === "csv" ? await arquivo.text() : Buffer.from(await arquivo.arrayBuffer()),
-    tipoArquivo,
-    autorId: usuario.id,
-  })
   revalidatePath("/gestao/conciliacao")
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/financeiro/repasses")
   return { ok: true }
 }
 
@@ -55,18 +57,22 @@ export async function acaoResolverConciliacao(
   })
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." }
 
-  const resultado = await resolverConciliacaoManual({
-    ...parsed.data,
-    autorId: usuario.id,
-  })
+  try {
+    const resultado = await resolverConciliacaoManual({
+      ...parsed.data,
+      autorId: usuario.id,
+    })
+    if (!resultado.ok) return { erro: resultado.motivo }
+  } catch (erro) {
+    return {
+      erro:
+        erro instanceof ErroImportacaoConciliacao || erro instanceof ErroArquivoConciliacao
+          ? erro.message
+          : "Não foi possível resolver o registro.",
+    }
+  }
   revalidatePath("/gestao/conciliacao")
-  if (!resultado.ok) return { erro: resultado.motivo }
+  revalidatePath("/gestao/financeiro")
+  revalidatePath("/gestao/financeiro/repasses")
   return { ok: true }
-}
-
-function tipoArquivoConciliacao(nome: string): "csv" | "xlsx" | null {
-  const arquivo = nome.toLowerCase()
-  if (arquivo.endsWith(".csv")) return "csv"
-  if (arquivo.endsWith(".xlsx")) return "xlsx"
-  return null
 }

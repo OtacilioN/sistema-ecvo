@@ -1,5 +1,10 @@
+import { revalidatePath } from "next/cache"
 import { exigirPapel } from "@/lib/auth/dal"
-import { importarPlanilhaConciliacao } from "@/lib/services/conciliacao.service"
+import { ErroArquivoConciliacao, lerArquivosConciliacao } from "@/lib/conciliacao/arquivos"
+import {
+  ErroImportacaoConciliacao,
+  importarPlanilhasConciliacao,
+} from "@/lib/services/conciliacao.service"
 import { importarConciliacaoSchema } from "@/lib/validations/conciliacao"
 
 export async function POST(request: Request) {
@@ -7,33 +12,38 @@ export async function POST(request: Request) {
   const formData = await request.formData()
   const parsed = importarConciliacaoSchema.safeParse({
     plataforma: formData.get("plataforma"),
+    competencia: formData.get("competencia"),
   })
-  if (!parsed.success) return Response.json({ erro: "Dados inválidos." }, { status: 400 })
+  if (!parsed.success)
+    return Response.json(
+      { erro: parsed.error.issues[0]?.message ?? "Dados inválidos." },
+      { status: 400 },
+    )
 
-  const arquivo = formData.get("arquivo")
-  if (!(arquivo instanceof File) || arquivo.size === 0) {
-    return Response.json({ erro: "Envie um arquivo CSV ou XLSX." }, { status: 400 })
+  try {
+    const resultado = await importarPlanilhasConciliacao({
+      ...parsed.data,
+      arquivos: await lerArquivosConciliacao(formData),
+      autorId: usuario.id,
+    })
+    revalidatePath("/gestao/conciliacao")
+    revalidatePath("/gestao/financeiro")
+    revalidatePath("/gestao/financeiro/repasses")
+    return Response.json({
+      importacoes: resultado.map((importacao) => ({
+        id: importacao.id,
+        totalLinhas: importacao.totalLinhas,
+      })),
+    })
+  } catch (erro) {
+    return Response.json(
+      {
+        erro:
+          erro instanceof ErroImportacaoConciliacao || erro instanceof ErroArquivoConciliacao
+            ? erro.message
+            : "Não foi possível importar as planilhas.",
+      },
+      { status: 400 },
+    )
   }
-  const tipoArquivo = tipoArquivoConciliacao(arquivo.name)
-  if (!tipoArquivo) {
-    return Response.json({ erro: "Envie uma planilha CSV ou XLSX." }, { status: 400 })
-  }
-
-  const importacao = await importarPlanilhaConciliacao({
-    plataforma: parsed.data.plataforma,
-    arquivo: arquivo.name,
-    conteudo:
-      tipoArquivo === "csv" ? await arquivo.text() : Buffer.from(await arquivo.arrayBuffer()),
-    tipoArquivo,
-    autorId: usuario.id,
-  })
-
-  return Response.json({ id: importacao.id, totalLinhas: importacao.totalLinhas })
-}
-
-function tipoArquivoConciliacao(nome: string): "csv" | "xlsx" | null {
-  const arquivo = nome.toLowerCase()
-  if (arquivo.endsWith(".csv")) return "csv"
-  if (arquivo.endsWith(".xlsx")) return "xlsx"
-  return null
 }

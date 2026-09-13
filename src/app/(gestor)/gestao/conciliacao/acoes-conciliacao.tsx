@@ -21,7 +21,7 @@ export function BotaoImportarConciliacao() {
         aoFechar={() => setAberto(false)}
         variante="lateral"
         titulo="Importar planilha"
-        descricao="CSV/XLSX Wellhub ou TotalPass — concilia automaticamente com os check-ins."
+        descricao="Selecione a plataforma, envie o relatório e informe o mês de referência."
       >
         <FormImportacaoConciliacao aoConcluir={() => setAberto(false)} />
       </Dialog>
@@ -34,11 +34,15 @@ export function AcaoResolverRegistro({
   statusAtual,
   alunos,
   checkins,
+  resumoMensal = false,
+  plataforma = "WELLHUB",
 }: {
   registroId: string
   statusAtual: string
   alunos: AlunoOpcao[]
   checkins: CheckinOpcao[]
+  resumoMensal?: boolean
+  plataforma?: "WELLHUB" | "TOTALPASS"
 }) {
   const [aberto, setAberto] = useState(false)
   return (
@@ -51,13 +55,20 @@ export function AcaoResolverRegistro({
         aoFechar={() => setAberto(false)}
         variante="lateral"
         titulo="Resolver divergência"
-        descricao="Identifique o aluno/check-in ou ajuste o status do registro importado."
+        descricao={
+          resumoMensal
+            ? plataforma === "TOTALPASS"
+              ? "Identifique o aluno do relatório TotalPass pelo CPF e nome. O vínculo não cria check-ins."
+              : "O aluno selecionado será vinculado aos registros pendentes deste ID Wellhub nas duas contas do mês."
+            : "Identifique o aluno/check-in ou ajuste o status do registro importado."
+        }
       >
         <FormResolverConciliacao
           registroId={registroId}
           statusAtual={statusAtual}
           alunos={alunos}
           checkins={checkins}
+          resumoMensal={resumoMensal}
           aoConcluir={() => setAberto(false)}
         />
       </Dialog>

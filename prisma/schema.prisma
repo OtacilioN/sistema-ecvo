@@ -1016,6 +1016,10 @@ model Importacao {
   id                  String              @id @default(cuid())
   plataforma          Plataforma
   arquivo             String
+  competencia         String?
+  resumoMensal        Boolean             @default(false)
+  unidadeExternaId    String?
+  unidadeExternaNome  String?
   importadoPorId      String
   totalLinhas         Int                 @default(0)
   totalConciliados    Int                 @default(0)
@@ -1023,6 +1027,9 @@ model Importacao {
   totalDivergencias   Int                 @default(0)
   registros           RegistroImportado[]
   criadoEm            DateTime            @default(now())
+
+  @@unique([plataforma, competencia, unidadeExternaId])
+  @@index([competencia])
 }
 
 model RegistroImportado {
@@ -1031,6 +1038,8 @@ model RegistroImportado {
   importacaoId       String
   dadosBrutos        Json
   valorRepasse       Decimal?          @db.Decimal(10, 2)
+  idExterno          String?
+  totalCheckins      Int?
   cpf                String?
   email              String?
   nome               String?

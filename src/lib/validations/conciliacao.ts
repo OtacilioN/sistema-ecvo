@@ -6,8 +6,13 @@ const textoOpcional = z
   .optional()
   .transform((v) => (v && v.length > 0 ? v : null))
 
+export const competenciaConciliacaoSchema = z
+  .string()
+  .regex(/^(20\d{2})-(0[1-9]|1[0-2])$/, "Informe o mês de referência no formato AAAA-MM.")
+
 export const importarConciliacaoSchema = z.object({
   plataforma: z.enum(["WELLHUB", "TOTALPASS"]),
+  competencia: competenciaConciliacaoSchema,
 })
 
 export const resolverConciliacaoSchema = z.object({

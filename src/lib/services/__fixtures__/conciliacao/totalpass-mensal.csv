@@ -1,0 +1,4 @@
+﻿Nome;Documento;Endereço;Translation missing: pt-BR.reports.header.zip_code;Complemento;Cidade;Estado;Email;Valor líquido total
+Pessoa Exemplo;01234567890;"Rua de Teste; 1";00000000;;Cidade Teste;CE;exemplo@example.test;120.50
+Pessoa Sem Cadastro;12345678909;"Rua com
+complemento";00000000;"Ap. ""A""";Cidade Teste;CE;semcadastro@example.test;0.00

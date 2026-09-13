@@ -1,4 +1,4 @@
-import type { Prisma, StatusSplitPagamentoAsaas } from "@prisma/client"
+import type { Plataforma, Prisma, StatusSplitPagamentoAsaas } from "@prisma/client"
 import { CircleCheckBig, Clock3, HandCoins } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
@@ -20,9 +20,11 @@ import {
   calcularComposicaoRepasseProfessor,
   calcularDistribuicaoSobraFinanceira,
   calcularRepasseFinanceiro,
+  consolidarReceitasExternasMensais,
   type ItemRepasseMensalidadeSnapshot,
   type ItemRepasseModalidade,
   lerRepasseSnapshotMensalidade,
+  modalidadesExternasParaRepasse,
 } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
 import { chaveCompetencia, formatarData } from "@/lib/utils/datas"
@@ -108,6 +110,20 @@ function intervaloMesRepasse(mesRepasse: string) {
   return { inicio, fim }
 }
 
+const selecaoModalidadeExterna = {
+  id: true,
+  nome: true,
+  valorRepasseProfessor: true,
+  turmas: {
+    where: { ativa: true, professorId: { not: null } },
+    orderBy: { criadoEm: "asc" },
+    select: {
+      professorId: true,
+      professor: { select: { usuario: { select: { nome: true } } } },
+    },
+  },
+} satisfies Prisma.ModalidadeSelect
+
 export default async function Page({ searchParams }: { searchParams: SearchParams }) {
   const usuario = await exigirGestao()
   const params = await searchParams
@@ -162,13 +178,38 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     }),
     db.registroImportado.findMany({
       where: {
-        statusConciliacao: "CONCILIADO",
         valorRepasse: { not: null },
-        dataReferencia: { gte: inicio, lt: fim },
+        OR: [
+          {
+            importacao: {
+              resumoMensal: true,
+              competencia: mesRepasse,
+              plataforma: { in: ["WELLHUB", "TOTALPASS"] },
+            },
+            statusConciliacao: { in: ["CONCILIADO", "ALUNO_NAO_IDENTIFICADO", "PENDENTE"] },
+          },
+          {
+            importacao: { resumoMensal: false },
+            statusConciliacao: "CONCILIADO",
+            dataReferencia: { gte: inicio, lt: fim },
+          },
+        ],
       },
       include: {
-        importacao: { select: { plataforma: true } },
-        aluno: { select: { usuario: { select: { nome: true } } } },
+        importacao: { select: { plataforma: true, competencia: true, resumoMensal: true } },
+        aluno: {
+          select: {
+            usuario: { select: { nome: true } },
+            tipo: true,
+            modalidades: { select: selecaoModalidadeExterna },
+            modalidadesPlano: {
+              select: {
+                plataformaExterna: true,
+                modalidade: { select: selecaoModalidadeExterna },
+              },
+            },
+          },
+        },
         checkinVinculado: {
           select: {
             aula: {
@@ -195,6 +236,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const pendencias: PendenciaRepasse[] = []
   let totalRecebido = 0
   let totalProfessores = 0
+  let totalReservadoPendente = 0
   const extrato: LinhaExtratoRepasse[] = []
 
   function somarLinha(
@@ -327,7 +369,146 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     }
   }
 
-  for (const registro of registrosExternos) {
+  const receitasMensaisExternas = registrosExternos.flatMap((registro) => {
+    if (!registro.importacao.resumoMensal) {
+      return []
+    }
+    if (
+      !registro.alunoId ||
+      !registro.importacao.competencia ||
+      registro.statusConciliacao !== "CONCILIADO"
+    ) {
+      reservarReceitaExterna({
+        chave: `${registro.importacao.plataforma}:${registro.id}`,
+        pagador: registro.nome ?? registro.id,
+        competencia: registro.importacao.competencia,
+        plataforma: registro.importacao.plataforma,
+        valor: Number(registro.valorRepasse),
+      })
+      pendencias.push({
+        chave: `${registro.importacao.plataforma}:${registro.id}`,
+        origem: registro.importacao.plataforma,
+        referencia: registro.nome ?? registro.id,
+        motivo:
+          "Resumo mensal pendente de identificação ou conciliação; receita integralmente reservada.",
+      })
+      return []
+    }
+    return [
+      {
+        ...registro,
+        plataforma: registro.importacao.plataforma,
+        alunoId: registro.alunoId,
+        competencia: registro.importacao.competencia,
+        valorRepasse: Number(registro.valorRepasse),
+      },
+    ]
+  })
+
+  for (const grupo of consolidarReceitasExternasMensais(receitasMensaisExternas)) {
+    const aluno = grupo.registros[0].aluno
+    const pagador = aluno?.usuario.nome ?? grupo.registros[0].nome ?? grupo.alunoId
+    const itens = aluno
+      ? modalidadesExternasParaRepasse(aluno, grupo.plataforma).map((modalidade) =>
+          itemModalidadeMensalidade(modalidade, pendencias, grupo.plataforma, grupo.alunoId),
+        )
+      : []
+    if (itens.length === 0) {
+      reservarReceitaExterna({
+        chave: `${grupo.plataforma}:${grupo.alunoId}:${grupo.competencia}`,
+        pagador,
+        competencia: grupo.competencia,
+        plataforma: grupo.plataforma,
+        valor: grupo.valorRecebido,
+      })
+      pendencias.push({
+        chave: `${grupo.plataforma}:${grupo.alunoId}:${grupo.competencia}`,
+        origem: grupo.plataforma,
+        referencia: pagador,
+        motivo: `Aluno sem modalidade vinculada à plataforma ${rotuloPlataforma(grupo.plataforma)}; receita de ${formatarBRL(grupo.valorRecebido)} pendente de cálculo de repasse.`,
+      })
+      continue
+    }
+    const repasse = calcularRepasseFinanceiro({
+      valorRecebido: grupo.valorRecebido,
+      itens,
+      politica: "REPASSE_EXTERNO_MENSAL",
+    })
+    const repasseProfessores = repasse.professores.reduce((total, item) => total + item.valor, 0)
+    const repasseManual = repasse.professores.reduce(
+      (total, item) => total + (item.professorId.startsWith("pendencia:") ? 0 : item.valor),
+      0,
+    )
+    totalRecebido += repasse.valorRecebido
+    totalProfessores += repasseProfessores
+    extrato.push({
+      chave: `${grupo.plataforma}:${grupo.alunoId}:${grupo.competencia}`,
+      origem: grupo.plataforma,
+      status: "Consolidado",
+      competencia: grupo.competencia,
+      pagador,
+      data: null,
+      formaPagamento: grupo.plataforma,
+      valorRecebido: repasse.valorRecebido,
+      professorIds: repasse.professores.map((item) => item.professorId),
+      professores: nomesProfessoresRepasse(repasse.professores),
+      repasseProfessores,
+      splitConcluido: 0,
+      splitEmProcessamento: 0,
+      repasseManual,
+      detalheRepasse: `${grupo.registros.length} registro(s) somados na competência; 60% da receita, limitado ao repasse de cada modalidade. Pagamento manual.`,
+      sobraAposProfessores: repasse.sobraAposProfessores,
+    })
+    for (const professor of repasse.professores) {
+      somarLinha({
+        destinatarioId: professor.professorId,
+        destinatario: professor.professorNome ?? professor.professorId,
+        papel: professor.professorId.startsWith("pendencia:") ? "Pendência" : "Professor",
+        origem: grupo.plataforma,
+        valor: professor.valor,
+        repasseManual: professor.professorId.startsWith("pendencia:") ? 0 : professor.valor,
+      })
+    }
+  }
+
+  function reservarReceitaExterna(params: {
+    plataforma: Plataforma
+    chave: string
+    pagador: string
+    competencia: string | null
+    valor: number
+  }) {
+    totalRecebido += params.valor
+    totalReservadoPendente += params.valor
+    somarLinha({
+      destinatarioId: `pendencia:${params.chave}`,
+      destinatario: `Reserva de ${params.pagador}`,
+      papel: "Pendência",
+      origem: params.plataforma,
+      valor: params.valor,
+    })
+    extrato.push({
+      chave: params.chave,
+      origem: params.plataforma,
+      status: "Repasse pendente",
+      competencia: params.competencia,
+      pagador: params.pagador,
+      data: null,
+      formaPagamento: params.plataforma,
+      valorRecebido: params.valor,
+      professorIds: [],
+      professores: "Modalidades pendentes",
+      repasseProfessores: 0,
+      splitConcluido: 0,
+      splitEmProcessamento: 0,
+      repasseManual: 0,
+      detalheRepasse:
+        "Receita integralmente reservada até definir aluno, competência e modalidades da plataforma; sem distribuição à academia ou pagamento manual.",
+      sobraAposProfessores: 0,
+    })
+  }
+
+  for (const registro of registrosExternos.filter((item) => !item.importacao.resumoMensal)) {
     const aula = registro.checkinVinculado?.aula
     const professorId = aula?.professorId ?? aula?.turma.professorId ?? null
     const professorNome =
@@ -398,7 +579,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   const distribuicaoSobra = calcularDistribuicaoSobraFinanceira({
     totalRecebido,
-    totalProfessores,
+    totalProfessores: totalProfessores + totalReservadoPendente,
     custosFixos: custosMensais.total,
   })
   const eventosDaSobra = extrato.length
@@ -842,6 +1023,8 @@ function itemModalidadeMensalidade(
     }>
   },
   pendencias: PendenciaRepasse[],
+  origem = "Mensalidade interna",
+  alunoId = "",
 ): ItemRepasseModalidade {
   const professores = new Map<string, string>()
   for (const turma of modalidade.turmas) {
@@ -862,8 +1045,8 @@ function itemModalidadeMensalidade(
   }
 
   pendencias.push({
-    chave: `modalidade:${modalidade.id}`,
-    origem: "Mensalidade interna",
+    chave: `${origem}:${alunoId}:modalidade:${modalidade.id}`,
+    origem,
     referencia: modalidade.nome,
     motivo:
       professores.size === 0
@@ -875,6 +1058,7 @@ function itemModalidadeMensalidade(
     professorNome: professores.size === 0 ? "Sem professor definido" : "Mais de um professor ativo",
     modalidadeId: modalidade.id,
     modalidadeNome: modalidade.nome,
+    valorRepasseProfessor: Number(modalidade.valorRepasseProfessor),
   }
 }
 

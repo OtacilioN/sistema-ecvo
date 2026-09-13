@@ -238,11 +238,45 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **RF-054** Cadastro do tipo de vínculo. **RF-055** Mesmo fluxo operacional de treino.
 - **RF-056** Sem integração automática via API no MVP.
 - **RF-057/058** Importação de planilhas Wellhub/TotalPass (CSV/XLSX) com metadados da importação.
-- **RF-059** Identificação do aluno (CPF prioritário → e-mail → nome → telefone → identificador externo).
+- **RF-059** Identificação do aluno pelo ID externo estável da plataforma; na ausência de vínculo,
+  CPF → e-mail → nome normalizado exato → telefone, sempre com correspondência única e sem
+  conflito de ID. Nomes abreviados exigem identificação manual.
 - **RF-060** Conciliação com histórico interno. **RF-061** Status de conciliação.
 - **RF-062** Resolução manual de divergências (com log). **RF-063** Relatório de conciliação. **RF-064** Histórico de importações.
-- **RF-064.1** Divisão de repasse Wellhub/TotalPass: professor recebe 60% do valor repassado pela plataforma
-  no período; os 40% restantes integram a sobra mensal sujeita aos custos fixos e à divisão da RF-053.2.
+- **RF-064.0** O relatório mensal Wellhub reconhece o cabeçalho após o preâmbulo do XLSX e as
+  colunas de unidade, visitante, ID Wellhub, check-ins totais e pagamento total. A importação exige
+  competência explícita e aceita até dois arquivos no mesmo lote atômico, ou a segunda conta
+  posteriormente. A mesma unidade não pode ser importada duas vezes na competência. Os totais
+  são consolidados pelo ID Wellhub, preservando valores zero e visitantes sem cadastro. Esse
+  resumo financeiro não cria nem valida check-ins ou horas. Para evitar duplicar receita,
+  resumos mensais e registros diários Wellhub não podem coexistir no mesmo mês de acesso.
+  A resolução mensal de um ID vincula também os registros pendentes das duas contas na competência,
+  com auditoria individual e atualização dos totais das importações.
+- **RF-064.0a** O resumo mensal TotalPass reconhece `Nome`, `Documento`, `Email` e
+  `Valor líquido total` no CSV, preservando zeros iniciais do CPF e valores em centavos.
+  A competência é informada pelo gestor; o arquivo não fornece datas de acesso, quantidade de
+  check-ins, ID TotalPass nem unidade. CPF é o identificador prioritário, com correspondência
+  única e sem conflito cadastral. CPF nunca é gravado como ID externo. É permitido um relatório
+  TotalPass por competência; reenvios e mistura com registros diários TotalPass do mesmo mês
+  são bloqueados. Wellhub e TotalPass são consolidados separadamente, mesmo para o mesmo aluno.
+- **RF-064.1** Os resumos mensais Wellhub e TotalPass somam a receita do mesmo aluno por plataforma,
+  incluindo as duas contas Wellhub da academia,
+  dentro da competência informada na importação. O repasse aos professores é o menor valor entre
+  60% dessa receita consolidada e a soma de `Modalidade.valorRepasseProfessor` das modalidades
+  vinculadas à plataforma do resumo no plano do aluno. O valor é rateado proporcionalmente aos tetos dessas
+  modalidades; modalidades pagas internamente não entram nesse cálculo. Exemplo: receita de R$ 200,00
+  e tetos de R$ 60,00 e R$ 50,00 geram R$ 110,00 aos professores e R$ 90,00 para a academia.
+  Com receita de R$ 50,00 e teto de R$ 60,00, permanecem R$ 30,00 ao professor e R$ 20,00 à academia.
+  Alunos do tipo da plataforma sem qualquer vínculo explícito em `AlunoPlanoModalidade` usam as
+  modalidades do cadastro legado. Se houver vínculos explícitos, somente os marcados com a plataforma do resumo entram.
+  O teto só é atingido quando 60% da receita o cobrem; uma receita de R$ 60,00 com teto de R$ 60,00
+  gera R$ 36,00 de repasse. O resumo não exige vínculo com um check-in individual. Modalidade sem
+  professor único gera pendência de destinatário; aluno sem modalidade da plataforma gera pendência de
+  cálculo, com a receita exibida e integralmente reservada até definir a cobertura. Resumos mensais
+  sem aluno identificado ou ainda pendentes também integram o recebido, com reserva integral e sem
+  pagamento manual nem distribuição da sobra. O cálculo usa os vínculos e valores cadastrados no momento da consulta.
+  Importações diárias legadas de ambas as plataformas preservam o repasse de 60% por registro conciliado.
+  A sobra após professores integra o resultado mensal sujeito aos custos fixos e à RF-053.2.
 
 ### Relatórios
 - **RF-065..072** Alunos, agendamentos, check-ins, presença, horas, graduação, financeiro, conciliação.
@@ -261,9 +295,10 @@ RN-006 horas vinculadas à modalidade · RN-007 horas também somam ao total ger
 várias graduações · RN-009 professor é responsável pela graduação · RN-010 critérios não graduam
 automaticamente · RN-011 Wellhub/TotalPass conciliam por planilha no MVP · RN-012 plano mensal interno tem
 controle financeiro · RN-013 avulso tem pagamentos pontuais · RN-014 **não existe aluno experimental** ·
-RN-015 CPF tem prioridade na identificação · RN-016 check-in invalidado deve aparecer na conciliação ·
+RN-015 ID externo estável tem prioridade; CPF é o primeiro critério alternativo, sem conflito de ID · RN-016 check-in invalidado deve aparecer na conciliação ·
 RN-017 repasse de mensalidade interna usa cascata: professores até o valor configurado por modalidade, depois sobra mensal ·
-RN-018 repasse Wellhub/TotalPass separa 60% para o professor e 40% para a sobra mensal.
+RN-018 repasse externo separa 60% para professores; nos resumos mensais Wellhub/TotalPass, há teto por modalidade
+aplicado após somar as contas da competência, e todo o restante integra a sobra mensal.
 
 RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 como padrão inicial.
 RN-020 plano é um pacote comercial disponível para qualquer modalidade; as modalidades contratadas são

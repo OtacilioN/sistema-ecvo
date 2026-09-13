@@ -4,6 +4,8 @@ import {
   calcularComposicaoRepasseProfessor,
   calcularDistribuicaoSobraFinanceira,
   calcularRepasseFinanceiro,
+  consolidarReceitasExternasMensais,
+  consolidarReceitasWellhubMensais,
   gerarLembretesFinanceiros,
   lerRepasseSnapshotMensalidade,
   mensagemInadimplenciaMensalidade,
@@ -14,7 +16,9 @@ import {
   mensagemStatusMensalidade,
   mensalidadeBloqueiaTreino,
   mensalistaAdimplente,
+  modalidadesExternasParaRepasse,
   modalidadesMensalidadeInterna,
+  modalidadesWellhubParaRepasse,
   registrarMensalidadeInicialPaga,
   sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
@@ -722,7 +726,160 @@ describe("mensagemPagamentoAvulso", () => {
   })
 })
 
+describe("modalidadesWellhubParaRepasse", () => {
+  it("usa cadastro de aluno Wellhub legado sem vínculos de plano", () => {
+    expect(
+      modalidadesWellhubParaRepasse({
+        tipo: "WELLHUB",
+        modalidadesPlano: [],
+        modalidades: ["kickboxing"],
+      }),
+    ).toEqual(["kickboxing"])
+  })
+
+  it("prioriza vínculos explícitos e exclui modalidades pagas internamente ou por TotalPass", () => {
+    expect(
+      modalidadesWellhubParaRepasse({
+        tipo: "WELLHUB",
+        modalidadesPlano: [
+          { plataformaExterna: "WELLHUB", modalidade: "kickboxing" },
+          { plataformaExterna: null, modalidade: "muay-thai" },
+          { plataformaExterna: "TOTALPASS", modalidade: "boxe" },
+        ],
+        modalidades: ["kickboxing", "muay-thai", "boxe", "jiu-jitsu"],
+      }),
+    ).toEqual(["kickboxing"])
+  })
+
+  it("não usa cadastro legado quando existe somente vínculo explícito de outra forma de pagamento", () => {
+    expect(
+      modalidadesWellhubParaRepasse({
+        tipo: "WELLHUB",
+        modalidadesPlano: [{ plataformaExterna: null, modalidade: "kickboxing" }],
+        modalidades: ["kickboxing"],
+      }),
+    ).toEqual([])
+  })
+
+  it("não presume Wellhub para outro tipo de aluno sem vínculo explícito", () => {
+    expect(
+      modalidadesWellhubParaRepasse({
+        tipo: "TOTALPASS",
+        modalidadesPlano: [],
+        modalidades: ["kickboxing"],
+      }),
+    ).toEqual([])
+  })
+})
+
+describe("consolidarReceitasWellhubMensais", () => {
+  it("separa competências e alunos, preservando valores monetários exatos", () => {
+    const receitas = consolidarReceitasWellhubMensais([
+      { alunoId: "aluno-a", competencia: "2026-08", valorRepasse: 12.34 },
+      { alunoId: "aluno-a", competencia: "2026-08", valorRepasse: 0.01 },
+      { alunoId: "aluno-a", competencia: "2026-09", valorRepasse: 50 },
+      { alunoId: "aluno-b", competencia: "2026-08", valorRepasse: 70 },
+    ])
+    expect(
+      receitas.map(({ alunoId, competencia, valorRecebido }) => ({
+        alunoId,
+        competencia,
+        valorRecebido,
+      })),
+    ).toEqual([
+      { alunoId: "aluno-a", competencia: "2026-08", valorRecebido: 12.35 },
+      { alunoId: "aluno-a", competencia: "2026-09", valorRecebido: 50 },
+      { alunoId: "aluno-b", competencia: "2026-08", valorRecebido: 70 },
+    ])
+  })
+
+  it.each([
+    { alunoId: "", competencia: "2026-08", valorRepasse: 10 },
+    { alunoId: "a", competencia: "2026-13", valorRepasse: 10 },
+    { alunoId: "a", competencia: "2026-08", valorRepasse: -1 },
+    { alunoId: "a", competencia: "2026-08", valorRepasse: Number.NaN },
+  ])("rejeita receita sem identificação, competência ou valor válidos: %o", (receita) => {
+    expect(() => consolidarReceitasWellhubMensais([receita])).toThrow()
+  })
+})
+
 describe("calcularRepasseFinanceiro", () => {
+  it("soma duas contas Wellhub antes de aplicar os tetos mensais de R$ 60 e R$ 50", () => {
+    const [receita] = consolidarReceitasWellhubMensais([
+      { alunoId: "aluno-a", competencia: "2026-08", valorRepasse: 120, unidade: "conta-1" },
+      { alunoId: "aluno-a", competencia: "2026-08", valorRepasse: 80, unidade: "conta-2" },
+    ])
+    expect(receita.valorRecebido).toBe(200)
+    expect(receita.registros).toHaveLength(2)
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: receita.valorRecebido,
+        politica: "WELLHUB_MENSAL",
+        itens: [
+          { professorId: "prof-a", modalidadeId: "kickboxing", valorRepasseProfessor: 60 },
+          { professorId: "prof-b", modalidadeId: "muay-thai", valorRepasseProfessor: 50 },
+        ],
+      }),
+    ).toMatchObject({
+      professores: [
+        { professorId: "prof-a", valor: 60 },
+        { professorId: "prof-b", valor: 50 },
+      ],
+      sobraAposProfessores: 90,
+    })
+  })
+
+  it("mantém R$ 30 para professor e R$ 20 para escola quando Wellhub gera R$ 50 e teto é R$ 60", () => {
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: 50,
+        politica: "WELLHUB_MENSAL",
+        itens: [{ professorId: "prof-a", valorRepasseProfessor: 60 }],
+      }),
+    ).toMatchObject({ professores: [{ valor: 30 }], sobraAposProfessores: 20 })
+  })
+
+  it("rateia 60% da receita insuficiente proporcionalmente aos tetos das modalidades", () => {
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: 55,
+        politica: "WELLHUB_MENSAL",
+        itens: [
+          { professorId: "prof-a", valorRepasseProfessor: 60 },
+          { professorId: "prof-b", valorRepasseProfessor: 50 },
+        ],
+      }),
+    ).toMatchObject({
+      professores: [{ valor: 18 }, { valor: 15 }],
+      sobraAposProfessores: 22,
+    })
+  })
+
+  it("não aumenta o teto mensal ao receber muito mais que a mensalidade", () => {
+    expect(
+      calcularRepasseFinanceiro({
+        valorRecebido: 1000,
+        politica: "WELLHUB_MENSAL",
+        itens: [{ professorId: "prof-a", valorRepasseProfessor: 50 }],
+      }),
+    ).toMatchObject({ professores: [{ valor: 50 }], sobraAposProfessores: 950 })
+  })
+
+  it("agrega modalidades do mesmo professor sem duplicar o total e conserva centavos", () => {
+    const resultado = calcularRepasseFinanceiro({
+      valorRecebido: 100.01,
+      politica: "WELLHUB_MENSAL",
+      itens: [
+        { professorId: "prof-a", modalidadeId: "kickboxing", valorRepasseProfessor: 60 },
+        { professorId: "prof-a", modalidadeId: "muay-thai", valorRepasseProfessor: 50 },
+      ],
+    })
+    expect(resultado.professores).toHaveLength(1)
+    expect(resultado.professores[0].valor).toBe(60.01)
+    expect(resultado.professores[0].modalidades.map((item) => item.valor)).toEqual([32.73, 27.28])
+    expect(resultado.sobraAposProfessores).toBe(40)
+  })
+
   it("usa o valor configurado para cada modalidade no repasse interno", () => {
     expect(
       calcularRepasseFinanceiro({
@@ -1116,5 +1273,91 @@ describe("calcularDistribuicaoSobraFinanceira", () => {
     expect(resultado.caixaInvestimento + resultado.socioA + resultado.socioB).toBe(
       resultado.valorDistribuivel,
     )
+  })
+})
+
+describe("resumo mensal TotalPass", () => {
+  it("consolida valores líquidos exatos e separa alunos, competências e plataformas", () => {
+    const receitas = consolidarReceitasExternasMensais([
+      ...[30.39, 30.39, 70.91, 20.26, 60.78, 10.13].map((valorRepasse) => ({
+        plataforma: "TOTALPASS" as const,
+        alunoId: "aluno-a",
+        competencia: "2026-08",
+        valorRepasse,
+      })),
+      { plataforma: "WELLHUB", alunoId: "aluno-a", competencia: "2026-08", valorRepasse: 200 },
+      { plataforma: "TOTALPASS", alunoId: "aluno-b", competencia: "2026-08", valorRepasse: 30 },
+      { plataforma: "TOTALPASS", alunoId: "aluno-a", competencia: "2026-09", valorRepasse: 40 },
+    ])
+    expect(
+      receitas.map(({ plataforma, alunoId, competencia, valorRecebido }) => ({
+        plataforma,
+        alunoId,
+        competencia,
+        valorRecebido,
+      })),
+    ).toEqual([
+      {
+        plataforma: "TOTALPASS",
+        alunoId: "aluno-a",
+        competencia: "2026-08",
+        valorRecebido: 222.86,
+      },
+      { plataforma: "WELLHUB", alunoId: "aluno-a", competencia: "2026-08", valorRecebido: 200 },
+      { plataforma: "TOTALPASS", alunoId: "aluno-b", competencia: "2026-08", valorRecebido: 30 },
+      { plataforma: "TOTALPASS", alunoId: "aluno-a", competencia: "2026-09", valorRecebido: 40 },
+    ])
+    expect(receitas[0].registros).toHaveLength(6)
+  })
+
+  it("aplica somente modalidades TotalPass explícitas e usa legado apenas sem nenhum vínculo", () => {
+    const aluno = {
+      tipo: "TOTALPASS" as const,
+      modalidades: ["kickboxing", "boxe"],
+      modalidadesPlano: [],
+    }
+    expect(modalidadesExternasParaRepasse(aluno, "TOTALPASS")).toEqual(["kickboxing", "boxe"])
+    expect(modalidadesExternasParaRepasse(aluno, "WELLHUB")).toEqual([])
+    expect(
+      modalidadesExternasParaRepasse(
+        {
+          ...aluno,
+          modalidadesPlano: [
+            { plataformaExterna: "TOTALPASS", modalidade: "boxe" },
+            { plataformaExterna: "WELLHUB", modalidade: "kickboxing" },
+            { plataformaExterna: null, modalidade: "muay-thai" },
+          ],
+        },
+        "TOTALPASS",
+      ),
+    ).toEqual(["boxe"])
+    expect(
+      modalidadesExternasParaRepasse(
+        { ...aluno, modalidadesPlano: [{ plataformaExterna: null, modalidade: "boxe" }] },
+        "TOTALPASS",
+      ),
+    ).toEqual([])
+  })
+
+  it.each([
+    [200, 110, 90],
+    [50, 30, 20],
+    [60, 36, 24],
+    [222.86, 110, 112.86],
+  ])("limita 60%% de R$ %s ao teto das modalidades", (receita, professores, sobra) => {
+    const resultado = calcularRepasseFinanceiro({
+      valorRecebido: receita,
+      politica: "REPASSE_EXTERNO_MENSAL",
+      itens: [
+        { professorId: "prof-a", valorRepasseProfessor: 60 },
+        { professorId: "prof-b", valorRepasseProfessor: 50 },
+      ],
+    })
+    expect(
+      resultado.professores.reduce((total, item) => total + Math.round(item.valor * 100), 0),
+    ).toBe(Math.round(professores * 100))
+    expect(resultado.sobraAposProfessores).toBe(sobra)
+    expect(resultado.professores[0].valor).toBeLessThanOrEqual(60)
+    expect(resultado.professores[1].valor).toBeLessThanOrEqual(50)
   })
 })
