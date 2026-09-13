@@ -160,6 +160,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         <Button asChild variant="outline">
           <Link href="/gestao/financeiro/repasses#custos-fixos">Custos fixos do mês</Link>
         </Button>
+        <Button asChild variant="outline">
+          <Link href="/gestao/financeiro/repasses#outras-receitas">Outras fontes de receita</Link>
+        </Button>
         {podeEditar && <AcoesFinanceiro planos={planosOpcao} alunos={alunosOpcao} />}
       </CabecalhoPagina>
 

@@ -233,6 +233,14 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   transação e recalcula a sobra; a secretaria tem somente leitura. Um déficit é exibido como valor negativo em vermelho; saldo zero ou
   positivo é exibido em verde. Somente o saldo positivo é dividido igualmente entre Caixa/investimento,
   Sócio A e Sócio B.
+- **RF-053.7** Junto dos custos fixos, o gestor pode informar outras fontes de receita por mês:
+  aluguel de horário e outros, com valores não negativos e até duas casas decimais. Sem configuração,
+  aluguel de horário usa R$ 500,00 a partir de setembro de 2026 e R$ 0,00 nos meses anteriores;
+  outros usa R$ 0,00. Valores salvos, inclusive zero, prevalecem somente no mês selecionado.
+  Essas receitas pertencem integralmente à escola, sem repasse ou split para professores. Integram o
+  recebido e a sobra antes dos custos fixos e da divisão prevista em RF-053.2, sem alterar os totais
+  de mensalidades e plataformas. Cada alteração registra auditoria na mesma transação; a secretaria
+  tem somente leitura.
 
 ### Wellhub e TotalPass
 - **RF-054** Cadastro do tipo de vínculo. **RF-055** Mesmo fluxo operacional de treino.

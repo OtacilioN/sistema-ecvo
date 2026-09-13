@@ -31,6 +31,7 @@ O modelo técnico legado `Comparecimento` representa o agendamento da aula pelo 
 | **Adimplência / Inadimplência** | Situação de pagamento de plano mensal interno (em dia / em atraso). Pode bloquear agendamento/check-in conforme configuração (RF-051). |
 | **Repasse financeiro** | Divisão da arrecadação: primeiro o repasse dos professores; depois os custos fixos configurados para o mês (R$ 2.640,00 por padrão); por fim, o saldo positivo é dividido igualmente entre Caixa/investimento, Sócio A e Sócio B. |
 | **Custos fixos mensais** | Valores de aluguel, energia, água, internet, limpeza e outros custos, configurados pelo gestor para cada mês do repasse. Alterar um mês não modifica os demais. Sem configuração, são usados respectivamente R$ 2.200,00, R$ 150,00, R$ 120,00, R$ 90,00, R$ 80,00 e R$ 0,00. |
+| **Outras fontes de receita** | Aluguel de horário e outros recebimentos mensais, destinados integralmente à escola, sem repasse aos professores. Compõem a sobra antes dos custos fixos. Sem configuração no mês, o aluguel de horário é R$ 500,00 desde setembro de 2026 e zero antes disso; outros é zero. Valores salvos prevalecem apenas na competência correspondente. |
 | **Conciliação** | Comparação dos registros importados (Wellhub/TotalPass) com o histórico interno de check-ins (RF-060). |
 | **Divergência** | Registro importado que não casa com o histórico interno (aluno não identificado, data/horário divergente, check-in invalidado etc.). |
 | **No-show** | Aluno agendou a aula mas não fez check-in (RF-018). |

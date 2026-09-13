@@ -15,6 +15,7 @@ import {
   filtrarReceitasPorProfessor,
   normalizarProfessorFiltro,
 } from "@/lib/financeiro/filtros-repasse"
+import { CAMPOS_OUTRAS_RECEITAS } from "@/lib/financeiro/outras-receitas"
 import { obterCustosFixosMensais } from "@/lib/services/custos-fixos.service"
 import {
   calcularComposicaoRepasseProfessor,
@@ -27,10 +28,12 @@ import {
   lerRepasseSnapshotMensalidade,
   modalidadesExternasParaRepasse,
 } from "@/lib/services/financeiro.service"
+import { obterOutrasReceitasMensais } from "@/lib/services/outras-receitas.service"
 import { cn } from "@/lib/utils"
 import { chaveCompetencia, formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 import { FormCustosFixos } from "./form-custos-fixos"
+import { FormOutrasReceitas } from "./form-outras-receitas"
 
 export const dynamic = "force-dynamic"
 
@@ -131,42 +134,44 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const mesRepasse = mesRepasseValido(valorUnico(params.competencia))
   const { inicio, fim } = intervaloMesRepasse(mesRepasse)
 
-  const [mensalidades, registrosExternos, custosMensais, exclusoesExternas] = await Promise.all([
-    db.mensalidade.findMany({
-      where: {
-        status: "PAGA",
-        pagoEm: { gte: inicio, lt: fim },
-      },
-      include: {
-        cobrancaQuitacaoAsaas: {
-          select: {
-            splits: {
-              select: {
-                valorFixoSnapshot: true,
-                status: true,
-                motivo: true,
-                contaAsaasProfessor: { select: { professorId: true } },
+  const [mensalidades, registrosExternos, custosMensais, exclusoesExternas, outrasReceitas] =
+    await Promise.all([
+      db.mensalidade.findMany({
+        where: {
+          status: "PAGA",
+          pagoEm: { gte: inicio, lt: fim },
+        },
+        include: {
+          cobrancaQuitacaoAsaas: {
+            select: {
+              splits: {
+                select: {
+                  valorFixoSnapshot: true,
+                  status: true,
+                  motivo: true,
+                  contaAsaasProfessor: { select: { professorId: true } },
+                },
               },
             },
           },
-        },
-        aluno: {
-          select: {
-            usuario: { select: { nome: true } },
-            modalidadesPlano: {
-              select: {
-                plataformaExterna: true,
-                modalidade: {
-                  select: {
-                    id: true,
-                    nome: true,
-                    valorRepasseProfessor: true,
-                    turmas: {
-                      where: { ativa: true, professorId: { not: null } },
-                      orderBy: { criadoEm: "asc" },
-                      select: {
-                        professorId: true,
-                        professor: { select: { usuario: { select: { nome: true } } } },
+          aluno: {
+            select: {
+              usuario: { select: { nome: true } },
+              modalidadesPlano: {
+                select: {
+                  plataformaExterna: true,
+                  modalidade: {
+                    select: {
+                      id: true,
+                      nome: true,
+                      valorRepasseProfessor: true,
+                      turmas: {
+                        where: { ativa: true, professorId: { not: null } },
+                        orderBy: { criadoEm: "asc" },
+                        select: {
+                          professorId: true,
+                          professor: { select: { usuario: { select: { nome: true } } } },
+                        },
                       },
                     },
                   },
@@ -175,64 +180,64 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
             },
           },
         },
-      },
-    }),
-    db.registroImportado.findMany({
-      where: {
-        valorRepasse: { not: null },
-        OR: [
-          {
-            importacao: {
-              resumoMensal: true,
-              competencia: mesRepasse,
-              plataforma: { in: ["WELLHUB", "TOTALPASS"] },
+      }),
+      db.registroImportado.findMany({
+        where: {
+          valorRepasse: { not: null },
+          OR: [
+            {
+              importacao: {
+                resumoMensal: true,
+                competencia: mesRepasse,
+                plataforma: { in: ["WELLHUB", "TOTALPASS"] },
+              },
+              statusConciliacao: { in: ["CONCILIADO", "ALUNO_NAO_IDENTIFICADO", "PENDENTE"] },
             },
-            statusConciliacao: { in: ["CONCILIADO", "ALUNO_NAO_IDENTIFICADO", "PENDENTE"] },
-          },
-          {
-            importacao: { resumoMensal: false },
-            statusConciliacao: "CONCILIADO",
-            dataReferencia: { gte: inicio, lt: fim },
-          },
-        ],
-      },
-      include: {
-        importacao: { select: { plataforma: true, competencia: true, resumoMensal: true } },
-        aluno: {
-          select: {
-            usuario: { select: { nome: true } },
-            tipo: true,
-            modalidades: { select: selecaoModalidadeExterna },
-            modalidadesPlano: {
-              select: {
-                plataformaExterna: true,
-                modalidade: { select: selecaoModalidadeExterna },
+            {
+              importacao: { resumoMensal: false },
+              statusConciliacao: "CONCILIADO",
+              dataReferencia: { gte: inicio, lt: fim },
+            },
+          ],
+        },
+        include: {
+          importacao: { select: { plataforma: true, competencia: true, resumoMensal: true } },
+          aluno: {
+            select: {
+              usuario: { select: { nome: true } },
+              tipo: true,
+              modalidades: { select: selecaoModalidadeExterna },
+              modalidadesPlano: {
+                select: {
+                  plataformaExterna: true,
+                  modalidade: { select: selecaoModalidadeExterna },
+                },
               },
             },
           },
-        },
-        checkinVinculado: {
-          select: {
-            aula: {
-              select: {
-                professorId: true,
-                professor: { select: { usuario: { select: { nome: true } } } },
-                turma: {
-                  select: {
-                    modalidade: { select: { id: true, nome: true } },
-                    professorId: true,
-                    professor: { select: { usuario: { select: { nome: true } } } },
+          checkinVinculado: {
+            select: {
+              aula: {
+                select: {
+                  professorId: true,
+                  professor: { select: { usuario: { select: { nome: true } } } },
+                  turma: {
+                    select: {
+                      modalidade: { select: { id: true, nome: true } },
+                      professorId: true,
+                      professor: { select: { usuario: { select: { nome: true } } } },
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    }),
-    obterCustosFixosMensais(mesRepasse),
-    db.exclusaoRepasseExternoMensal.findMany({ where: { competencia: mesRepasse } }),
-  ])
+      }),
+      obterCustosFixosMensais(mesRepasse),
+      db.exclusaoRepasseExternoMensal.findMany({ where: { competencia: mesRepasse } }),
+      obterOutrasReceitasMensais(mesRepasse),
+    ])
 
   const linhas = new Map<string, LinhaRepasse>()
   const pendencias: PendenciaRepasse[] = []
@@ -586,11 +591,35 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     }
   }
 
+  totalRecebido += outrasReceitas.total
+  for (const { nome, rotulo } of CAMPOS_OUTRAS_RECEITAS) {
+    const valor = outrasReceitas.valores[nome]
+    if (valor === 0) continue
+    extrato.push({
+      chave: `outras-receitas:${mesRepasse}:${nome}`,
+      origem: "Outras fontes de receita",
+      status: "Informada",
+      competencia: mesRepasse,
+      pagador: rotulo,
+      data: null,
+      formaPagamento: null,
+      valorRecebido: valor,
+      professorIds: [],
+      professores: "Sem repasse",
+      repasseProfessores: 0,
+      splitConcluido: 0,
+      splitEmProcessamento: 0,
+      repasseManual: 0,
+      detalheRepasse: "Receita integral da escola, sem repasse aos professores.",
+      sobraAposProfessores: valor,
+    })
+  }
+
   const resumoReceitas = extrato.reduce(
     (totais, receita) => {
       if (receita.origem === "Mensalidade interna") {
         totais.mensalistas += Math.round(receita.valorRecebido * 100)
-      } else {
+      } else if (receita.origem !== "Outras fontes de receita") {
         totais.plataformas += Math.round(receita.valorRecebido * 100)
         totais.professoresPlataformas += Math.round(receita.repasseProfessores * 100)
         totais.sobraPlataformas += Math.round(receita.sobraAposProfessores * 100)
@@ -682,7 +711,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     <div className="space-y-6">
       <CabecalhoPagina
         titulo="Repasses"
-        descricao="Repasses dos professores, custos fixos e divisão mensal da sobra em três partes iguais."
+        descricao="Repasses dos professores, outras receitas, custos fixos e divisão mensal da sobra em três partes iguais."
       >
         <Button asChild variant="outline">
           <Link href="/gestao/financeiro">Voltar ao financeiro</Link>
@@ -709,6 +738,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         competencia={mesRepasse}
         valores={custosMensais.valores}
         personalizado={custosMensais.personalizado}
+        somenteLeitura={usuario.papel !== "GESTOR"}
+      />
+
+      <FormOutrasReceitas
+        key={`outras-receitas:${mesRepasse}`}
+        competencia={mesRepasse}
+        valores={outrasReceitas.valores}
+        personalizado={outrasReceitas.personalizado}
         somenteLeitura={usuario.papel !== "GESTOR"}
       />
 
@@ -741,6 +778,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Resumo rotulo="Recebido" valor={formatarBRL(totalRecebido)} />
+        <Resumo
+          rotulo="Outras fontes de receita"
+          valor={formatarBRL(outrasReceitas.total)}
+          descricao="Aluguel de horário e outros. Valor integral da escola, incluído no recebido."
+        />
         <Resumo
           rotulo="Direito identificado dos professores"
           valor={formatarBRL(totalDireitoIdentificado)}

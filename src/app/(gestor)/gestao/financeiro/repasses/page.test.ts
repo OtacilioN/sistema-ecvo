@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   mensalidades: vi.fn(),
   registros: vi.fn(),
   exclusoes: vi.fn(),
+  custosFixos: vi.fn(),
+  outrasReceitas: vi.fn(),
 }))
 vi.mock("@/lib/auth/dal", () => ({ exigirGestao: async () => ({ papel: "GESTOR" }) }))
 vi.mock("@/lib/db", () => ({
@@ -15,9 +17,13 @@ vi.mock("@/lib/db", () => ({
   },
 }))
 vi.mock("@/lib/services/custos-fixos.service", () => ({
-  obterCustosFixosMensais: async () => ({ total: 0, itens: [], competencia: "2026-08" }),
+  obterCustosFixosMensais: mocks.custosFixos,
+}))
+vi.mock("@/lib/services/outras-receitas.service", () => ({
+  obterOutrasReceitasMensais: mocks.outrasReceitas,
 }))
 vi.mock("./form-custos-fixos", () => ({ FormCustosFixos: () => null }))
+vi.mock("./form-outras-receitas", () => ({ FormOutrasReceitas: () => null }))
 
 import Page from "./page"
 
@@ -45,6 +51,29 @@ function resumo(pagina: ReactElement, rotulo: string): string {
     }
   }
   return visitar(pagina) ?? "Resumo não encontrado"
+}
+
+function linhasExtrato(pagina: ReactElement): Record<string, string>[] {
+  const linhas: Record<string, string>[] = []
+  const visitar = (valor: unknown) => {
+    if (Array.isArray(valor)) {
+      for (const item of valor) visitar(item)
+    } else if (valor && typeof valor === "object" && "props" in valor) {
+      const elemento = valor as ReactElement<{ children?: unknown; "data-label"?: string }>
+      if (elemento.type === "tr" && Array.isArray(elemento.props.children)) {
+        const celulas: Record<string, string> = {}
+        for (const filho of elemento.props.children) {
+          if (filho?.props?.["data-label"]) {
+            celulas[filho.props["data-label"]] = textoPagina(filho.props.children)
+          }
+        }
+        if (celulas.Pagador) linhas.push(celulas)
+      }
+      visitar(elemento.props.children)
+    }
+  }
+  visitar(pagina)
+  return linhas
 }
 
 const modalidade = (id: string, teto: number) => ({
@@ -77,6 +106,157 @@ beforeEach(() => {
   mocks.mensalidades.mockResolvedValue([])
   mocks.registros.mockReset()
   mocks.exclusoes.mockResolvedValue([])
+  mocks.custosFixos.mockReset().mockImplementation(async (competencia: string) => ({
+    total: 0,
+    itens: [],
+    competencia,
+  }))
+  mocks.outrasReceitas.mockReset().mockImplementation(async (competencia: string) => ({
+    competencia,
+    valores: { aluguelHorario: competencia >= "2026-09" ? 500 : 0, outros: 0 },
+    total: competencia >= "2026-09" ? 500 : 0,
+    personalizado: false,
+  }))
+})
+
+describe("outras fontes de receita no repasse mensal", () => {
+  beforeEach(() => mocks.registros.mockResolvedValue([]))
+
+  it("preserva agosto sem aluguel padrão nem linhas de receitas zeradas no extrato", async () => {
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
+    expect(mocks.outrasReceitas).toHaveBeenCalledWith("2026-08")
+    expect(resumo(pagina, "Outras fontes de receita")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Recebido")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Sobra após professores")).toMatch(/\s0,00$/)
+    expect(linhasExtrato(pagina)).toEqual([])
+  })
+
+  it("incorpora o aluguel padrão de setembro integralmente à escola, sem repasse ou reserva", async () => {
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+    expect(mocks.outrasReceitas).toHaveBeenCalledWith("2026-09")
+    for (const rotulo of ["Outras fontes de receita", "Recebido", "Sobra após professores"]) {
+      expect(resumo(pagina, rotulo)).toMatch(/500,00$/)
+    }
+    for (const rotulo of [
+      "Receita de mensalistas",
+      "Receita de plataformas",
+      "Plataformas: repasse aos professores",
+      "Plataformas: sobra após professores",
+      "Direito identificado dos professores",
+      "Já repassado por split automático",
+      "Split automático em processamento",
+      "A repassar manualmente",
+      "Pendências sem professor definido",
+    ]) {
+      expect(resumo(pagina, rotulo)).toMatch(/\s0,00$/)
+    }
+    const linhas = linhasExtrato(pagina)
+    expect(linhas).toHaveLength(1)
+    expect(linhas[0]).toMatchObject({
+      Pagador: "Aluguel de horário",
+      Origem: "Outras fontes de receita",
+      Competência: "2026-09",
+      Recebido: expect.stringMatching(/500,00$/),
+      "Sobra após professor": expect.stringMatching(/500,00$/),
+    })
+    for (const coluna of ["Professor", "Split concluído", "Em processamento", "Repasse manual"]) {
+      expect(linhas[0][coluna]).toMatch(/\s0,00$/)
+    }
+  })
+
+  it("soma aluguel e outros personalizados e distribui a sobra da escola", async () => {
+    mocks.outrasReceitas.mockResolvedValue({
+      competencia: "2026-09",
+      valores: { aluguelHorario: 610.25, outros: 49.75 },
+      total: 660,
+      personalizado: true,
+    })
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+    expect(resumo(pagina, "Outras fontes de receita")).toMatch(/660,00$/)
+    expect(resumo(pagina, "Recebido")).toMatch(/660,00$/)
+    expect(resumo(pagina, "Sobra após professores")).toMatch(/660,00$/)
+    for (const rotulo of ["Caixa/investimento", "Sócio A", "Sócio B"]) {
+      expect(resumo(pagina, rotulo)).toMatch(/220,00$/)
+    }
+    expect(linhasExtrato(pagina)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Pagador: "Aluguel de horário",
+          Origem: "Outras fontes de receita",
+          Recebido: expect.stringMatching(/610,25$/),
+        }),
+        expect.objectContaining({
+          Pagador: "Outros",
+          Origem: "Outras fontes de receita",
+          Recebido: expect.stringMatching(/49,75$/),
+        }),
+      ]),
+    )
+    expect(linhasExtrato(pagina)).toHaveLength(2)
+  })
+
+  it("respeita aluguel explicitamente zerado em setembro sem reaplicar os R$ 500", async () => {
+    mocks.outrasReceitas.mockResolvedValue({
+      competencia: "2026-09",
+      valores: { aluguelHorario: 0, outros: 0 },
+      total: 0,
+      personalizado: true,
+    })
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+    expect(resumo(pagina, "Outras fontes de receita")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Recebido")).toMatch(/\s0,00$/)
+    expect(linhasExtrato(pagina)).toEqual([])
+  })
+
+  it("mantém a receita da escola nos totais ao filtrar professor, sem atribuí-la ao professor", async () => {
+    const base = registro(75, "setembro", [modalidade("kickboxing", 60)])
+    mocks.registros.mockResolvedValue([
+      { ...base, importacao: { ...base.importacao, competencia: "2026-09" } },
+    ])
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+    const filtrada = await Page({
+      searchParams: Promise.resolve({ competencia: "2026-09", professorId: "prof-kickboxing" }),
+    })
+    expect(resumo(pagina, "Recebido")).toMatch(/575,00$/)
+    expect(resumo(pagina, "Receita de plataformas")).toMatch(/75,00$/)
+    expect(resumo(pagina, "Plataformas: repasse aos professores")).toMatch(/45,00$/)
+    expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/30,00$/)
+    expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/45,00$/)
+    expect(resumo(pagina, "A repassar manualmente")).toMatch(/45,00$/)
+    expect(resumo(pagina, "Sobra após professores")).toMatch(/530,00$/)
+    for (const rotulo of [
+      "Recebido",
+      "Outras fontes de receita",
+      "Receita de mensalistas",
+      "Receita de plataformas",
+      "Plataformas: repasse aos professores",
+      "Plataformas: sobra após professores",
+      "Direito identificado dos professores",
+      "Sobra após professores",
+      "Caixa/investimento",
+      "Sócio A",
+      "Sócio B",
+    ]) {
+      expect(resumo(filtrada, rotulo)).toBe(resumo(pagina, rotulo))
+    }
+    expect(linhasExtrato(pagina)).toHaveLength(2)
+    expect(linhasExtrato(filtrada)).toHaveLength(1)
+    expect(linhasExtrato(filtrada)[0].Origem).toBe("WELLHUB")
+  })
+
+  it.each([
+    { custos: 200, saldo: /300,00$/, distribuicao: /100,00$/ },
+    { custos: 800, saldo: /-.*300,00$/, distribuicao: /\s0,00$/ },
+  ])("desconta R$ $custos de custos antes de distribuir outras receitas", async (cenario) => {
+    mocks.custosFixos.mockResolvedValue({ total: cenario.custos, competencia: "2026-09" })
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+    expect(resumo(pagina, "Recebido")).toMatch(/500,00$/)
+    expect(resumo(pagina, "Sobra após professores")).toMatch(/500,00$/)
+    expect(resumo(pagina, "Saldo após custos fixos")).toMatch(cenario.saldo)
+    for (const rotulo of ["Caixa/investimento", "Sócio A", "Sócio B"]) {
+      expect(resumo(pagina, rotulo)).toMatch(cenario.distribuicao)
+    }
+  })
 })
 
 describe("repasses de resumos mensais Wellhub", () => {

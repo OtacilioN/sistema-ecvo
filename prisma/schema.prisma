@@ -795,6 +795,16 @@ model CustoFixoMensal {
   atualizadoEm DateTime @updatedAt
 }
 
+// Receitas da escola por competência, sem participação dos professores.
+// Meses sem registro usam os padrões da aplicação vigentes na competência.
+model OutraReceitaMensal {
+  competencia    String   @id // "2026-09"
+  aluguelHorario Decimal  @db.Decimal(12, 2)
+  outros         Decimal  @db.Decimal(12, 2)
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+}
+
 model CobrancaMatriculaAsaas {
   id                       String                           @id @default(cuid())
   solicitacao              SolicitacaoMatricula             @relation(fields: [solicitacaoId], references: [id], onDelete: Cascade)
