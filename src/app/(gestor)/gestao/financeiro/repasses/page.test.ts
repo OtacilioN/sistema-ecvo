@@ -36,7 +36,11 @@ function textoPagina(valor: unknown): string {
   return ""
 }
 
-function resumo(pagina: ReactElement, rotulo: string): string {
+function resumo(
+  pagina: ReactElement,
+  rotulo: string,
+  campo: "valor" | "descricao" = "valor",
+): string {
   const visitar = (valor: unknown): string | undefined => {
     if (Array.isArray(valor)) {
       for (const item of valor) {
@@ -46,7 +50,7 @@ function resumo(pagina: ReactElement, rotulo: string): string {
     }
     if (valor && typeof valor === "object" && "props" in valor) {
       const props = (valor as { props: Record<string, unknown> }).props
-      if (props.rotulo === rotulo) return String(props.valor)
+      if (props.rotulo === rotulo) return String(props[campo])
       return visitar(props.children)
     }
   }
@@ -125,7 +129,7 @@ describe("outras fontes de receita no repasse mensal", () => {
   it("preserva agosto sem aluguel padrão nem linhas de receitas zeradas no extrato", async () => {
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
     expect(mocks.outrasReceitas).toHaveBeenCalledWith("2026-08")
-    expect(resumo(pagina, "Outras fontes de receita")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Recebido", "descricao")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "Recebido")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "Sobra após professores")).toMatch(/\s0,00$/)
     expect(linhasExtrato(pagina)).toEqual([])
@@ -134,7 +138,10 @@ describe("outras fontes de receita no repasse mensal", () => {
   it("incorpora o aluguel padrão de setembro integralmente à escola, sem repasse ou reserva", async () => {
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
     expect(mocks.outrasReceitas).toHaveBeenCalledWith("2026-09")
-    for (const rotulo of ["Outras fontes de receita", "Recebido", "Sobra após professores"]) {
+    expect(resumo(pagina, "Recebido", "descricao")).toMatch(
+      /Inclui outras fontes de receita:.*500,00$/,
+    )
+    for (const rotulo of ["Recebido", "Sobra após professores"]) {
       expect(resumo(pagina, rotulo)).toMatch(/500,00$/)
     }
     for (const rotulo of [
@@ -172,7 +179,7 @@ describe("outras fontes de receita no repasse mensal", () => {
       personalizado: true,
     })
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
-    expect(resumo(pagina, "Outras fontes de receita")).toMatch(/660,00$/)
+    expect(resumo(pagina, "Recebido", "descricao")).toMatch(/660,00$/)
     expect(resumo(pagina, "Recebido")).toMatch(/660,00$/)
     expect(resumo(pagina, "Sobra após professores")).toMatch(/660,00$/)
     for (const rotulo of ["Caixa/investimento", "Sócio A", "Sócio B"]) {
@@ -203,7 +210,7 @@ describe("outras fontes de receita no repasse mensal", () => {
       personalizado: true,
     })
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
-    expect(resumo(pagina, "Outras fontes de receita")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Recebido", "descricao")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "Recebido")).toMatch(/\s0,00$/)
     expect(linhasExtrato(pagina)).toEqual([])
   })
@@ -226,7 +233,6 @@ describe("outras fontes de receita no repasse mensal", () => {
     expect(resumo(pagina, "Sobra após professores")).toMatch(/530,00$/)
     for (const rotulo of [
       "Recebido",
-      "Outras fontes de receita",
       "Receita de mensalistas",
       "Receita de plataformas",
       "Plataformas: repasse aos professores",
@@ -239,6 +245,7 @@ describe("outras fontes de receita no repasse mensal", () => {
     ]) {
       expect(resumo(filtrada, rotulo)).toBe(resumo(pagina, rotulo))
     }
+    expect(resumo(filtrada, "Recebido", "descricao")).toBe(resumo(pagina, "Recebido", "descricao"))
     expect(linhasExtrato(pagina)).toHaveLength(2)
     expect(linhasExtrato(filtrada)).toHaveLength(1)
     expect(linhasExtrato(filtrada)[0].Origem).toBe("WELLHUB")

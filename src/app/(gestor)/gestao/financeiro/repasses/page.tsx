@@ -777,11 +777,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       </section>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Resumo rotulo="Recebido" valor={formatarBRL(totalRecebido)} />
         <Resumo
-          rotulo="Outras fontes de receita"
-          valor={formatarBRL(outrasReceitas.total)}
-          descricao="Aluguel de horário e outros. Valor integral da escola, incluído no recebido."
+          rotulo="Recebido"
+          valor={formatarBRL(totalRecebido)}
+          descricao={`Inclui outras fontes de receita: ${formatarBRL(outrasReceitas.total)}`}
         />
         <Resumo
           rotulo="Direito identificado dos professores"
