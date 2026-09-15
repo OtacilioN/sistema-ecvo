@@ -558,7 +558,7 @@ describe("aprovarMatricula", () => {
     ])
   })
 
-  it("aprova aula avulsa sem vincular plano e reserva somente a aula paga", async () => {
+  it("aprova aula avulsa paga após seu término e preserva seu vínculo histórico", async () => {
     const inicio = new Date("2026-09-05T12:00:00.000Z")
     mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
       id: "solicitacao-1",
@@ -612,7 +612,7 @@ describe("aprovarMatricula", () => {
     const resultado = await aprovarMatricula({
       solicitacaoId: "solicitacao-1",
       autorId: "gestor-1",
-      agora: new Date("2026-09-03T16:00:00.000Z"),
+      agora: new Date("2026-09-05T14:00:00.000Z"),
     })
 
     expect(resultado).toEqual({ ok: true, alunoId: "aluno-1" })
@@ -638,7 +638,58 @@ describe("aprovarMatricula", () => {
     expect(mocks.tx.comparecimento.create).toHaveBeenCalledWith({
       data: { alunoId: "aluno-1", aulaId: "aula-1", status: "CONFIRMADO" },
     })
+    expect(mocks.tx.comparecimento.findMany).not.toHaveBeenCalled()
+    expect(mocks.tx.checkin.findMany).not.toHaveBeenCalled()
     expect(mocks.registrarMensalidadeInicialPagaAsaas).not.toHaveBeenCalled()
+  })
+
+  it("aprova aula avulsa paga sem aula vinculável", async () => {
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "solicitacao-1",
+      status: "PENDENTE",
+      senhaHash: "senha-hash",
+      nome: "Aluno Avulso",
+      email: "avulso@exemplo.com",
+      cpf: "52998224725",
+      telefone: null,
+      dataNascimento: null,
+      endereco: null,
+      contatoEmergencia: null,
+      restricoesMedicas: null,
+      tipoPagamento: "AULA_AVULSA",
+      beneficioAtivoDeclarado: false,
+      modalidadePrincipal: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
+      modalidades: [{ modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true } }],
+      aulaAvulsa: null,
+      plano: {
+        id: "plano-padrao",
+        ativo: true,
+        periodicidade: "MENSAL",
+        valor: 100,
+        quantidadeModalidadesMatricula: 1,
+      },
+      cobrancasAsaas: [
+        {
+          id: "cobranca-1",
+          status: "RECEBIDA",
+          finalidade: "AULA_AVULSA",
+          recebidaEmAsaas: new Date("2026-09-03T15:00:00.000Z"),
+          asaasPaymentId: "pay-1",
+          asaasCustomerId: "cus-1",
+          valor: 20,
+        },
+      ],
+    })
+
+    const resultado = await aprovarMatricula({
+      solicitacaoId: "solicitacao-1",
+      autorId: "gestor-1",
+    })
+
+    expect(resultado).toEqual({ ok: true, alunoId: "aluno-1" })
+    expect(mocks.tx.usuario.create).toHaveBeenCalledOnce()
+    expect(mocks.tx.acessoAulaAvulsa.create).not.toHaveBeenCalled()
+    expect(mocks.tx.comparecimento.create).not.toHaveBeenCalled()
   })
 })
 

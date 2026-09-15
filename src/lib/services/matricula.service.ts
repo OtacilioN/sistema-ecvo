@@ -461,16 +461,6 @@ export async function aprovarMatricula(
             motivo: "O pagamento de R$ 20,00 ainda não foi confirmado pelo Asaas.",
           }
         }
-        if (
-          !solicitacao.aulaAvulsa ||
-          solicitacao.aulaAvulsa.cancelada ||
-          !solicitacao.aulaAvulsa.turma.ativa ||
-          solicitacao.aulaAvulsa.turma.ehEvento ||
-          solicitacao.aulaAvulsa.turma.modalidadeId !== modalidades[0]?.id ||
-          solicitacao.aulaAvulsa.fim.getTime() <= agora.getTime()
-        ) {
-          return { ok: false as const, motivo: "A aula avulsa escolhida não está mais disponível." }
-        }
       } else if (externo) {
         if (!solicitacao.beneficioAtivoDeclarado) {
           return {
@@ -541,56 +531,60 @@ export async function aprovarMatricula(
             },
           },
         })
-        if (
-          !aulaAtual ||
-          aulaAtual.cancelada ||
-          !aulaAtual.turma.ativa ||
-          aulaAtual.turma.ehEvento ||
-          aulaAtual.turma.modalidadeId !== modalidades[0]?.id ||
-          aulaAtual.fim.getTime() <= agora.getTime()
-        ) {
-          throw new ErroMatricula("A aula avulsa escolhida não está mais disponível.")
-        }
-        const [comparecimentos, checkins] = await Promise.all([
-          tx.comparecimento.findMany({
-            where: {
+        const aulaVinculavel =
+          aulaAtual &&
+          !aulaAtual.cancelada &&
+          aulaAtual.turma.ativa &&
+          !aulaAtual.turma.ehEvento &&
+          aulaAtual.turma.modalidadeId === modalidades[0]?.id
+
+        // O pagamento recebido permite concluir a matrícula mesmo que a aula tenha passado
+        // ou não possa mais ser vinculada. Só criamos a reserva quando a aula ainda existe
+        // e mantém o vínculo original com a modalidade.
+        if (aulaVinculavel) {
+          if (aulaAtual.fim.getTime() > agora.getTime()) {
+            const [comparecimentos, checkins] = await Promise.all([
+              tx.comparecimento.findMany({
+                where: {
+                  aulaId: solicitacao.aulaAvulsa.id,
+                  status: { in: ["CONFIRMADO", "CONVERTIDO_CHECKIN"] },
+                },
+                select: { alunoId: true },
+              }),
+              tx.checkin.findMany({
+                where: { aulaId: solicitacao.aulaAvulsa.id, status: "VALIDO" },
+                select: { alunoId: true },
+              }),
+            ])
+            const ocupacao = new Set([
+              ...comparecimentos.map((item) => item.alunoId),
+              ...checkins.map((item) => item.alunoId),
+            ]).size
+            if (aulaAtual.turma.capacidade > 0 && ocupacao >= aulaAtual.turma.capacidade) {
+              throw new ErroMatricula(
+                "A aula escolhida ficou lotada. Concilie o pagamento antes de aprovar.",
+              )
+            }
+          }
+          await tx.acessoAulaAvulsa.create({
+            data: {
+              solicitacaoId: solicitacao.id,
+              alunoId: usuario.aluno.id,
               aulaId: solicitacao.aulaAvulsa.id,
-              status: { in: ["CONFIRMADO", "CONVERTIDO_CHECKIN"] },
+              valorPago: VALOR_AULA_AVULSA,
+              valorPlanoSnapshot: VALOR_MENSALIDADE_AULA_AVULSA,
+              valorComplemento: VALOR_COMPLEMENTO_AULA_AVULSA,
+              prazoConversao: fimExclusivoDaSemanaAcademia(aulaAtual.inicio),
             },
-            select: { alunoId: true },
-          }),
-          tx.checkin.findMany({
-            where: { aulaId: solicitacao.aulaAvulsa.id, status: "VALIDO" },
-            select: { alunoId: true },
-          }),
-        ])
-        const ocupacao = new Set([
-          ...comparecimentos.map((item) => item.alunoId),
-          ...checkins.map((item) => item.alunoId),
-        ]).size
-        if (aulaAtual.turma.capacidade > 0 && ocupacao >= aulaAtual.turma.capacidade) {
-          throw new ErroMatricula(
-            "A aula escolhida ficou lotada. Concilie o pagamento antes de aprovar.",
-          )
+          })
+          await tx.comparecimento.create({
+            data: {
+              alunoId: usuario.aluno.id,
+              aulaId: solicitacao.aulaAvulsa.id,
+              status: "CONFIRMADO",
+            },
+          })
         }
-        await tx.acessoAulaAvulsa.create({
-          data: {
-            solicitacaoId: solicitacao.id,
-            alunoId: usuario.aluno.id,
-            aulaId: solicitacao.aulaAvulsa.id,
-            valorPago: VALOR_AULA_AVULSA,
-            valorPlanoSnapshot: VALOR_MENSALIDADE_AULA_AVULSA,
-            valorComplemento: VALOR_COMPLEMENTO_AULA_AVULSA,
-            prazoConversao: fimExclusivoDaSemanaAcademia(aulaAtual.inicio),
-          },
-        })
-        await tx.comparecimento.create({
-          data: {
-            alunoId: usuario.aluno.id,
-            aulaId: solicitacao.aulaAvulsa.id,
-            status: "CONFIRMADO",
-          },
-        })
       }
 
       if (mensalista && plano && cobrancaMatricula) {
