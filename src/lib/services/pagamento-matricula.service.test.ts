@@ -49,6 +49,7 @@ const mocks = vi.hoisted(() => {
     registrarLog: vi.fn(),
     obterOuCriarMensalidadeNaTransacao: vi.fn(),
     criarNotificacao: vi.fn(),
+    aprovarMatricula: vi.fn().mockResolvedValue({ ok: true, alunoId: "aluno-1" }),
   }
 })
 
@@ -71,6 +72,9 @@ vi.mock("@/lib/services/financeiro.service", () => ({
 }))
 vi.mock("@/lib/services/notificacao.service", () => ({
   criarNotificacao: mocks.criarNotificacao,
+}))
+vi.mock("@/lib/services/matricula.service", () => ({
+  aprovarMatricula: mocks.aprovarMatricula,
 }))
 
 import {
@@ -567,6 +571,14 @@ describe("sincronização e reemissão", () => {
     )
 
     expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.aprovarMatricula).toHaveBeenCalledWith(
+      expect.objectContaining({
+        solicitacaoId: solicitacao.id,
+        autorId: null,
+        origem: "AUTOMATICA",
+        transacao: mocks.tx,
+      }),
+    )
     expect(mocks.tx.cobrancaMatriculaAsaas.update).toHaveBeenNthCalledWith(1, {
       where: { id: "cobranca-2" },
       data: expect.objectContaining({
@@ -583,6 +595,34 @@ describe("sincronização e reemissão", () => {
         recebidaEmAsaas: new Date("2026-09-01T00:20:00.000Z"),
       }),
     })
+  })
+
+  it("devolve as notificações da aprovação para envio somente após o commit do webhook", async () => {
+    const notificacao = {
+      id: "notificacao-gestor-1",
+      usuarioId: "gestor-1",
+      tipo: "MATRICULA",
+      titulo: "Matrícula aprovada",
+      mensagem: "Acesso liberado.",
+    }
+    mocks.aprovarMatricula.mockResolvedValueOnce({
+      ok: true,
+      alunoId: "aluno-1",
+      notificacoes: [notificacao],
+    })
+
+    const resultado = await aplicarWebhookPagamentoMatricula(
+      mocks.tx as never,
+      { ...cobrancaAntiga, status: "PENDENTE" as const, valor: new Prisma.Decimal(100) },
+      {
+        id: "evt-recebido-com-notificacao",
+        event: "PAYMENT_RECEIVED",
+        dateCreated: "2026-09-01 00:20:00",
+        payment: pagamentoRemoto("RECEIVED"),
+      },
+    )
+
+    expect(resultado).toMatchObject({ ok: true, notificacoes: [notificacao] })
   })
 
   it("prioriza PAYMENT_CONFIRMED antigo sem colidir com outra geração ativa", async () => {
@@ -615,6 +655,7 @@ describe("sincronização e reemissão", () => {
         ativa: true,
       }),
     })
+    expect(mocks.aprovarMatricula).not.toHaveBeenCalled()
   })
 
   it("converte R$ 20 + R$ 80 em mensalidade paga de R$ 100 após PAYMENT_RECEIVED", async () => {

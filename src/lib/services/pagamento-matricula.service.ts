@@ -33,6 +33,10 @@ import {
   montarRepasseSnapshotMensalidade,
   obterOuCriarMensalidadeNaTransacao,
 } from "@/lib/services/financeiro.service"
+import {
+  aprovarMatricula,
+  type NotificacaoMatriculaConcluida,
+} from "@/lib/services/matricula.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
 import {
   payloadSplitAsaas,
@@ -1331,6 +1335,7 @@ export async function aplicarWebhookPagamentoMatricula(
   const recebido = statusMatriculaPorEvento(webhook.event)
   const status = recebido ? proximoStatusCobrancaAsaas(cobranca.status, recebido) : cobranca.status
   const pagamentoRecebido = webhook.event === "PAYMENT_RECEIVED"
+  let notificacoes: NotificacaoMatriculaConcluida[] = []
   const pagamentoPriorizado = pagamentoRecebido || webhook.event === "PAYMENT_CONFIRMED"
   const outraAtiva = pagamentoPriorizado
     ? await tx.cobrancaMatriculaAsaas.findFirst({
@@ -1387,6 +1392,21 @@ export async function aplicarWebhookPagamentoMatricula(
           : null,
     },
   })
+  if (
+    pagamentoRecebido &&
+    (cobranca.finalidade === "PRIMEIRA_MENSALIDADE" || cobranca.finalidade === "AULA_AVULSA")
+  ) {
+    const aprovacao = await aprovarMatricula({
+      solicitacaoId: cobranca.solicitacaoId,
+      autorId: null,
+      agora: interpretarDataAsaas(webhook.payment.paymentDate ?? webhook.dateCreated) ?? new Date(),
+      origem: "AUTOMATICA",
+      transacao: tx,
+      enviarPush: false,
+    })
+    if (!aprovacao.ok) throw new Error(aprovacao.motivo)
+    notificacoes = "notificacoes" in aprovacao ? (aprovacao.notificacoes ?? []) : []
+  }
   if (pagamentoRecebido && cobranca.finalidade === "COMPLEMENTO_MENSALIDADE") {
     const recebidaEm =
       interpretarDataAsaas(webhook.payment.paymentDate ?? webhook.dateCreated) ?? new Date()
@@ -1412,5 +1432,7 @@ export async function aplicarWebhookPagamentoMatricula(
       tx,
     )
   }
-  return { ok: true as const, duplicado: false as const }
+  return notificacoes.length > 0
+    ? { ok: true as const, duplicado: false as const, notificacoes }
+    : { ok: true as const, duplicado: false as const }
 }

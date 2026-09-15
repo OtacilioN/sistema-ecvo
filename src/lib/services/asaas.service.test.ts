@@ -68,6 +68,7 @@ const mocks = vi.hoisted(() => {
     obterQrCodePixAsaas: vi.fn(),
     registrarLog: vi.fn(),
     sincronizarStatusFinanceiroAluno: vi.fn(),
+    enviarPushParaNotificacoes: vi.fn(),
   }
 })
 
@@ -86,6 +87,9 @@ vi.mock("@/lib/asaas/client", () => ({
   obterQrCodePixAsaas: mocks.obterQrCodePixAsaas,
 }))
 vi.mock("@/lib/services/auditoria.service", () => ({ registrarLog: mocks.registrarLog }))
+vi.mock("@/lib/services/notificacao.service", () => ({
+  enviarPushParaNotificacoes: mocks.enviarPushParaNotificacoes,
+}))
 vi.mock("@/lib/services/financeiro.service", () => ({
   calcularRepasseFinanceiro: vi.fn(),
   gerarMensalidade: vi.fn(),
@@ -104,6 +108,7 @@ import {
   processarWebhookAsaas,
   reconciliarPendenciasAsaas,
 } from "./asaas.service"
+import * as pagamentoMatriculaService from "./pagamento-matricula.service"
 
 const vencimento = new Date("2026-09-10T12:00:00.000Z")
 const cobrancaLocal = {
@@ -425,6 +430,59 @@ describe("processarWebhookAsaas", () => {
       }),
     })
     expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("envia o push de aprovação automática somente após confirmar a transação do webhook", async () => {
+    const cobrancaMatricula = {
+      id: "cobranca-matricula-1",
+      solicitacaoId: "solicitacao-1",
+      mensalidadeId: null,
+      status: "PENDENTE" as const,
+      asaasPaymentId: "pay_matricula",
+      asaasCustomerId: "cus_matricula",
+      externalReference: "matricula:solicitacao-1",
+      finalidade: "PRIMEIRA_MENSALIDADE" as const,
+      valor: 100,
+      vencimentoAsaas: new Date("2026-09-10T12:00:00.000Z"),
+    }
+    const notificacao = {
+      id: "notificacao-gestor-1",
+      criadoEm: new Date("2026-09-10T15:00:00.000Z"),
+      usuarioId: "gestor-1",
+      tipo: "MATRICULA" as const,
+      titulo: "Matrícula aprovada",
+      mensagem: "Acesso liberado.",
+      lida: false,
+    }
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(cobrancaMatricula)
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockResolvedValue(cobrancaMatricula)
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      id: "pay_matricula",
+      customer: "cus_matricula",
+      value: 100,
+      externalReference: "matricula:solicitacao-1",
+    })
+    const aplicar = vi
+      .spyOn(pagamentoMatriculaService, "aplicarWebhookPagamentoMatricula")
+      .mockResolvedValue({ ok: true, duplicado: false, notificacoes: [notificacao] })
+    mocks.db.$transaction.mockImplementationOnce(
+      async (callback: (cliente: typeof mocks.tx) => unknown) => {
+        const resultado = await callback(mocks.tx)
+        expect(mocks.enviarPushParaNotificacoes).not.toHaveBeenCalled()
+        return resultado
+      },
+    )
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_matricula_push",
+      event: "PAYMENT_RECEIVED",
+      payment: { id: "pay_matricula" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false, notificacoes: [notificacao] })
+    expect(mocks.enviarPushParaNotificacoes).toHaveBeenCalledWith([notificacao])
+    aplicar.mockRestore()
   })
 
   it("não conclui a pré-matrícula no estado cautelar CONFIRMED", async () => {

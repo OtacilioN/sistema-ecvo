@@ -67,22 +67,23 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   `?tipoPagamento=mensalista`, `aula-avulsa`, `wellhub` ou `totalpass`. No fluxo mensalista, pode anexar um comprovante
   PIX opcional em imagem ou PDF; o sistema aplica o plano ativo associado à quantidade de modalidades,
   usando o valor vigente do próprio plano, e emite a cobrança PIX da primeira
-  mensalidade no Asaas e só coloca a solicitação na fila administrativa após `PAYMENT_RECEIVED`. Wellhub
+  mensalidade no Asaas e aprova a matrícula automaticamente após `PAYMENT_RECEIVED`. Wellhub
   exige declaração de benefício ativo a partir do plano Basic e TotalPass a partir do TP1+; esses fluxos
   não geram pagamento de matrícula, mensalidade, plano interno ou cobrança Asaas. A solicitação não cria
-  uma conta de aluno antes da análise.
-- **RF-001.2** O gestor visualiza as matrículas pendentes e aprova cada solicitação em uma única operação,
-  confirmando o dia de vencimento apenas para mensalistas. A aprovação mensalista usa o plano e o valor
-  preservados na cobrança, cria o aluno e registra a mensalidade inicial paga pelo Asaas. A aprovação
-  vincula todas as modalidades selecionadas ao aluno e ao plano. A aprovação Wellhub/TotalPass cria o aluno
+  uma conta de aluno antes da análise manual de Wellhub ou TotalPass.
+- **RF-001.2** O gestor visualiza e aprova somente matrículas pendentes Wellhub ou TotalPass em uma única
+  operação. Matrículas mensalistas e aulas avulsas são aprovadas automaticamente no `PAYMENT_RECEIVED` do
+  Asaas. A aprovação mensalista usa o plano e o valor preservados na cobrança, cria o aluno, define o
+  vencimento pelo dia do pagamento (limitado a 28) e registra a mensalidade inicial paga pelo Asaas. A
+  aprovação vincula todas as modalidades selecionadas ao aluno e ao plano. A aprovação Wellhub/TotalPass cria o aluno
   com o tipo e o vínculo externo da modalidade correspondente, sem efeitos
   financeiros internos. O comprovante anexado é evidência privada opcional do fluxo mensalista e nunca
   substitui nem duplica a confirmação integrada.
-- **RF-001.3** Cada nova solicitação de matrícula e cada aprovação concluída gera uma notificação interna
-  com tentativa de Web Push para todos os gestores ativos, incluindo o gestor que realizou a aprovação.
+- **RF-001.3** Cada nova solicitação Wellhub/TotalPass e cada aprovação concluída gera uma notificação interna
+  para os gestores ativos.
 - **RF-001.4** No cadastro de aula avulsa, o candidato escolhe uma ocorrência futura, não cancelada e de
   turma recorrente ativa da modalidade selecionada. O Asaas cobra R$ 20,00; após `PAYMENT_RECEIVED` e
-  aprovação administrativa, o aluno recebe reserva e check-in somente para essa `Aula`. Na semana civil
+  aprovação automática, o aluno recebe reserva e check-in somente para essa `Aula`. Na semana civil
   da aula (segunda a domingo, em `America/Sao_Paulo`), o aluno pode fechar o plano mensal padrão de
   R$ 100,00 pagando um complemento Asaas de R$ 80,00. O recebimento efetivo do complemento, confirmado
   por `PAYMENT_RECEIVED` ou pelo status `RECEIVED` em consulta autenticada ao Asaas, converte o vínculo

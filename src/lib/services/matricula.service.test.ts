@@ -128,37 +128,9 @@ describe("solicitarMatricula", () => {
         planoId: "plano-padrao",
       }),
     })
-    expect(mocks.tx.usuario.findMany).toHaveBeenCalledWith({
-      where: { papel: "GESTOR", ativo: true },
-      select: { id: true },
-    })
-    expect(mocks.criarNotificacao).toHaveBeenCalledTimes(2)
-    expect(mocks.criarNotificacao).toHaveBeenNthCalledWith(
-      1,
-      mocks.tx,
-      {
-        usuarioId: "gestor-1",
-        tipo: "MATRICULA",
-        titulo: "Matrícula aguardando análise",
-        mensagem: "Aluno Parceiro solicitou matrícula em Jiu-Jitsu. Tipo de pagamento: mensalista.",
-      },
-      { enviarPush: false },
-    )
-    expect(mocks.criarNotificacao).toHaveBeenNthCalledWith(
-      2,
-      mocks.tx,
-      {
-        usuarioId: "gestor-2",
-        tipo: "MATRICULA",
-        titulo: "Matrícula aguardando análise",
-        mensagem: "Aluno Parceiro solicitou matrícula em Jiu-Jitsu. Tipo de pagamento: mensalista.",
-      },
-      { enviarPush: false },
-    )
-    expect(mocks.enviarPushParaNotificacoes).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "notificacao-gestor-1", usuarioId: "gestor-1" }),
-      expect.objectContaining({ id: "notificacao-gestor-2", usuarioId: "gestor-2" }),
-    ])
+    expect(mocks.tx.usuario.findMany).not.toHaveBeenCalled()
+    expect(mocks.criarNotificacao).not.toHaveBeenCalled()
+    expect(mocks.enviarPushParaNotificacoes).toHaveBeenCalledWith([])
   })
 
   it("seleciona o plano pela quantidade e preserva seu valor dinâmico", async () => {
@@ -316,27 +288,15 @@ describe("solicitarMatricula", () => {
 })
 
 describe("listarMatriculasPendentes", () => {
-  it("lista externos declarados e pagamentos diretos somente após recebimento", () => {
+  it("lista somente externos declarados para análise manual", () => {
     listarMatriculasPendentes()
 
     expect(mocks.db.solicitacaoMatricula.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           status: "PENDENTE",
-          OR: [
-            {
-              tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] },
-              beneficioAtivoDeclarado: true,
-            },
-            {
-              tipoPagamento: "MENSALISTA",
-              cobrancasAsaas: { some: { status: "RECEBIDA" } },
-            },
-            {
-              tipoPagamento: "AULA_AVULSA",
-              cobrancasAsaas: { some: { status: "RECEBIDA" } },
-            },
-          ],
+          tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] },
+          beneficioAtivoDeclarado: true,
         },
       }),
     )
@@ -344,7 +304,31 @@ describe("listarMatriculasPendentes", () => {
 })
 
 describe("aprovarMatricula", () => {
-  it("continua exigindo vencimento para aprovar mensalista", async () => {
+  it("reverte a transação externa quando a aprovação automática não pode ser concluída", async () => {
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "solicitacao-1",
+      status: "PENDENTE",
+      senhaHash: "senha-hash",
+      tipoPagamento: "MENSALISTA",
+      beneficioAtivoDeclarado: false,
+      modalidadePrincipal: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: false },
+      modalidades: [{ modalidade: { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: false } }],
+      plano: null,
+      cobrancasAsaas: [],
+    })
+
+    await expect(
+      aprovarMatricula({
+        solicitacaoId: "solicitacao-1",
+        autorId: null,
+        origem: "AUTOMATICA",
+        transacao: mocks.tx as never,
+      }),
+    ).rejects.toThrow("Uma das modalidades solicitadas está inativa.")
+    expect(mocks.tx.solicitacaoMatricula.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("recusa aprovação manual de mensalista", async () => {
     mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
       id: "solicitacao-1",
       status: "PENDENTE",
@@ -366,7 +350,11 @@ describe("aprovarMatricula", () => {
       autorId: "gestor-1",
     })
 
-    expect(resultado).toEqual({ ok: false, motivo: "Informe o dia de vencimento." })
+    expect(resultado).toEqual({
+      ok: false,
+      motivo:
+        "Matrículas mensalistas e aulas avulsas são aprovadas automaticamente após o pagamento recebido pelo Asaas.",
+    })
     expect(mocks.tx.solicitacaoMatricula.updateMany).not.toHaveBeenCalled()
   })
 
@@ -430,8 +418,9 @@ describe("aprovarMatricula", () => {
     const resultado = await aprovarMatricula({
       solicitacaoId: "solicitacao-1",
       diaVencimento: 10,
-      autorId: "gestor-1",
+      autorId: null,
       agora: new Date("2026-09-07T13:00:00.000Z"),
+      origem: "AUTOMATICA",
     })
 
     expect(resultado).toEqual({ ok: true, alunoId: "aluno-1" })
@@ -455,6 +444,13 @@ describe("aprovarMatricula", () => {
         }),
       }),
     )
+    expect(mocks.tx.usuario.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          aluno: { create: expect.objectContaining({ diaVencimento: 7 }) },
+        }),
+      }),
+    )
     expect(mocks.registrarMensalidadeInicialPagaAsaas).toHaveBeenCalledWith(
       mocks.tx,
       expect.objectContaining({ valor: 281.2, pagoEm: recebidaEmAsaas }),
@@ -464,10 +460,19 @@ describe("aprovarMatricula", () => {
     )
     expect(mocks.registrarLog).toHaveBeenCalledWith(
       expect.objectContaining({
+        autorId: null,
         acao: "ALUNO_CRIADO",
         valorNovo: expect.objectContaining({
           modalidadeIds: ["modalidade-1", "modalidade-2", "modalidade-3"],
         }),
+      }),
+      mocks.tx,
+    )
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autorId: null,
+        acao: "MATRICULA_APROVADA",
+        valorNovo: expect.objectContaining({ origemAprovacao: "AUTOMATICA" }),
       }),
       mocks.tx,
     )
@@ -613,6 +618,7 @@ describe("aprovarMatricula", () => {
       solicitacaoId: "solicitacao-1",
       autorId: "gestor-1",
       agora: new Date("2026-09-05T14:00:00.000Z"),
+      origem: "AUTOMATICA",
     })
 
     expect(resultado).toEqual({ ok: true, alunoId: "aluno-1" })
@@ -684,6 +690,7 @@ describe("aprovarMatricula", () => {
     const resultado = await aprovarMatricula({
       solicitacaoId: "solicitacao-1",
       autorId: "gestor-1",
+      origem: "AUTOMATICA",
     })
 
     expect(resultado).toEqual({ ok: true, alunoId: "aluno-1" })

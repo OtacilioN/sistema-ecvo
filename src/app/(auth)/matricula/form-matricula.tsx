@@ -99,7 +99,7 @@ export function FormMatricula({
         <Secao
           numero="02"
           titulo="Seus dados"
-          descricao="Informações para criar seu acesso após a aprovação."
+          descricao="Informações para criar seu acesso após a confirmação do pagamento ou a análise do benefício."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo
@@ -144,7 +144,7 @@ export function FormMatricula({
         <Secao
           numero="03"
           titulo="Seu acesso"
-          descricao="Você usará estes dados depois que a matrícula for aprovada."
+          descricao="Você usará estes dados após a confirmação do pagamento ou a análise do benefício."
         >
           <div className="grid gap-4 sm:grid-cols-2">
             <Campo
@@ -476,8 +476,8 @@ export function FormMatricula({
               {matriculaExterna
                 ? `O check-in será liberado após a análise da matrícula ${parceiro}.`
                 : aulaAvulsa
-                  ? "Após o pagamento e a aprovação, o check-in ficará restrito à aula escolhida."
-                  : "O check-in só é liberado depois da aprovação e do vínculo do plano."}
+                  ? "Após a confirmação do pagamento, o check-in ficará restrito à aula escolhida."
+                  : "O check-in é liberado automaticamente após a confirmação do pagamento e o vínculo do plano."}
             </p>
           </div>
         </div>

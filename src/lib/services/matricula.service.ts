@@ -11,7 +11,11 @@ import { db } from "@/lib/db"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { registrarMensalidadeInicialPagaAsaas } from "@/lib/services/financeiro.service"
 import { criarNotificacao, enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
-import { fimExclusivoDaSemanaAcademia, formatarDataHora } from "@/lib/utils/datas"
+import {
+  fimExclusivoDaSemanaAcademia,
+  formatarDataHora,
+  formatarDataInput,
+} from "@/lib/utils/datas"
 import type {
   AprovacaoMatriculaInput,
   RejeicaoMatriculaInput,
@@ -23,6 +27,10 @@ type DadosComprovante = {
   contentType: string
   nomeOriginal: string
 }
+
+export type NotificacaoMatriculaConcluida = NonNullable<
+  Awaited<ReturnType<typeof criarNotificacao>>
+>
 
 type ClienteMatricula = Prisma.TransactionClient
 
@@ -256,10 +264,13 @@ export async function solicitarMatricula(
         tx,
       )
 
-      const notificacoes = await notificarGestoresSobreMatricula(tx, {
-        titulo: "Matrícula aguardando análise",
-        mensagem: `${params.nome} solicitou matrícula em ${modalidades.map((modalidade) => modalidade.nome).join(", ")}. Tipo de pagamento: ${ROTULO_TIPO_PAGAMENTO[params.tipoPagamento]}.`,
-      })
+      const notificacoes =
+        params.tipoPagamento === "WELLHUB" || params.tipoPagamento === "TOTALPASS"
+          ? await notificarGestoresSobreMatricula(tx, {
+              titulo: "Matrícula aguardando análise",
+              mensagem: `${params.nome} solicitou matrícula em ${modalidades.map((modalidade) => modalidade.nome).join(", ")}. Tipo de pagamento: ${ROTULO_TIPO_PAGAMENTO[params.tipoPagamento]}.`,
+            })
+          : []
 
       return { solicitacao: criada, notificacoes }
     })
@@ -283,14 +294,8 @@ export function listarMatriculasPendentes() {
   return db.solicitacaoMatricula.findMany({
     where: {
       status: "PENDENTE",
-      OR: [
-        {
-          tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] },
-          beneficioAtivoDeclarado: true,
-        },
-        { tipoPagamento: "MENSALISTA", cobrancasAsaas: { some: { status: "RECEBIDA" } } },
-        { tipoPagamento: "AULA_AVULSA", cobrancasAsaas: { some: { status: "RECEBIDA" } } },
-      ],
+      tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] },
+      beneficioAtivoDeclarado: true,
     },
     orderBy: { criadoEm: "asc" },
     select: {
@@ -347,11 +352,18 @@ export function listarMatriculasPendentes() {
 }
 
 export async function aprovarMatricula(
-  params: AprovacaoMatriculaInput & { autorId: string; agora?: Date },
+  params: AprovacaoMatriculaInput & {
+    autorId: string | null
+    agora?: Date
+    origem?: "MANUAL" | "AUTOMATICA"
+    transacao?: Prisma.TransactionClient
+    enviarPush?: boolean
+  },
 ) {
   const agora = params.agora ?? new Date()
+  const origem = params.origem ?? "MANUAL"
   try {
-    const resultado = await db.$transaction(async (tx) => {
+    const executar = async (tx: Prisma.TransactionClient) => {
       const solicitacao = await tx.solicitacaoMatricula.findUnique({
         where: { id: params.solicitacaoId },
         include: {
@@ -394,6 +406,16 @@ export async function aprovarMatricula(
       const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
       const externo =
         solicitacao.tipoPagamento === "WELLHUB" || solicitacao.tipoPagamento === "TOTALPASS"
+      if (origem === "MANUAL" && !externo) {
+        return {
+          ok: false as const,
+          motivo:
+            "Matrículas mensalistas e aulas avulsas são aprovadas automaticamente após o pagamento recebido pelo Asaas.",
+        }
+      }
+      if (origem === "AUTOMATICA" && !mensalista && !aulaAvulsa) {
+        return { ok: false as const, motivo: "Este tipo de matrícula exige análise manual." }
+      }
       const tipoAluno = mensalista
         ? "MENSALISTA"
         : aulaAvulsa
@@ -412,11 +434,15 @@ export async function aprovarMatricula(
       const cobrancaMatricula = solicitacao.cobrancasAsaas.find(
         (cobranca) => cobranca.status === "RECEBIDA" && cobranca.finalidade === finalidadeEsperada,
       )
+      const diaVencimento =
+        mensalista && origem === "AUTOMATICA" && cobrancaMatricula?.recebidaEmAsaas
+          ? Math.min(Number(formatarDataInput(cobrancaMatricula.recebidaEmAsaas).slice(-2)), 28)
+          : params.diaVencimento
       if (mensalista) {
         if (!plano) {
           return { ok: false as const, motivo: "O plano da solicitação não está disponível." }
         }
-        if (!params.diaVencimento) {
+        if (!diaVencimento) {
           return { ok: false as const, motivo: "Informe o dia de vencimento." }
         }
         if (
@@ -503,7 +529,7 @@ export async function aprovarMatricula(
               contatoEmergencia: solicitacao.contatoEmergencia,
               restricoesMedicas: solicitacao.restricoesMedicas,
               planoId: mensalista ? (plano?.id ?? null) : null,
-              ...(mensalista ? { diaVencimento: params.diaVencimento } : {}),
+              ...(mensalista ? { diaVencimento } : {}),
               modalidades: { connect: modalidades.map((modalidade) => ({ id: modalidade.id })) },
               modalidadesPlano: {
                 create: modalidades.map((modalidade) => ({
@@ -705,7 +731,8 @@ export async function aprovarMatricula(
             planoAlvoConversaoId: aulaAvulsa ? (plano?.id ?? null) : null,
             modalidadeIds: modalidades.map((modalidade) => modalidade.id),
             modalidadeNomes: modalidades.map((modalidade) => modalidade.nome),
-            diaVencimento: mensalista ? params.diaVencimento : null,
+            diaVencimento: mensalista ? diaVencimento : null,
+            origemAprovacao: origem,
             pagamentoAsaasConfirmado: mensalista,
             pagamentoAulaAvulsaAsaasConfirmado: aulaAvulsa,
             pagamentoDispensado: externo,
@@ -726,12 +753,23 @@ export async function aprovarMatricula(
       })
 
       return { ok: true as const, alunoId: usuario.aluno.id, notificacoes }
-    })
-    if (!resultado.ok) return resultado
+    }
+    const resultado = params.transacao
+      ? await executar(params.transacao)
+      : await db.$transaction(executar)
+    if (!resultado.ok) {
+      if (params.transacao) throw new ErroMatricula(resultado.motivo)
+      return resultado
+    }
 
-    await enviarPushParaNotificacoes(resultado.notificacoes)
+    if (params.transacao) return resultado
+
+    if (params.enviarPush !== false) {
+      await enviarPushParaNotificacoes(resultado.notificacoes)
+    }
     return { ok: true as const, alunoId: resultado.alunoId }
   } catch (erro) {
+    if (params.transacao) throw erro
     if (erro instanceof ErroMatricula) return { ok: false as const, motivo: erro.message }
     if (erro instanceof Prisma.PrismaClientKnownRequestError && erro.code === "P2002") {
       return {

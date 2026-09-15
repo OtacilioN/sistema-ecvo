@@ -13,16 +13,8 @@ import { formatarDataHora } from "@/lib/utils/datas"
 import { formatarBRL, formatarCPF } from "@/lib/utils/formato"
 import type { SolicitacaoPendente } from "./lista-matriculas-pendentes"
 
-export function AcoesMatricula({
-  solicitacao,
-  diaVencimentoPadrao,
-}: {
-  solicitacao: SolicitacaoPendente
-  diaVencimentoPadrao: number
-}) {
+export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPendente }) {
   const [acaoAberta, setAcaoAberta] = useState<"aprovar" | "rejeitar" | null>(null)
-  const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
-  const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
   return (
     <>
       <Button type="button" onClick={() => setAcaoAberta("aprovar")} className="w-full lg:w-auto">
@@ -33,17 +25,9 @@ export function AcoesMatricula({
         aoFechar={() => setAcaoAberta(null)}
         variante="lateral"
         titulo="Aprovar matrícula"
-        descricao={
-          mensalista || aulaAvulsa
-            ? "Confira os dados e conclua a aprovação do pagamento já confirmado."
-            : "Confira os dados e a declaração do benefício antes de liberar o acesso."
-        }
+        descricao={"Confira os dados e a declaração do benefício antes de liberar o acesso."}
       >
-        <FormAprovacao
-          solicitacao={solicitacao}
-          diaVencimentoPadrao={diaVencimentoPadrao}
-          aoConcluir={() => setAcaoAberta(null)}
-        />
+        <FormAprovacao solicitacao={solicitacao} aoConcluir={() => setAcaoAberta(null)} />
       </Dialog>
       <Button
         type="button"
@@ -130,14 +114,13 @@ function FormRejeicao({
 
 function FormAprovacao({
   solicitacao,
-  diaVencimentoPadrao,
   aoConcluir,
 }: {
   solicitacao: SolicitacaoPendente
-  diaVencimentoPadrao: number
   aoConcluir: () => void
 }) {
   const [estado, acao] = useActionState(acaoAprovarMatricula, undefined)
+  const diaVencimentoPadrao = Math.min(new Date().getDate(), 28)
   const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
   const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
   const parceiro = solicitacao.tipoPagamento === "WELLHUB" ? "Wellhub" : "TotalPass"

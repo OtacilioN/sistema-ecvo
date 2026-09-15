@@ -2,7 +2,6 @@ import { ClipboardList } from "lucide-react"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { exigirPapel } from "@/lib/auth/dal"
 import { listarMatriculasPendentes } from "@/lib/services/matricula.service"
-import { formatarDataInput } from "@/lib/utils/datas"
 import { ListaMatriculasPendentes } from "./lista-matriculas-pendentes"
 
 export const dynamic = "force-dynamic"
@@ -10,13 +9,11 @@ export const dynamic = "force-dynamic"
 export default async function MatriculasPendentesPage() {
   await exigirPapel("GESTOR")
   const solicitacoes = await listarMatriculasPendentes()
-  const diaVencimentoPadrao = Number(formatarDataInput(new Date()).slice(-2))
-
   return (
     <div className="space-y-6">
       <CabecalhoPagina
         titulo="Matrículas pendentes"
-        descricao="Analise mensalidades e aulas avulsas pagas, além das solicitações Wellhub ou TotalPass declaradas."
+        descricao="Analise e aprove somente as solicitações Wellhub e TotalPass com benefício declarado."
       >
         <div className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm">
           <ClipboardList className="size-4 text-primary" />
@@ -26,7 +23,6 @@ export default async function MatriculasPendentesPage() {
       </CabecalhoPagina>
 
       <ListaMatriculasPendentes
-        diaVencimentoPadrao={diaVencimentoPadrao}
         solicitacoes={solicitacoes.map((item) => ({
           ...item,
           modalidades:

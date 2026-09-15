@@ -1318,7 +1318,7 @@ async function baixarMensalidadeNaTransacao(
     observacao?: string | null
     pagoEm?: Date
     agora?: Date
-    autorId: string
+    autorId: string | null
   },
 ) {
   const mensalidade = await tx.mensalidade.findUnique({
@@ -1416,7 +1416,7 @@ async function baixarMensalidadeNaTransacao(
     tx,
     nova.alunoId,
     params.agora ?? new Date(),
-    params.autorId,
+    params.autorId ?? undefined,
   )
 
   return { ok: true as const, mensalidade: nova }
@@ -1470,7 +1470,7 @@ export async function registrarMensalidadeInicialPagaAsaas(
     competencia: string
     valor: Prisma.Decimal | number
     pagoEm: Date
-    autorId: string
+    autorId: string | null
     agora?: Date
   },
 ) {
@@ -1481,7 +1481,7 @@ export async function registrarMensalidadeInicialPagaAsaas(
   const mensalidade = await obterOuCriarMensalidadeNaTransacao(tx, {
     alunoId: params.alunoId,
     competencia: params.competencia,
-    autorId: params.autorId,
+    autorId: params.autorId ?? undefined,
   })
   if (!mensalidade.ok) return mensalidade
   if (Number(mensalidade.mensalidade.valor) !== Number(params.valor)) {

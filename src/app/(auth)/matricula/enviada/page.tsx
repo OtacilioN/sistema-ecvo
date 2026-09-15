@@ -29,8 +29,8 @@ export default function MatriculaEnviadaPage() {
           <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/30 p-4 text-left text-sm">
             <Clock3 className="mt-0.5 size-5 shrink-0 text-primary" />
             <p>
-              Quando a matrícula for aprovada, você poderá entrar com o e-mail e a senha informados
-              no cadastro.
+              Após a análise da matrícula, você poderá entrar com o e-mail e a senha informados no
+              cadastro.
             </p>
           </div>
           <Button asChild size="lg" className="w-full">

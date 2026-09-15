@@ -42,6 +42,7 @@ import {
   sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
 } from "@/lib/services/financeiro.service"
+import { enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
 import { aplicarWebhookPagamentoMatricula } from "@/lib/services/pagamento-matricula.service"
 import {
   payloadSplitAsaas,
@@ -2345,7 +2346,8 @@ export async function cancelarPixAutomatico(params: { alunoId: string; autorId: 
 async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
   const authorizationId = idAutorizacaoDoWebhook(webhook)
   const paymentInstructionId = idPagamentoInstrucaoDoWebhook(webhook)
-  return db.$transaction(async (tx) => {
+  const notificacoesParaEnviar: Parameters<typeof enviarPushParaNotificacoes>[0] = []
+  const resultado = await db.$transaction(async (tx) => {
     const inserido = await tx.eventoWebhookAsaas.createMany({
       data: {
         asaasEventId: webhook.id,
@@ -2440,6 +2442,9 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
         // A consulta ao Asaas pode ter convertido o complemento enquanto o lock era aguardado.
         if (cobrancaMatricula && !cobrancaMatricula.mensalidadeId) {
           const resultado = await aplicarWebhookPagamentoMatricula(tx, cobrancaMatricula, webhook)
+          if (resultado.ok && "notificacoes" in resultado && resultado.notificacoes) {
+            notificacoesParaEnviar.push(...resultado.notificacoes)
+          }
           if (!resultado.ok) {
             await tx.eventoWebhookAsaas.delete({ where: { asaasEventId: webhook.id } })
           }
@@ -2850,6 +2855,10 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
 
     return { ok: true as const, duplicado: false }
   })
+  if (resultado.ok && notificacoesParaEnviar.length > 0) {
+    await enviarPushParaNotificacoes(notificacoesParaEnviar)
+  }
+  return resultado
 }
 
 async function cancelarAutorizacaoRemotaSeEstornoInicial(remota: CobrancaRemotaAsaas) {

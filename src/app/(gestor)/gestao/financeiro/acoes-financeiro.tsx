@@ -1,15 +1,6 @@
 "use client"
 
-import {
-  CreditCard,
-  FilePlus,
-  LinkIcon,
-  Pencil,
-  Repeat2,
-  Trash2,
-  WalletCards,
-  XCircle,
-} from "lucide-react"
+import { CreditCard, FilePlus, Pencil, Repeat2, Trash2, WalletCards, XCircle } from "lucide-react"
 import { useState } from "react"
 import { acaoCancelarCobrancaAsaas } from "@/app/actions/financeiro"
 import { Button } from "@/components/ui/button"
@@ -24,7 +15,6 @@ import {
   FormPlano,
   FormStatusMensalidade,
   FormTipoCobrancaPix,
-  FormVinculoPlano,
   type PlanoEdicao,
 } from "./forms-financeiro"
 
@@ -40,23 +30,14 @@ type PlanoOpcao = { id: string; nome: string }
 type StatusMensalidade = "EM_ABERTO" | "PAGA" | "VENCIDA" | "CANCELADA" | "ISENTA"
 
 /** Ações primárias do cabeçalho da tela Financeiro. */
-export function AcoesFinanceiro({
-  planos,
-  alunos,
-}: {
-  planos: PlanoOpcao[]
-  alunos: AlunoOpcao[]
-}) {
-  const [painel, setPainel] = useState<"pagamento" | "pix" | "plano" | "vinculo" | null>(null)
+export function AcoesFinanceiro({ alunos }: { alunos: AlunoOpcao[] }) {
+  const [painel, setPainel] = useState<"pagamento" | "pix" | "plano" | null>(null)
   const fechar = () => setPainel(null)
 
   return (
     <>
       <Button variant="outline" onClick={() => setPainel("plano")}>
         <FilePlus className="size-4" /> Novo plano
-      </Button>
-      <Button variant="outline" onClick={() => setPainel("vinculo")}>
-        <LinkIcon className="size-4" /> Vincular plano
       </Button>
       <Button variant="outline" onClick={() => setPainel("pagamento")}>
         <WalletCards className="size-4" /> Pagamento avulso
@@ -72,16 +53,6 @@ export function AcoesFinanceiro({
         descricao="Plano de mensalidade."
       >
         <FormPlano aoConcluir={fechar} />
-      </Dialog>
-
-      <Dialog
-        aberto={painel === "vinculo"}
-        aoFechar={fechar}
-        variante="centro"
-        titulo="Vincular plano"
-        descricao="Associa mensalidade interna sem trocar vínculo externo."
-      >
-        <FormVinculoPlano alunos={alunos} planos={planos} aoConcluir={fechar} />
       </Dialog>
 
       <Dialog

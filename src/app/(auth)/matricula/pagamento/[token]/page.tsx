@@ -72,8 +72,8 @@ export default async function PagamentoMatriculaPage({
               <CheckCircle2 className="mx-auto size-14 text-success" />
               <p className="text-sm leading-relaxed text-muted-foreground">
                 {aulaAvulsa
-                  ? "O Asaas confirmou os R$ 20,00 da aula avulsa. Sua solicitação já está na fila de análise da ECVO. Após a aprovação, o acesso e o check-in da aula escolhida serão liberados."
-                  : "O Asaas confirmou a primeira mensalidade. Sua solicitação já está na fila de análise da ECVO; o comprovante anexado, quando informado, permanece apenas como evidência opcional."}
+                  ? "O Asaas confirmou os R$ 20,00 da aula avulsa. Sua matrícula foi aprovada automaticamente e o acesso à aula escolhida está liberado."
+                  : "O Asaas confirmou a primeira mensalidade. Sua matrícula foi aprovada automaticamente; o comprovante anexado, quando informado, permanece apenas como evidência opcional."}
               </p>
             </div>
           ) : pixDisponivel && qrCodeDataUrl && cobranca?.pixCopiaECola ? (
@@ -126,8 +126,8 @@ export default async function PagamentoMatriculaPage({
           <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
             <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
             <p className="text-muted-foreground">
-              A matrícula só será liberada após a confirmação integrada do pagamento e a análise
-              administrativa dos dados enviados.
+              A matrícula é liberada automaticamente após a confirmação integrada do pagamento pelo
+              Asaas.
             </p>
           </div>
         </CardContent>
