@@ -162,3 +162,18 @@ export function minutosParaHoras(minutos: number): number {
 export function chaveCompetencia(data = new Date()): string {
   return format(paraFusoAcademia(data), "yyyy-MM")
 }
+
+/** Intervalo [início do mês, início do próximo) no fuso da academia. */
+export function obterIntervaloMes(data: Date): { inicioMes: Date; inicioProximoMes: Date } {
+  const [ano, mes] = chaveCompetencia(data).split("-").map(Number)
+  const proximoAno = mes === 12 ? ano + 1 : ano
+  const proximoMes = mes === 12 ? 1 : mes + 1
+
+  return {
+    inicioMes: fromZonedTime(`${ano}-${String(mes).padStart(2, "0")}-01T00:00:00`, TIMEZONE),
+    inicioProximoMes: fromZonedTime(
+      `${proximoAno}-${String(proximoMes).padStart(2, "0")}-01T00:00:00`,
+      TIMEZONE,
+    ),
+  }
+}

@@ -13,7 +13,7 @@ import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
-import { formatarData } from "@/lib/utils/datas"
+import { formatarData, obterIntervaloMes } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 import { AcoesFinanceiro, AcoesMensalidade, AcoesPlano } from "./acoes-financeiro"
 
@@ -101,7 +101,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const busca = (valorUnico(params.busca) ?? "").trim().slice(0, 100)
   const termoBusca = normalizarBusca(busca)
   const podeEditar = usuario.papel === "GESTOR"
-  const [planos, alunos, mensalidadesEncontradas, pagamentos] = await Promise.all([
+  const { inicioMes, inicioProximoMes } = obterIntervaloMes(new Date())
+  const [planos, alunos, mensalidadesEncontradas, pagamentos, recebidasNoMes] = await Promise.all([
     db.plano.findMany({
       orderBy: { criadoEm: "desc" },
       include: {
@@ -155,6 +156,14 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       take: 12,
       include: { aluno: { select: { usuario: { select: { nome: true } } } } },
     }),
+    db.mensalidade.aggregate({
+      where: {
+        status: "PAGA",
+        pagoEm: { gte: inicioMes, lt: inicioProximoMes },
+      },
+      _sum: { valor: true },
+      _count: { _all: true },
+    }),
   ])
 
   const mensalidadesComStatus: MensalidadeVisivel[] = mensalidadesEncontradas.map(
@@ -194,7 +203,6 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     emAberto: mensalidadesComStatus.filter(
       (mensalidade) => mensalidade.statusEfetivo === "EM_ABERTO",
     ),
-    pagas: mensalidadesComStatus.filter((mensalidade) => mensalidade.statusEfetivo === "PAGA"),
   }
 
   const alunosOpcao = alunos.map((aluno) => ({
@@ -254,11 +262,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           destaque="warning"
         />
         <IndicadorFinanceiro
-          titulo="Recebidas"
-          valor={formatarBRL(
-            resumo.pagas.reduce((total, mensalidade) => total + mensalidade.valorNumero, 0),
-          )}
-          detalhe={`${resumo.pagas.length} mensalidade(s) pagas`}
+          titulo="Recebidas neste mês"
+          valor={formatarBRL(Number(recebidasNoMes._sum.valor ?? 0))}
+          detalhe={`${recebidasNoMes._count._all} ${recebidasNoMes._count._all === 1 ? "mensalidade paga" : "mensalidades pagas"} no mês`}
           icone={<CheckCircle2 className="size-5" />}
           destaque="success"
         />
@@ -458,23 +464,32 @@ function IndicadorFinanceiro({
   icone: React.ReactNode
   destaque?: "destructive" | "warning" | "success" | "neutro"
 }) {
-  const classesDestaque = {
-    destructive: "border-destructive/25 bg-destructive/5 text-destructive",
-    warning:
-      "border-amber-300/60 bg-amber-50/70 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300",
-    success:
-      "border-emerald-300/60 bg-emerald-50/70 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-300",
-    neutro: "",
+  const estilosDestaque = {
+    destructive: {
+      card: "border-l-4 border-l-destructive",
+      icone: "text-destructive dark:text-red-300",
+    },
+    warning: {
+      card: "border-l-4 border-l-amber-700 dark:border-l-amber-400",
+      icone: "text-amber-700 dark:text-amber-300",
+    },
+    success: {
+      card: "border-l-4 border-l-emerald-700 dark:border-l-emerald-400",
+      icone: "text-emerald-700 dark:text-emerald-300",
+    },
+    neutro: { card: "", icone: "text-card-foreground" },
   }
   return (
-    <Card className={classesDestaque[destaque]}>
+    <Card className={estilosDestaque[destaque].card}>
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{titulo}</CardTitle>
-        <div>{icone}</div>
+        <CardTitle className="text-sm font-semibold text-card-foreground">{titulo}</CardTitle>
+        <div aria-hidden="true" className={estilosDestaque[destaque].icone}>
+          {icone}
+        </div>
       </CardHeader>
       <CardContent>
-        <p className="break-words text-2xl font-bold tabular-nums">{valor}</p>
-        <p className="text-xs text-muted-foreground">{detalhe}</p>
+        <p className="break-words text-2xl font-bold tabular-nums text-card-foreground">{valor}</p>
+        <p className="text-sm text-card-foreground/80">{detalhe}</p>
       </CardContent>
     </Card>
   )

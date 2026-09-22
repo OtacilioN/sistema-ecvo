@@ -6,6 +6,7 @@ import {
   formatarDataCivilInput,
   formatarMinutos,
   minutosParaHoras,
+  obterIntervaloMes,
   partesDataCivil,
   rotuloDiaSemana,
 } from "./datas"
@@ -25,6 +26,17 @@ describe("datas civis", () => {
     expect(nascimento.toISOString()).toBe("2007-02-25T15:00:00.000Z")
     expect(formatarDataCivilInput(nascimento)).toBe("2007-02-25")
     expect(formatarDataCivil(nascimento)).toBe("25/02/2007")
+  })
+})
+
+describe("obterIntervaloMes", () => {
+  it("usa meia-noite da academia e atravessa a virada do ano", () => {
+    const intervalo = obterIntervaloMes(new Date("2027-01-01T02:30:00.000Z"))
+
+    expect(intervalo.inicioMes.toISOString()).toBe("2026-12-01T03:00:00.000Z")
+    expect(intervalo.inicioProximoMes.toISOString()).toBe("2027-01-01T03:00:00.000Z")
+    expect(new Date("2026-12-01T04:00:00.000Z") >= intervalo.inicioMes).toBe(true)
+    expect(new Date("2027-01-01T02:30:00.000Z") < intervalo.inicioProximoMes).toBe(true)
   })
 })
 

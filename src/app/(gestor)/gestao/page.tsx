@@ -24,11 +24,11 @@ import { db } from "@/lib/db"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
 import {
-  chaveCompetencia,
   dataCivilParaDate,
   formatarData,
   formatarDiaMesDataCivil,
   inicioDoDiaAcademia,
+  obterIntervaloMes,
   paraFusoAcademia,
   partesDataCivil,
   TIMEZONE,
@@ -76,17 +76,6 @@ function obterInicioSemana(data: Date) {
   const inicioHoje = inicioDoDiaAcademia(data)
   const diaSemana = paraFusoAcademia(inicioHoje).getDay()
   return adicionarDias(inicioHoje, -diaSemana)
-}
-
-function obterIntervaloMes(data: Date) {
-  const [ano, mes] = chaveCompetencia(data).split("-").map(Number)
-  const proximoAno = mes === 12 ? ano + 1 : ano
-  const proximoMes = mes === 12 ? 1 : mes + 1
-
-  return {
-    inicioMes: dataCivilParaDate(`${ano}-${String(mes).padStart(2, "0")}-01`),
-    inicioProximoMes: dataCivilParaDate(`${proximoAno}-${String(proximoMes).padStart(2, "0")}-01`),
-  }
 }
 
 function formatarDiaMes(data: Date) {
