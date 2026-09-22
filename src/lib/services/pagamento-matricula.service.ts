@@ -616,7 +616,29 @@ async function reservarComplementoAulaAvulsa(alunoId: string, agora: Date) {
             telefone: true,
           },
         },
-        aula: { select: { inicio: true } },
+        aula: {
+          select: {
+            inicio: true,
+            turma: {
+              select: {
+                modalidade: {
+                  select: {
+                    id: true,
+                    nome: true,
+                    valorRepasseProfessor: true,
+                    turmas: {
+                      where: { ativa: true, professorId: { not: null } },
+                      select: {
+                        professorId: true,
+                        professor: { select: { usuario: { select: { nome: true } } } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         solicitacao: { include: { plano: true } },
       },
     })
@@ -658,6 +680,36 @@ async function reservarComplementoAulaAvulsa(alunoId: string, agora: Date) {
       orderBy: { geracao: "desc" },
     })
     if (existente) {
+      if (!existente.asaasPaymentId && ["CRIANDO", "ERRO"].includes(existente.status)) {
+        if (existente.status === "CRIANDO" && reservaEmAndamento(existente.atualizadoEm)) {
+          return { ok: false as const, motivo: "O pagamento está sendo preparado." }
+        }
+        const repasseSnapshot =
+          existente.repasseSnapshot ??
+          montarRepasseSnapshotMensalidade({
+            modalidadesPlano: [
+              { plataformaExterna: null, modalidade: acesso.aula.turma.modalidade },
+            ],
+          })
+        const retomada = await tx.cobrancaMatriculaAsaas.update({
+          where: { id: existente.id },
+          data: {
+            status: "CRIANDO",
+            ultimoErro: null,
+            ativa: true,
+            ...(existente.repasseSnapshot
+              ? {}
+              : { repasseSnapshot: repasseSnapshot as unknown as Prisma.InputJsonValue }),
+          },
+        })
+        await prepararSplitsPagamento(tx, {
+          cobrancaMatriculaAsaasId: retomada.id,
+          repasseSnapshot,
+          valorCobranca: retomada.valor,
+          externalReferenceCobranca: retomada.externalReference,
+        })
+        return { ok: true as const, proprietaria: true as const, acesso, cobranca: retomada }
+      }
       return { ok: true as const, proprietaria: false as const, acesso, cobranca: existente }
     }
 
@@ -667,6 +719,9 @@ async function reservarComplementoAulaAvulsa(alunoId: string, agora: Date) {
       select: { geracao: true },
     })
     const geracao = (ultima?.geracao ?? 0) + 1
+    const repasseSnapshot = montarRepasseSnapshotMensalidade({
+      modalidadesPlano: [{ plataformaExterna: null, modalidade: acesso.aula.turma.modalidade }],
+    })
     const cobranca = await tx.cobrancaMatriculaAsaas.create({
       data: {
         solicitacaoId: acesso.solicitacaoId,
@@ -675,8 +730,15 @@ async function reservarComplementoAulaAvulsa(alunoId: string, agora: Date) {
         externalReference: `matricula:${acesso.solicitacaoId}:complemento:${geracao}`,
         competencia: chaveCompetencia(acesso.aula.inicio),
         valor: acesso.valorComplemento,
+        repasseSnapshot: repasseSnapshot as unknown as Prisma.InputJsonValue,
         vencimentoAsaas: new Date(acesso.prazoConversao.getTime() - 1),
       },
+    })
+    await prepararSplitsPagamento(tx, {
+      cobrancaMatriculaAsaasId: cobranca.id,
+      repasseSnapshot,
+      valorCobranca: cobranca.valor,
+      externalReferenceCobranca: cobranca.externalReference,
     })
     return { ok: true as const, proprietaria: true as const, acesso, cobranca }
   })
@@ -705,6 +767,10 @@ export async function gerarCobrancaComplementoAulaAvulsaAsaas(
   }
 
   try {
+    const splits = await db.splitPagamentoAsaas.findMany({
+      where: { cobrancaMatriculaAsaasId: reserva.cobranca.id },
+      orderBy: { criadoEm: "asc" },
+    })
     const cliente = await garantirClienteAsaas({
       solicitacaoId: reserva.acesso.solicitacaoId,
       nome: reserva.acesso.aluno.usuario.nome,
@@ -720,6 +786,7 @@ export async function gerarCobrancaComplementoAulaAvulsaAsaas(
           valor: VALOR_COMPLEMENTO_AULA_AVULSA,
           vencimento: reserva.cobranca.vencimentoAsaas,
           descricao: "Complemento da mensalidade ECVO",
+          split: payloadSplitAsaas(splits),
         })
     const cobranca = await persistirCobranca(reserva.cobranca.id, cliente.id, remota)
     return { ok: true as const, cobranca }
@@ -1173,6 +1240,7 @@ async function concluirConversaoAulaAvulsa(
       status: "PAGA",
       pagoEm: params.recebidaEm,
       formaPagamento: "PIX_ASAAS_COMPLEMENTO_AULA_AVULSA",
+      ...(cobranca.repasseSnapshot ? { repasseSnapshot: cobranca.repasseSnapshot } : {}),
       observacao:
         "Mensalidade de R$ 100,00 quitada com crédito da aula avulsa de R$ 20,00 e complemento Asaas de R$ 80,00.",
     },
@@ -1194,6 +1262,10 @@ async function concluirConversaoAulaAvulsa(
       ultimoEventoAsaas: cobranca.ultimoEventoAsaas,
       recebidaEmAsaas: params.recebidaEm,
     },
+  })
+  await tx.splitPagamentoAsaas.updateMany({
+    where: { cobrancaMatriculaAsaasId: cobranca.id },
+    data: { cobrancaMatriculaAsaasId: null, cobrancaAsaasId: cobrancaCanonica.id },
   })
   await tx.mensalidade.update({
     where: { id: mensalidadePaga.id },

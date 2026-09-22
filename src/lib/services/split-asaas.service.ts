@@ -82,8 +82,21 @@ export async function prepararSplitsPagamento(
   const existentes = await tx.splitPagamentoAsaas.findMany({ where, orderBy: { criadoEm: "asc" } })
   if (existentes.length > 0) return existentes
 
-  const itens = lerRepasseSnapshotMensalidade(params.repasseSnapshot).filter(
-    (item) => !item.plataformaExterna && item.valorRepasseProfessor,
+  // Apenas a ausência do campo permite o cálculo legado; zero/inválido não vira 60%.
+  const snapshotElegivel = Array.isArray(params.repasseSnapshot)
+    ? params.repasseSnapshot.filter((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return false
+        const registro = item as Record<string, Prisma.JsonValue>
+        if (Object.hasOwn(registro, "valorRepasseProfessor")) {
+          const valor = Number(registro.valorRepasseProfessor)
+          return Number.isFinite(valor) && valor > 0
+        }
+        const valorBase = Number(registro.valorBase)
+        return Number.isFinite(valorBase) && valorBase > 0
+      })
+    : params.repasseSnapshot
+  const itens = lerRepasseSnapshotMensalidade(snapshotElegivel).filter(
+    (item) => !item.plataformaExterna,
   )
   if (itens.length === 0) return []
   const repasse = calcularRepasseFinanceiro({

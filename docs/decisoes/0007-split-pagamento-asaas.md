@@ -23,6 +23,10 @@ transferido pelo provedor.
   o split; para contas anteriores, o gestor pode confirmar de forma auditada a aprovação vista no Asaas.
 - Congelar o snapshot da primeira mensalidade na própria cobrança de matrícula e copiá-lo, sem recalcular,
   ao criar a mensalidade canônica.
+- Para snapshots anteriores ao campo `valorRepasseProfessor`, usar o percentual histórico de 60% somente
+  quando o campo estiver ausente e `valorBase` for válido. Valores explícitos inválidos não autorizam split.
+- No complemento de aula avulsa, congelar o repasse da mensalidade na cobrança de R$ 80,00, enviar o split
+  junto com o PIX e transferir seu registro para a cobrança canônica quando a mensalidade for criada.
 - Não aplicar split ao QR imediato do PIX Automático, pois o provedor não oferece esse recurso. Aplicar aos
   ciclos futuros criados manualmente por `POST /payments`.
 

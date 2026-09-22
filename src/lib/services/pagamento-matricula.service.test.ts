@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   }
   const db = {
@@ -47,6 +48,9 @@ const mocks = vi.hoisted(() => {
     obterCobrancaAsaas: vi.fn(),
     obterQrCodePixAsaas: vi.fn(),
     registrarLog: vi.fn(),
+    montarRepasseSnapshotMensalidade: vi.fn(),
+    lerRepasseSnapshotMensalidade: vi.fn(),
+    calcularRepasseFinanceiro: vi.fn(),
     obterOuCriarMensalidadeNaTransacao: vi.fn(),
     criarNotificacao: vi.fn(),
     aprovarMatricula: vi.fn().mockResolvedValue({ ok: true, alunoId: "aluno-1" }),
@@ -65,9 +69,9 @@ vi.mock("@/lib/asaas/client", () => ({
 }))
 vi.mock("@/lib/services/auditoria.service", () => ({ registrarLog: mocks.registrarLog }))
 vi.mock("@/lib/services/financeiro.service", () => ({
-  calcularRepasseFinanceiro: vi.fn(),
-  lerRepasseSnapshotMensalidade: () => [],
-  montarRepasseSnapshotMensalidade: () => [],
+  calcularRepasseFinanceiro: mocks.calcularRepasseFinanceiro,
+  lerRepasseSnapshotMensalidade: mocks.lerRepasseSnapshotMensalidade,
+  montarRepasseSnapshotMensalidade: mocks.montarRepasseSnapshotMensalidade,
   obterOuCriarMensalidadeNaTransacao: mocks.obterOuCriarMensalidadeNaTransacao,
 }))
 vi.mock("@/lib/services/notificacao.service", () => ({
@@ -163,6 +167,8 @@ beforeEach(() => {
   mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
   mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([])
   mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([])
+  mocks.montarRepasseSnapshotMensalidade.mockReturnValue([])
+  mocks.lerRepasseSnapshotMensalidade.mockReturnValue([])
   mocks.criarNotificacao.mockResolvedValue({ id: "notificacao-1" })
 })
 
@@ -190,6 +196,79 @@ describe("disponibilidade do PIX de matrícula", () => {
     ).toBe(false)
   })
 })
+
+function configurarComplemento() {
+  mocks.tx.acessoAulaAvulsa.findFirst.mockResolvedValue({ id: "acesso-1" })
+  mocks.tx.acessoAulaAvulsa.findUnique.mockResolvedValue({
+    id: "acesso-1",
+    solicitacaoId: "solicitacao-1",
+    status: "ATIVO",
+    prazoConversao: new Date("2026-09-07T03:00:00.000Z"),
+    valorComplemento: new Prisma.Decimal(80),
+    aluno: {
+      id: "aluno-1",
+      tipo: "AVULSO",
+      planoId: null,
+      cpf: "52998224725",
+      telefone: null,
+      usuario: { id: "usuario-1", nome: "Aluno", email: "aluno@example.com" },
+    },
+    aula: {
+      inicio: new Date("2026-09-05T12:00:00.000Z"),
+      turma: {
+        modalidade: {
+          id: "kickboxing",
+          nome: "Kickboxing",
+          valorRepasseProfessor: new Prisma.Decimal(60),
+          turmas: [{ professorId: "vinicius", professor: { usuario: { nome: "Vinicius" } } }],
+        },
+      },
+    },
+    solicitacao: {
+      plano: { id: "plano-1", ativo: true, periodicidade: "MENSAL", valor: 100 },
+    },
+  })
+  mocks.tx.cobrancaMatriculaAsaas.findFirst.mockImplementation(({ where }) =>
+    where.finalidade === "COMPLEMENTO_MENSALIDADE" ? null : { geracao: 1 },
+  )
+  mocks.tx.cobrancaMatriculaAsaas.create.mockImplementation(({ data }) => ({
+    id: "cobranca-complemento-1",
+    status: "CRIANDO",
+    ativa: true,
+    asaasPaymentId: null,
+    asaasCustomerId: null,
+    statusAsaas: null,
+    pixCopiaECola: null,
+    qrCodeExpiraEm: null,
+    atualizadoEm: new Date(),
+    ...data,
+  }))
+  mocks.criarCobrancaAsaas.mockResolvedValue({
+    object: "payment",
+    id: "pay-complemento-1",
+    customer: "cus-1",
+    billingType: "PIX",
+    value: 80,
+    status: "PENDING",
+    dueDate: "2026-09-06",
+    externalReference: "matricula:solicitacao-1:complemento:2",
+  })
+  mocks.obterQrCodePixAsaas.mockResolvedValue({
+    encodedImage: "",
+    payload: "pix-complemento",
+    expirationDate: "2026-09-01 22:00:00",
+  })
+  mocks.tx.cobrancaMatriculaAsaas.findUniqueOrThrow.mockImplementation(({ where }) => ({
+    id: where.id,
+    status: "CRIANDO",
+    pixCopiaECola: null,
+    qrCodeExpiraEm: null,
+  }))
+  mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(({ where, data }) => ({
+    id: where.id,
+    ...data,
+  }))
+}
 
 describe("sincronização e reemissão", () => {
   it("gera a primeira mensalidade com o valor vigente do plano vinculado", async () => {
@@ -299,66 +378,7 @@ describe("sincronização e reemissão", () => {
   })
 
   it("gera o complemento da aula avulsa por R$ 80,00 dentro da mesma semana", async () => {
-    mocks.tx.acessoAulaAvulsa.findFirst.mockResolvedValue({ id: "acesso-1" })
-    mocks.tx.acessoAulaAvulsa.findUnique.mockResolvedValue({
-      id: "acesso-1",
-      solicitacaoId: "solicitacao-1",
-      status: "ATIVO",
-      prazoConversao: new Date("2026-09-07T03:00:00.000Z"),
-      valorComplemento: new Prisma.Decimal(80),
-      aluno: {
-        id: "aluno-1",
-        tipo: "AVULSO",
-        planoId: null,
-        cpf: "52998224725",
-        telefone: null,
-        usuario: { id: "usuario-1", nome: "Aluno", email: "aluno@example.com" },
-      },
-      aula: { inicio: new Date("2026-09-05T12:00:00.000Z") },
-      solicitacao: {
-        plano: { id: "plano-1", ativo: true, periodicidade: "MENSAL", valor: 100 },
-      },
-    })
-    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockImplementation(({ where }) =>
-      where.finalidade === "COMPLEMENTO_MENSALIDADE" ? null : { geracao: 1 },
-    )
-    mocks.tx.cobrancaMatriculaAsaas.create.mockImplementation(({ data }) => ({
-      id: "cobranca-complemento-1",
-      status: "CRIANDO",
-      ativa: true,
-      asaasPaymentId: null,
-      asaasCustomerId: null,
-      statusAsaas: null,
-      pixCopiaECola: null,
-      qrCodeExpiraEm: null,
-      atualizadoEm: new Date(),
-      ...data,
-    }))
-    mocks.criarCobrancaAsaas.mockResolvedValue({
-      object: "payment",
-      id: "pay-complemento-1",
-      customer: "cus-1",
-      billingType: "PIX",
-      value: 80,
-      status: "PENDING",
-      dueDate: "2026-09-06",
-      externalReference: "matricula:solicitacao-1:complemento:2",
-    })
-    mocks.obterQrCodePixAsaas.mockResolvedValue({
-      encodedImage: "",
-      payload: "pix-complemento",
-      expirationDate: "2026-09-01 22:00:00",
-    })
-    mocks.tx.cobrancaMatriculaAsaas.findUniqueOrThrow.mockImplementation(({ where }) => ({
-      id: where.id,
-      status: "CRIANDO",
-      pixCopiaECola: null,
-      qrCodeExpiraEm: null,
-    }))
-    mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(({ where, data }) => ({
-      id: where.id,
-      ...data,
-    }))
+    configurarComplemento()
 
     const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
       agora: new Date("2026-09-01T12:00:00.000Z"),
@@ -375,6 +395,259 @@ describe("sincronização e reemissão", () => {
     expect(mocks.criarCobrancaAsaas).toHaveBeenCalledWith(
       expect.objectContaining({ value: 80, description: "Complemento da mensalidade ECVO" }),
     )
+  })
+
+  it("envia e confirma split de R$ 60 no complemento de R$ 80", async () => {
+    configurarComplemento()
+    const snapshot = [
+      {
+        modalidadeId: "kickboxing",
+        modalidadeNome: "Kickboxing",
+        professorId: "vinicius",
+        professorNome: "Vinicius",
+        plataformaExterna: null,
+        valorBase: 100,
+        valorRepasseProfessor: 60,
+      },
+    ]
+    mocks.montarRepasseSnapshotMensalidade.mockReturnValue(snapshot)
+    mocks.lerRepasseSnapshotMensalidade.mockReturnValue(snapshot)
+    mocks.calcularRepasseFinanceiro.mockReturnValue({
+      professores: [
+        {
+          professorId: "vinicius",
+          valor: 60,
+          modalidades: [{ modalidadeId: "kickboxing", modalidadeNome: "Kickboxing", valor: 60 }],
+        },
+      ],
+    })
+    mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([
+      { id: "conta-vinicius", professorId: "vinicius", walletId: "wallet-vinicius" },
+    ])
+    const splits: Array<Record<string, unknown>> = []
+    mocks.tx.splitPagamentoAsaas.findMany.mockImplementation(() => splits)
+    mocks.db.splitPagamentoAsaas.findMany.mockImplementation(() => splits)
+    mocks.tx.splitPagamentoAsaas.create.mockImplementation(({ data }) => {
+      const split = { id: "split-local-1", status: "PREPARADO", ...data }
+      splits.push(split)
+      return split
+    })
+    mocks.criarCobrancaAsaas.mockResolvedValue({
+      object: "payment",
+      id: "pay-complemento-1",
+      customer: "cus-1",
+      billingType: "PIX",
+      value: 80,
+      status: "PENDING",
+      dueDate: "2026-09-06",
+      externalReference: "matricula:solicitacao-1:complemento:2",
+      split: [
+        {
+          id: "split-remoto-1",
+          walletId: "wallet-vinicius",
+          fixedValue: 60,
+          status: "PENDING",
+          externalReference: "matricula:solicitacao-1:complemento:2:split:1",
+        },
+      ],
+    })
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(resultado.ok).toBe(true)
+    expect(mocks.tx.cobrancaMatriculaAsaas.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ repasseSnapshot: snapshot }),
+    })
+    expect(mocks.calcularRepasseFinanceiro).toHaveBeenCalledWith(
+      expect.objectContaining({ valorRecebido: 80 }),
+    )
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: 80,
+        split: [
+          {
+            walletId: "wallet-vinicius",
+            fixedValue: 60,
+            externalReference: "matricula:solicitacao-1:complemento:2:split:1",
+            description: "Repasse automático de professor ECVO",
+          },
+        ],
+      }),
+    )
+    expect(mocks.tx.splitPagamentoAsaas.update).toHaveBeenCalledWith({
+      where: { id: "split-local-1" },
+      data: expect.objectContaining({ asaasSplitId: "split-remoto-1", status: "PENDENTE" }),
+    })
+  })
+
+  it.each([
+    "professor ambíguo",
+    "conta não habilitada",
+  ])("não envia split quando há %s", async (cenario) => {
+    configurarComplemento()
+    const snapshot = [
+      {
+        modalidadeId: "kickboxing",
+        modalidadeNome: "Kickboxing",
+        professorId: cenario === "professor ambíguo" ? null : "vinicius",
+        professorNome: cenario,
+        plataformaExterna: null,
+        valorBase: 100,
+        valorRepasseProfessor: 60,
+      },
+    ]
+    mocks.montarRepasseSnapshotMensalidade.mockReturnValue(snapshot)
+    mocks.lerRepasseSnapshotMensalidade.mockReturnValue(snapshot)
+    mocks.calcularRepasseFinanceiro.mockReturnValue({
+      professores: [
+        {
+          professorId: cenario === "professor ambíguo" ? "pendencia:0" : "vinicius",
+          valor: 60,
+          modalidades: [],
+        },
+      ],
+    })
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(resultado.ok).toBe(true)
+    expect(mocks.tx.splitPagamentoAsaas.create).not.toHaveBeenCalled()
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledWith(
+      expect.objectContaining({ split: undefined }),
+    )
+  })
+
+  it("retoma cobrança local sem pagamento remoto preservando snapshot e split", async () => {
+    configurarComplemento()
+    const snapshot = [
+      {
+        modalidadeId: "kickboxing",
+        professorId: "vinicius",
+        plataformaExterna: null,
+        valorBase: 100,
+        valorRepasseProfessor: 60,
+      },
+    ]
+    const existente = {
+      id: "cobranca-complemento-1",
+      status: "ERRO",
+      asaasPaymentId: null,
+      repasseSnapshot: snapshot,
+      valor: new Prisma.Decimal(80),
+      vencimentoAsaas: new Date("2026-09-06T15:00:00.000Z"),
+      externalReference: "matricula:solicitacao-1:complemento:2",
+      atualizadoEm: new Date("2026-08-31T00:00:00.000Z"),
+    }
+    const split = {
+      id: "split-local-1",
+      walletIdSnapshot: "wallet-vinicius",
+      valorFixoSnapshot: new Prisma.Decimal(60),
+      externalReference: "matricula:solicitacao-1:complemento:2:split:1",
+      status: "PREPARADO",
+    }
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(existente)
+    mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(({ data }) => ({
+      ...existente,
+      ...data,
+    }))
+    mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([split])
+    mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([split])
+    mocks.criarCobrancaAsaas.mockResolvedValue({
+      object: "payment",
+      id: "pay-complemento-1",
+      customer: "cus-1",
+      billingType: "PIX",
+      value: 80,
+      status: "PENDING",
+      dueDate: "2026-09-06",
+      externalReference: existente.externalReference,
+      split: [
+        {
+          id: "split-remoto-1",
+          walletId: "wallet-vinicius",
+          fixedValue: 60,
+          externalReference: split.externalReference,
+          status: "PENDING",
+        },
+      ],
+    })
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(resultado.ok).toBe(true)
+    expect(mocks.tx.cobrancaMatriculaAsaas.create).not.toHaveBeenCalled()
+    expect(mocks.tx.splitPagamentoAsaas.create).not.toHaveBeenCalled()
+    expect(mocks.montarRepasseSnapshotMensalidade).not.toHaveBeenCalled()
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledWith(
+      expect.objectContaining({ split: [expect.objectContaining({ fixedValue: 60 })] }),
+    )
+  })
+
+  it("não acrescenta split a pagamento remoto já existente", async () => {
+    configurarComplemento()
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue({
+      id: "cobranca-complemento-1",
+      status: "PENDENTE",
+      asaasPaymentId: "pay-complemento-1",
+      repasseSnapshot: null,
+      valor: new Prisma.Decimal(80),
+      vencimentoAsaas: new Date("2026-09-06T15:00:00.000Z"),
+      externalReference: "matricula:solicitacao-1:complemento:2",
+      atualizadoEm: new Date("2026-08-31T00:00:00.000Z"),
+    })
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      object: "payment",
+      id: "pay-complemento-1",
+      customer: "cus-1",
+      billingType: "PIX",
+      value: 80,
+      status: "PENDING",
+      dueDate: "2026-09-06",
+      externalReference: "matricula:solicitacao-1:complemento:2",
+    })
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      verificar: true,
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(resultado.ok).toBe(true)
+    expect(mocks.montarRepasseSnapshotMensalidade).not.toHaveBeenCalled()
+    expect(mocks.tx.splitPagamentoAsaas.create).not.toHaveBeenCalled()
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+  })
+
+  it("bloqueia o PIX quando o Asaas não confirma o split preparado", async () => {
+    configurarComplemento()
+    const split = {
+      id: "split-local-1",
+      walletIdSnapshot: "wallet-vinicius",
+      valorFixoSnapshot: new Prisma.Decimal(60),
+      externalReference: "matricula:solicitacao-1:complemento:2:split:1",
+      status: "PREPARADO",
+    }
+    mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([split])
+    mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([split])
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(resultado.ok).toBe(false)
+    expect(mocks.tx.splitPagamentoAsaas.update).toHaveBeenCalledWith({
+      where: { id: "split-local-1" },
+      data: expect.objectContaining({ status: "ERRO" }),
+    })
+    expect(mocks.db.cobrancaMatriculaAsaas.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "cobranca-complemento-1" }),
+      data: expect.objectContaining({ status: "ERRO", ativa: false }),
+    })
   })
 
   it("persiste OVERDUE como VENCIDA sem tentar recuperar QR", async () => {
@@ -669,6 +942,9 @@ describe("sincronização e reemissão", () => {
       externalReference: "matricula:solicitacao-1:complemento:2",
       competencia: "2026-09",
       valor: new Prisma.Decimal(80),
+      repasseSnapshot: [
+        { modalidadeId: "kickboxing", professorId: "vinicius", valorRepasseProfessor: 60 },
+      ],
       vencimentoAsaas: new Date("2026-09-06T15:00:00.000Z"),
       statusAsaas: "PENDING",
       pixCopiaECola: "pix-complemento",
@@ -744,6 +1020,10 @@ describe("sincronização e reemissão", () => {
         valorCobrado: expect.anything(),
         asaasPaymentId: "pay-complemento-1",
       }),
+    })
+    expect(mocks.tx.splitPagamentoAsaas.updateMany).toHaveBeenCalledWith({
+      where: { cobrancaMatriculaAsaasId: "cobranca-complemento-1" },
+      data: { cobrancaMatriculaAsaasId: null, cobrancaAsaasId: "cobranca-canonica-1" },
     })
     expect(mocks.tx.acessoAulaAvulsa.update).toHaveBeenCalledWith({
       where: { id: "acesso-1" },

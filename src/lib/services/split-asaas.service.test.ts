@@ -89,6 +89,102 @@ describe("split de pagamento Asaas", () => {
     })
   })
 
+  it("prepara split para snapshot legado e preserva valor explícito de outra modalidade", async () => {
+    const create = vi.fn(async ({ data }) => ({ id: "split-local-1", ...data }))
+    const findManyContas = vi.fn().mockResolvedValue([
+      { id: "conta-vinicius", professorId: "vinicius", walletId: "wallet-vinicius" },
+      { id: "conta-oyama", professorId: "oyama", walletId: "wallet-oyama" },
+    ])
+    const tx = {
+      splitPagamentoAsaas: { findMany: vi.fn().mockResolvedValue([]), create },
+      contaAsaasProfessor: { findMany: findManyContas },
+    } as never
+    const repasseSnapshot = [
+      {
+        modalidadeId: "kickboxing",
+        modalidadeNome: "Kickboxing",
+        professorId: "vinicius",
+        professorNome: "Vinicius",
+        plataformaExterna: null,
+        valorBase: 100,
+      },
+      {
+        modalidadeId: "muay-thai",
+        modalidadeNome: "Muay Thai",
+        professorId: "oyama",
+        professorNome: "Oyama",
+        plataformaExterna: null,
+        valorBase: 100,
+        valorRepasseProfessor: 50,
+      },
+    ]
+
+    const splits = await prepararSplitsPagamento(tx, {
+      cobrancaAsaasId: "cobranca-legada",
+      externalReferenceCobranca: "mensalidade:legada",
+      valorCobranca: 198,
+      repasseSnapshot,
+    })
+
+    expect(splits).toHaveLength(2)
+    expect(findManyContas).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ professorId: { in: ["vinicius", "oyama"] } }),
+      }),
+    )
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        walletIdSnapshot: "wallet-vinicius",
+        valorFixoSnapshot: new Prisma.Decimal(60),
+        modalidadesSnapshot: [
+          { modalidadeId: "kickboxing", modalidadeNome: "Kickboxing", valor: 60 },
+        ],
+      }),
+    })
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        walletIdSnapshot: "wallet-oyama",
+        valorFixoSnapshot: new Prisma.Decimal(50),
+        modalidadesSnapshot: [
+          { modalidadeId: "muay-thai", modalidadeNome: "Muay Thai", valor: 50 },
+        ],
+      }),
+    })
+    expect(repasseSnapshot[0]).not.toHaveProperty("valorRepasseProfessor")
+  })
+
+  it.each([
+    ["sem valorBase", {}],
+    ["com repasse zero", { valorBase: 100, valorRepasseProfessor: 0 }],
+    ["com repasse nulo", { valorBase: 100, valorRepasseProfessor: null }],
+    ["com repasse inválido", { valorBase: 100, valorRepasseProfessor: "inválido" }],
+  ])("não inventa split em snapshot %s", async (_caso, campos) => {
+    const findManyContas = vi.fn()
+    const tx = {
+      splitPagamentoAsaas: { findMany: vi.fn().mockResolvedValue([]) },
+      contaAsaasProfessor: { findMany: findManyContas },
+    } as never
+
+    const splits = await prepararSplitsPagamento(tx, {
+      cobrancaAsaasId: "cobranca-invalida",
+      externalReferenceCobranca: "mensalidade:invalida",
+      valorCobranca: 100,
+      repasseSnapshot: [
+        {
+          modalidadeId: "kickboxing",
+          modalidadeNome: "Kickboxing",
+          professorId: "vinicius",
+          professorNome: "Vinicius",
+          plataformaExterna: null,
+          ...campos,
+        },
+      ],
+    })
+
+    expect(splits).toEqual([])
+    expect(findManyContas).not.toHaveBeenCalled()
+  })
+
   it("só confirma o repasse quando o Asaas devolve o split compatível", async () => {
     const update = vi.fn().mockResolvedValue({})
     const tx = { splitPagamentoAsaas: { update } } as never
