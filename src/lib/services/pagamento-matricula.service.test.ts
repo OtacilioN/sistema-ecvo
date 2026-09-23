@@ -43,6 +43,11 @@ const mocks = vi.hoisted(() => {
     criarClienteAsaas: vi.fn(),
     criarCobrancaAsaas: vi.fn(),
     excluirCobrancaAsaas: vi.fn(),
+    erroApiAsaasTemCodigo: vi.fn((erro: unknown, codigo: string) => {
+      if (!erro || typeof erro !== "object") return false
+      const codes = Reflect.get(erro, "codes")
+      return Array.isArray(codes) && codes.includes(codigo)
+    }),
     listarClientesAsaas: vi.fn(),
     listarCobrancasAsaas: vi.fn(),
     obterCobrancaAsaas: vi.fn(),
@@ -62,6 +67,7 @@ vi.mock("@/lib/asaas/client", () => ({
   criarClienteAsaas: mocks.criarClienteAsaas,
   criarCobrancaAsaas: mocks.criarCobrancaAsaas,
   excluirCobrancaAsaas: mocks.excluirCobrancaAsaas,
+  erroApiAsaasTemCodigo: mocks.erroApiAsaasTemCodigo,
   listarClientesAsaas: mocks.listarClientesAsaas,
   listarCobrancasAsaas: mocks.listarCobrancasAsaas,
   obterCobrancaAsaas: mocks.obterCobrancaAsaas,
@@ -85,6 +91,7 @@ import {
   aplicarWebhookPagamentoMatricula,
   gerarCobrancaComplementoAulaAvulsaAsaas,
   gerarCobrancaMatriculaAsaas,
+  obterPagamentoMatriculaPublico,
   pixCobrancaMatriculaDisponivel,
   reemitirCobrancaMatriculaAsaas,
 } from "./pagamento-matricula.service"
@@ -165,6 +172,7 @@ beforeEach(() => {
   mocks.db.cobrancaMatriculaAsaas.updateMany.mockResolvedValue({ count: 1 })
   mocks.tx.cobrancaMatriculaAsaas.updateMany.mockResolvedValue({ count: 1 })
   mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
+  mocks.tx.splitPagamentoAsaas.updateMany.mockResolvedValue({ count: 1 })
   mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([])
   mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([])
   mocks.montarRepasseSnapshotMensalidade.mockReturnValue([])
@@ -194,6 +202,23 @@ describe("disponibilidade do PIX de matrícula", () => {
         qrCodeExpiraEm: new Date("2026-09-01T01:00:00.000Z"),
       }),
     ).toBe(false)
+  })
+
+  it("consulta a cobrança ativa ou, na ausência dela, o erro da geração mais recente", async () => {
+    mocks.db.solicitacaoMatricula.findUnique.mockResolvedValue(null)
+
+    await obterPagamentoMatriculaPublico(solicitacao.tokenAcompanhamento)
+
+    expect(mocks.db.solicitacaoMatricula.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          cobrancasAsaas: expect.objectContaining({
+            orderBy: [{ ativa: "desc" }, { geracao: "desc" }],
+            take: 1,
+          }),
+        }),
+      }),
+    )
   })
 })
 
@@ -320,6 +345,121 @@ describe("sincronização e reemissão", () => {
     })
     expect(mocks.criarCobrancaAsaas).toHaveBeenCalledWith(
       expect.objectContaining({ value: 187.53, description: "Primeira mensalidade ECVO" }),
+    )
+  })
+
+  it("emite a matrícula sem split após invalid_action e reconciliação remota vazia", async () => {
+    const snapshot = [
+      {
+        modalidadeId: "kickboxing",
+        modalidadeNome: "Kickboxing",
+        professorId: "vinicius",
+        professorNome: "Vinicius",
+        plataformaExterna: null,
+        valorBase: 100,
+        valorRepasseProfessor: 60,
+      },
+    ]
+    const splits: Array<Record<string, unknown>> = []
+    const cobrancaLocal = {
+      id: "cobranca-mensal-1",
+      status: "CRIANDO",
+      ativa: true,
+      asaasPaymentId: null,
+      asaasCustomerId: null,
+      statusAsaas: null,
+      pixCopiaECola: null,
+      qrCodeExpiraEm: null,
+      atualizadoEm: new Date(),
+      finalidade: "PRIMEIRA_MENSALIDADE",
+      externalReference: "matricula:solicitacao-1",
+      valor: new Prisma.Decimal(100),
+      vencimentoAsaas: new Date("2026-09-01T03:00:00.000Z"),
+    }
+    mocks.montarRepasseSnapshotMensalidade.mockReturnValue(snapshot)
+    mocks.lerRepasseSnapshotMensalidade.mockReturnValue(snapshot)
+    mocks.calcularRepasseFinanceiro.mockReturnValue({
+      professores: [
+        {
+          professorId: "vinicius",
+          valor: 60,
+          modalidades: [{ modalidadeId: "kickboxing", modalidadeNome: "Kickboxing", valor: 60 }],
+        },
+      ],
+    })
+    mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([
+      { id: "conta-vinicius", professorId: "vinicius", walletId: "wallet-vinicius" },
+    ])
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(null)
+    mocks.tx.cobrancaMatriculaAsaas.create.mockImplementation(({ data }) => ({
+      ...cobrancaLocal,
+      ...data,
+    }))
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockResolvedValue(cobrancaLocal)
+    mocks.tx.cobrancaMatriculaAsaas.findUniqueOrThrow.mockImplementation(() => cobrancaLocal)
+    mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(({ where, data }) => ({
+      ...cobrancaLocal,
+      id: where.id,
+      ...data,
+    }))
+    mocks.tx.splitPagamentoAsaas.findMany.mockImplementation(() => splits)
+    mocks.db.splitPagamentoAsaas.findMany.mockImplementation(() => splits)
+    mocks.tx.splitPagamentoAsaas.create.mockImplementation(({ data }) => {
+      const split = {
+        id: "split-local-1",
+        asaasSplitId: null,
+        status: "PREPARADO",
+        statusAsaas: null,
+        ...data,
+      }
+      splits.push(split)
+      return split
+    })
+    mocks.tx.splitPagamentoAsaas.updateMany.mockImplementation(({ data }) => {
+      for (const split of splits) Object.assign(split, data)
+      return { count: splits.length }
+    })
+    mocks.listarCobrancasAsaas.mockResolvedValue({ data: [], totalCount: 0, hasMore: false })
+    const erroSplit = Object.assign(new Error("recusado"), {
+      name: "ErroApiAsaas",
+      status: 400,
+      codes: ["invalid_action"],
+    })
+    mocks.criarCobrancaAsaas
+      .mockRejectedValueOnce(erroSplit)
+      .mockResolvedValueOnce({ ...pagamentoRemoto("PENDING"), split: [] })
+    mocks.obterQrCodePixAsaas.mockResolvedValue({
+      encodedImage: "",
+      payload: "pix-sem-split",
+      expirationDate: "2026-09-01 22:00:00",
+    })
+
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento)
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      cobranca: { status: "PENDENTE", pixCopiaECola: "pix-sem-split" },
+    })
+    expect(mocks.listarCobrancasAsaas).toHaveBeenCalledTimes(2)
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledTimes(2)
+    expect(mocks.criarCobrancaAsaas.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ split: [expect.objectContaining({ fixedValue: 60 })] }),
+    )
+    expect(mocks.criarCobrancaAsaas.mock.calls[1]?.[0]).not.toHaveProperty("split")
+    expect(mocks.tx.splitPagamentoAsaas.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ status: "PREPARADO", asaasSplitId: null }),
+      data: expect.objectContaining({
+        status: "RECUSADO",
+        asaasSplitId: null,
+        statusAsaas: null,
+      }),
+    })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entidade: "CobrancaMatriculaAsaas",
+        valorNovo: expect.objectContaining({ repasse: "CONCILIACAO_MANUAL" }),
+      }),
+      mocks.tx,
     )
   })
 

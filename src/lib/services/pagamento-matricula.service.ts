@@ -8,6 +8,7 @@ import {
   type CobrancaAsaas as CobrancaRemotaAsaas,
   criarClienteAsaas,
   criarCobrancaAsaas,
+  erroApiAsaasTemCodigo,
   excluirCobrancaAsaas,
   listarClientesAsaas,
   listarCobrancasAsaas,
@@ -52,6 +53,8 @@ import {
 import type { WebhookAsaas } from "@/lib/validations/asaas"
 
 const TEMPO_RESERVA_MS = 2 * 60 * 1_000
+const MOTIVO_CONTINGENCIA_SPLIT =
+  "O Asaas recusou o split automático (invalid_action). O split foi desativado nesta cobrança; qualquer recebimento exige repasse manual."
 const STATUS_SEM_PIX: StatusCobrancaAsaas[] = [
   "RECEBIDA",
   "CANCELANDO",
@@ -162,8 +165,7 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
       },
       plano: { select: { nome: true, valor: true, periodicidade: true } },
       cobrancasAsaas: {
-        where: { ativa: true },
-        orderBy: { geracao: "desc" },
+        orderBy: [{ ativa: "desc" }, { geracao: "desc" }],
         take: 1,
         select: {
           status: true,
@@ -386,6 +388,119 @@ async function criarOuRecuperarCobranca(params: {
   })
 }
 
+async function registrarContingenciaSplit(params: { cobrancaId: string; splitIds: string[] }) {
+  if (params.splitIds.length === 0) return
+  await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "CobrancaMatriculaAsaas" WHERE "id" = ${params.cobrancaId} FOR UPDATE`
+    const cobranca = await tx.cobrancaMatriculaAsaas.findUnique({
+      where: { id: params.cobrancaId },
+      select: { asaasPaymentId: true, status: true },
+    })
+    if (!cobranca || cobranca.asaasPaymentId || cobranca.status !== "CRIANDO") {
+      throw new Error("A cobrança mudou durante a contingência do split; concilie antes de cobrar.")
+    }
+    const splits = await tx.splitPagamentoAsaas.findMany({
+      where: { id: { in: params.splitIds } },
+      select: { id: true, asaasSplitId: true, status: true, statusAsaas: true },
+    })
+    if (
+      splits.length !== params.splitIds.length ||
+      splits.some(
+        (split) => split.status !== "PREPARADO" || split.asaasSplitId || split.statusAsaas,
+      )
+    ) {
+      throw new Error("O split mudou durante a contingência; concilie antes de cobrar.")
+    }
+    const atualizados = await tx.splitPagamentoAsaas.updateMany({
+      where: {
+        id: { in: params.splitIds },
+        status: "PREPARADO",
+        asaasSplitId: null,
+        statusAsaas: null,
+      },
+      data: {
+        status: "RECUSADO",
+        asaasSplitId: null,
+        statusAsaas: null,
+        motivo: MOTIVO_CONTINGENCIA_SPLIT,
+      },
+    })
+    if (atualizados.count !== params.splitIds.length) {
+      throw new Error("Nem todos os splits foram reservados para a contingência.")
+    }
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaMatriculaAsaas",
+        entidadeId: params.cobrancaId,
+        valorAntigo: { splitAutomatico: "PREPARADO", quantidade: atualizados.count },
+        valorNovo: {
+          splitAutomatico: "RECUSADO",
+          repasse: "CONCILIACAO_MANUAL",
+          motivo: MOTIVO_CONTINGENCIA_SPLIT,
+        },
+      },
+      tx,
+    )
+  })
+}
+
+async function criarCobrancaComContingenciaSplit(
+  params: Parameters<typeof criarOuRecuperarCobranca>[0],
+  cobrancaId: string,
+  splitIds: string[],
+) {
+  const encontradas = await listarCobrancasAsaas({
+    externalReference: params.externalReference,
+    limit: 2,
+  })
+  if (encontradas.data.length > 1) {
+    throw new Error("Mais de uma cobrança Asaas corresponde à mesma matrícula.")
+  }
+  if (encontradas.data[0]) return encontradas.data[0]
+
+  try {
+    return await criarCobrancaAsaas({
+      customer: params.customerId,
+      billingType: "PIX",
+      value: params.valor,
+      dueDate: dataAsaas(params.vencimento),
+      description: params.descricao,
+      externalReference: params.externalReference,
+      split: params.split,
+    })
+  } catch (erro) {
+    if (
+      !params.split?.length ||
+      !erroApiAsaasTemCodigo(erro, "invalid_action") ||
+      Reflect.get(Object(erro), "status") !== 400
+    )
+      throw erro
+
+    // O POST pode ter sido concluído remotamente mesmo quando a resposta falha.
+    // Reconciliar antes da contingência impede uma segunda cobrança para a mesma matrícula.
+    const reconciliadas = await listarCobrancasAsaas({
+      externalReference: params.externalReference,
+      limit: 2,
+    })
+    if (reconciliadas.data.length > 1) {
+      throw new Error("Mais de uma cobrança Asaas corresponde à mesma matrícula.")
+    }
+    if (reconciliadas.data[0]) return reconciliadas.data[0]
+
+    await registrarContingenciaSplit({ cobrancaId, splitIds })
+    return criarCobrancaAsaas({
+      customer: params.customerId,
+      billingType: "PIX",
+      value: params.valor,
+      dueDate: dataAsaas(params.vencimento),
+      description: params.descricao,
+      externalReference: params.externalReference,
+    })
+  }
+}
+
 async function persistirCobranca(
   id: string,
   customerId: string,
@@ -448,7 +563,46 @@ async function persistirCobranca(
         ultimoErro,
       },
     })
-    const resultadoSplit = await persistirSplitsRemotos(tx, splits, remota)
+    const splitsRecusadosSemRemoto = splits.filter(
+      (split) => split.status === "RECUSADO" && !split.asaasSplitId && !split.statusAsaas,
+    )
+    if (splitsRecusadosSemRemoto.length > 0 && (remota.split?.length ?? 0) > 0) {
+      const motivo =
+        "A cobrança emitida pela contingência retornou um split inesperado; concilie antes de cobrar."
+      await tx.splitPagamentoAsaas.updateMany({
+        where: { id: { in: splitsRecusadosSemRemoto.map((split) => split.id) } },
+        data: { status: "ERRO", motivo },
+      })
+      const comErro = await tx.cobrancaMatriculaAsaas.update({
+        where: { id: atualizada.id },
+        data: {
+          status: "ERRO",
+          ativa: false,
+          pixCopiaECola: null,
+          qrCodeExpiraEm: null,
+          ultimoErro: motivo,
+        },
+      })
+      await registrarLog(
+        {
+          autorId: null,
+          acao: "PAGAMENTO",
+          entidade: "CobrancaMatriculaAsaas",
+          entidadeId: comErro.id,
+          valorAntigo: { status: anterior.status, asaasPaymentId: anterior.asaasPaymentId },
+          valorNovo: { status: comErro.status, asaasPaymentId: comErro.asaasPaymentId, motivo },
+        },
+        tx,
+      )
+      return { cobranca: comErro, erroSplit: motivo }
+    }
+    const resultadoSplit = await persistirSplitsRemotos(
+      tx,
+      splits.filter(
+        (split) => !(split.status === "RECUSADO" && !split.asaasSplitId && !split.statusAsaas),
+      ),
+      remota,
+    )
     if (!resultadoSplit.ok) {
       const comErro = await tx.cobrancaMatriculaAsaas.update({
         where: { id: atualizada.id },
@@ -532,23 +686,35 @@ export async function gerarCobrancaMatriculaAsaas(
       cpf: reserva.solicitacao.cpf!,
       telefone: reserva.solicitacao.telefone,
     })
+    const splitsEnviaveis = splits.filter(
+      (split) => !(split.status === "RECUSADO" && !split.asaasSplitId && !split.statusAsaas),
+    )
     const remota = reserva.cobranca.asaasPaymentId
       ? await obterCobrancaAsaas(reserva.cobranca.asaasPaymentId)
-      : await criarOuRecuperarCobranca({
-          customerId: cliente.id,
-          externalReference: reserva.cobranca.externalReference,
-          valor: Number(reserva.cobranca.valor),
-          vencimento: reserva.cobranca.vencimentoAsaas,
-          descricao:
-            reserva.cobranca.finalidade === "AULA_AVULSA"
-              ? "Aula avulsa ECVO"
-              : "Primeira mensalidade ECVO",
-          split: payloadSplitAsaas(splits),
-        })
+      : await criarCobrancaComContingenciaSplit(
+          {
+            customerId: cliente.id,
+            externalReference: reserva.cobranca.externalReference,
+            valor: Number(reserva.cobranca.valor),
+            vencimento: reserva.cobranca.vencimentoAsaas,
+            descricao:
+              reserva.cobranca.finalidade === "AULA_AVULSA"
+                ? "Aula avulsa ECVO"
+                : "Primeira mensalidade ECVO",
+            split: payloadSplitAsaas(splitsEnviaveis),
+          },
+          reserva.cobranca.id,
+          splitsEnviaveis.map((split) => split.id),
+        )
     const cobranca = await persistirCobranca(reserva.cobranca.id, cliente.id, remota)
     return { ok: true as const, cobranca }
   } catch (erro) {
     const motivo = mensagemErroAsaasSegura(erro)
+    console.error("[pagamento-matricula] falha na integração Asaas", {
+      cobrancaId: reserva.cobranca.id,
+      etapa: reserva.cobranca.asaasPaymentId ? "sincronizacao_pagamento" : "criacao_pagamento",
+      motivo,
+    })
     await db.cobrancaMatriculaAsaas.updateMany({
       where: {
         id: reserva.cobranca.id,

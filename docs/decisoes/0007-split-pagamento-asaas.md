@@ -16,6 +16,10 @@ transferido pelo provedor.
 - Agregar na mesma wallet os valores configurados de várias modalidades.
 - Enviar `split[].fixedValue` em `POST /payments`; o saldo líquido não distribuído permanece com a ECVO.
 - Exigir que a resposta remota contenha composição compatível antes de expor a cobrança como válida.
+- Na cobrança de matrícula, admitir uma contingência estreita quando o `POST /payments` com split retorna
+  HTTP 400 `invalid_action`: repetir a busca por `externalReference`; somente se ela continuar vazia,
+  marcar o split ainda `PREPARADO` como `RECUSADO`, auditar a decisão e emitir a cobrança sem split. O
+  recebimento permanece como obrigação de repasse manual.
 - Considerar repasse realizado apenas no estado remoto `DONE` ou no evento `PAYMENT_SPLIT_DONE`.
 - Processar de forma idempotente os eventos `PAYMENT_SPLIT_*` e preservar cancelamento, recusa, bloqueio e
   estorno como estados históricos.
@@ -37,3 +41,6 @@ transferido pelo provedor.
 - O relatório financeiro separa direito total, valor concluído automaticamente, valor ainda processando e
   saldo de repasse manual, reduzindo o risco de duplicidade.
 - Um split ausente ou divergente na resposta do Asaas bloqueia a exposição daquela cobrança para conciliação.
+- A única exceção é o split da matrícula explicitamente recusado pela contingência acima, sem ID ou status
+  remoto. Se a cobrança recuperada depois contiver qualquer split, ela volta a ser bloqueada para evitar
+  repasse automático e manual em duplicidade.

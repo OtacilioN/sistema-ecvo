@@ -485,7 +485,7 @@ export function excluirCobrancaAsaas(cobrancaId: string, dependencias: Dependenc
   )
 }
 
-function erroApiAsaasTemCodigo(erro: unknown, codigo: string) {
+export function erroApiAsaasTemCodigo(erro: unknown, codigo: string) {
   if (!erro || typeof erro !== "object" || Reflect.get(erro, "name") !== "ErroApiAsaas") {
     return false
   }
