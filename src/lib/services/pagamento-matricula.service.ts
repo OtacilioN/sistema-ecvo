@@ -40,6 +40,7 @@ import {
 } from "@/lib/services/matricula.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
 import {
+  MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
   payloadSplitAsaas,
   persistirSplitsRemotos,
   prepararSplitsPagamento,
@@ -53,8 +54,6 @@ import {
 import type { WebhookAsaas } from "@/lib/validations/asaas"
 
 const TEMPO_RESERVA_MS = 2 * 60 * 1_000
-const MOTIVO_CONTINGENCIA_SPLIT =
-  "O Asaas recusou o split automático (invalid_action). O split foi desativado nesta cobrança; qualquer recebimento exige repasse manual."
 const STATUS_SEM_PIX: StatusCobrancaAsaas[] = [
   "RECEBIDA",
   "CANCELANDO",
@@ -422,7 +421,7 @@ async function registrarContingenciaSplit(params: { cobrancaId: string; splitIds
         status: "RECUSADO",
         asaasSplitId: null,
         statusAsaas: null,
-        motivo: MOTIVO_CONTINGENCIA_SPLIT,
+        motivo: MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
       },
     })
     if (atualizados.count !== params.splitIds.length) {
@@ -438,7 +437,7 @@ async function registrarContingenciaSplit(params: { cobrancaId: string; splitIds
         valorNovo: {
           splitAutomatico: "RECUSADO",
           repasse: "CONCILIACAO_MANUAL",
-          motivo: MOTIVO_CONTINGENCIA_SPLIT,
+          motivo: MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
         },
       },
       tx,
@@ -563,16 +562,12 @@ async function persistirCobranca(
         ultimoErro,
       },
     })
-    const splitsRecusadosSemRemoto = splits.filter(
-      (split) => split.status === "RECUSADO" && !split.asaasSplitId && !split.statusAsaas,
+    const splitsDaContingencia = splits.filter(
+      (split) => split.motivo === MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
     )
-    if (splitsRecusadosSemRemoto.length > 0 && (remota.split?.length ?? 0) > 0) {
+    if (splitsDaContingencia.length > 0 && (remota.split?.length ?? 0) > 0) {
       const motivo =
         "A cobrança emitida pela contingência retornou um split inesperado; concilie antes de cobrar."
-      await tx.splitPagamentoAsaas.updateMany({
-        where: { id: { in: splitsRecusadosSemRemoto.map((split) => split.id) } },
-        data: { status: "ERRO", motivo },
-      })
       const comErro = await tx.cobrancaMatriculaAsaas.update({
         where: { id: atualizada.id },
         data: {
@@ -598,9 +593,7 @@ async function persistirCobranca(
     }
     const resultadoSplit = await persistirSplitsRemotos(
       tx,
-      splits.filter(
-        (split) => !(split.status === "RECUSADO" && !split.asaasSplitId && !split.statusAsaas),
-      ),
+      splits.filter((split) => split.motivo !== MOTIVO_CONTINGENCIA_SPLIT_ASAAS),
       remota,
     )
     if (!resultadoSplit.ok) {
@@ -687,7 +680,7 @@ export async function gerarCobrancaMatriculaAsaas(
       telefone: reserva.solicitacao.telefone,
     })
     const splitsEnviaveis = splits.filter(
-      (split) => !(split.status === "RECUSADO" && !split.asaasSplitId && !split.statusAsaas),
+      (split) => split.motivo !== MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
     )
     const remota = reserva.cobranca.asaasPaymentId
       ? await obterCobrancaAsaas(reserva.cobranca.asaasPaymentId)

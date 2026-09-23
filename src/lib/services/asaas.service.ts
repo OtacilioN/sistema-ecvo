@@ -5,6 +5,7 @@ import {
   Prisma,
   type StatusCobrancaAsaas,
   type StatusContratoPixAutomatico,
+  type TipoCobrancaAsaas,
   type TipoCobrancaPix,
 } from "@prisma/client"
 import {
@@ -19,6 +20,7 @@ import {
   criarAutorizacaoPixAutomaticoAsaas,
   criarClienteAsaas,
   criarCobrancaAsaas,
+  erroApiAsaasTemCodigo,
   excluirCobrancaAsaas,
   listarAutorizacoesPixAutomaticoAsaas,
   listarClientesAsaas,
@@ -45,6 +47,7 @@ import {
 import { enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
 import { aplicarWebhookPagamentoMatricula } from "@/lib/services/pagamento-matricula.service"
 import {
+  MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
   payloadSplitAsaas,
   persistirSplitsRemotos,
   prepararSplitsPagamento,
@@ -64,6 +67,8 @@ const TEMPO_RESERVA_OPERACAO_MS = 2 * 60 * 1_000
 const STATUS_MENSALIDADE_COBRAVEL = ["EM_ABERTO", "VENCIDA"] as const
 const STATUS_COBRANCA_TERMINAL = ["RECEBIDA", "CANCELADA", "ESTORNADA"] as const
 const ERRO_COBRANCA_AUSENTE_ASAAS = "A intenção local não possui cobrança correspondente no Asaas."
+const ERRO_SPLIT_INESPERADO_CONTINGENCIA =
+  "A cobrança emitida pela contingência retornou um split inesperado; concilie antes de cobrar."
 
 class ErroEscolhaPagamento extends Error {}
 
@@ -379,7 +384,136 @@ async function reservarIntencaoCobranca(dados: DadosIntencaoCobranca) {
   })
 }
 
+async function registrarContingenciaSplitMensalidade(params: {
+  cobrancaId: string
+  mensalidadeId: string
+  tipo: TipoCobrancaAsaas
+  externalReference: string
+  splitIds: string[]
+  autorId: string | null
+}) {
+  if (params.splitIds.length === 0) {
+    throw new Error("A contingência sem split requer ao menos um repasse preparado.")
+  }
+  return db.$transaction(async (tx) => {
+    await bloquearMensalidades(tx, [params.mensalidadeId])
+    const cobranca = await tx.cobrancaAsaas.findUnique({
+      where: { id: params.cobrancaId },
+      select: {
+        ativa: true,
+        asaasPaymentId: true,
+        externalReference: true,
+        mensalidadeId: true,
+        status: true,
+        tipo: true,
+      },
+    })
+    if (
+      !cobranca?.ativa ||
+      cobranca.asaasPaymentId ||
+      cobranca.status !== "CRIANDO" ||
+      cobranca.mensalidadeId !== params.mensalidadeId ||
+      cobranca.tipo !== params.tipo ||
+      cobranca.externalReference !== params.externalReference
+    ) {
+      throw new Error("A cobrança mudou durante a contingência do split; concilie antes de cobrar.")
+    }
+    const splits = await tx.splitPagamentoAsaas.findMany({
+      where: { id: { in: params.splitIds }, cobrancaAsaasId: params.cobrancaId },
+      select: { id: true, asaasSplitId: true, status: true, statusAsaas: true },
+    })
+    if (
+      splits.length !== params.splitIds.length ||
+      splits.some(
+        (split) => split.status !== "PREPARADO" || split.asaasSplitId || split.statusAsaas,
+      )
+    ) {
+      throw new Error("O split mudou durante a contingência; concilie antes de cobrar.")
+    }
+    const atualizados = await tx.splitPagamentoAsaas.updateMany({
+      where: {
+        id: { in: params.splitIds },
+        cobrancaAsaasId: params.cobrancaId,
+        status: "PREPARADO",
+        asaasSplitId: null,
+        statusAsaas: null,
+      },
+      data: {
+        status: "RECUSADO",
+        asaasSplitId: null,
+        statusAsaas: null,
+        motivo: MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
+      },
+    })
+    if (atualizados.count !== params.splitIds.length) {
+      throw new Error("Nem todos os splits foram reservados para a contingência.")
+    }
+    const reservaRenovada = await tx.cobrancaAsaas.update({
+      where: { id: params.cobrancaId },
+      data: { ultimoErro: null },
+      select: { atualizadoEm: true },
+    })
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaAsaas",
+        entidadeId: params.cobrancaId,
+        valorAntigo: { splitAutomatico: "PREPARADO", quantidade: atualizados.count },
+        valorNovo: {
+          splitAutomatico: "RECUSADO",
+          repasse: "CONCILIACAO_MANUAL",
+          motivo: MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
+        },
+      },
+      tx,
+    )
+    return reservaRenovada.atualizadoEm
+  })
+}
+
+async function registrarFalhaCriacaoCobranca(params: {
+  cobrancaId: string
+  mensalidadeId: string
+  atualizadoEm: Date
+  ultimoErroAnterior?: string | null
+  motivo: string
+  autorId: string | null
+}) {
+  await db.$transaction(async (tx) => {
+    await bloquearMensalidades(tx, [params.mensalidadeId])
+    const resultado = await tx.cobrancaAsaas.updateMany({
+      where: {
+        id: params.cobrancaId,
+        mensalidadeId: params.mensalidadeId,
+        status: "CRIANDO",
+        asaasPaymentId: null,
+        atualizadoEm: params.atualizadoEm,
+      },
+      data: { status: "ERRO", ultimoErro: params.motivo },
+    })
+    if (resultado.count === 0) return
+    await registrarLog(
+      {
+        autorId: params.autorId,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaAsaas",
+        entidadeId: params.cobrancaId,
+        valorAntigo: { status: "CRIANDO", ultimoErro: params.ultimoErroAnterior ?? null },
+        valorNovo: { status: "ERRO", ultimoErro: params.motivo },
+        justificativa: "Falha ao materializar a cobrança remota após a reserva local.",
+      },
+      tx,
+    )
+  })
+}
+
 async function criarOuRecuperarCobrancaRemota(params: {
+  cobrancaId: string
+  mensalidadeId: string
+  tipo: TipoCobrancaAsaas
+  splitIds: string[]
+  autorId?: string | null
   customerId: string
   externalReference: string
   value: number
@@ -395,18 +529,73 @@ async function criarOuRecuperarCobrancaRemota(params: {
   if (encontradas.data.length > 1) {
     throw new Error("Mais de uma cobrança Asaas usa a mesma referência; concilie manualmente.")
   }
-  if (encontradas.data[0]) return encontradas.data[0]
+  if (encontradas.data[0]) return obterCobrancaAsaas(encontradas.data[0].id)
 
-  return criarCobrancaAsaas({
-    customer: params.customerId,
-    billingType: "PIX",
-    value: params.value,
-    dueDate: dataAsaas(params.dueDate),
-    description: params.description,
-    externalReference: params.externalReference,
-    pixAutomaticAuthorizationId: params.pixAutomaticAuthorizationId,
-    split: params.split,
-  })
+  try {
+    return await criarCobrancaAsaas({
+      customer: params.customerId,
+      billingType: "PIX",
+      value: params.value,
+      dueDate: dataAsaas(params.dueDate),
+      description: params.description,
+      externalReference: params.externalReference,
+      pixAutomaticAuthorizationId: params.pixAutomaticAuthorizationId,
+      split: params.split,
+    })
+  } catch (erro) {
+    if (
+      !params.split?.length ||
+      !erroApiAsaasTemCodigo(erro, "invalid_action") ||
+      Reflect.get(Object(erro), "status") !== 400
+    ) {
+      throw erro
+    }
+
+    // O POST pode ter sido concluído remotamente mesmo quando a resposta falha.
+    // Reconciliar antes da contingência impede uma segunda cobrança da mesma mensalidade.
+    const reconciliadas = await listarCobrancasAsaas({
+      externalReference: params.externalReference,
+      limit: 2,
+    })
+    if (reconciliadas.data.length > 1) {
+      throw new Error("Mais de uma cobrança Asaas usa a mesma referência; concilie manualmente.")
+    }
+    const reconciliada = reconciliadas.data[0]
+      ? await obterCobrancaAsaas(reconciliadas.data[0].id)
+      : undefined
+    if (reconciliada?.split?.length) return reconciliada
+
+    const atualizadoEm = await registrarContingenciaSplitMensalidade({
+      cobrancaId: params.cobrancaId,
+      mensalidadeId: params.mensalidadeId,
+      tipo: params.tipo,
+      externalReference: params.externalReference,
+      splitIds: params.splitIds,
+      autorId: params.autorId ?? null,
+    })
+    if (reconciliada) return reconciliada
+
+    try {
+      return await criarCobrancaAsaas({
+        customer: params.customerId,
+        billingType: "PIX",
+        value: params.value,
+        dueDate: dataAsaas(params.dueDate),
+        description: params.description,
+        externalReference: params.externalReference,
+        pixAutomaticAuthorizationId: params.pixAutomaticAuthorizationId,
+      })
+    } catch (erroContingencia) {
+      await registrarFalhaCriacaoCobranca({
+        cobrancaId: params.cobrancaId,
+        mensalidadeId: params.mensalidadeId,
+        atualizadoEm,
+        motivo: mensagemErroAsaasSegura(erroContingencia),
+        autorId: params.autorId ?? null,
+      })
+      throw erroContingencia
+    }
+  }
 }
 
 async function persistirCobrancaRemota(
@@ -419,10 +608,13 @@ async function persistirCobrancaRemota(
   const persistencia = await db.$transaction(async (tx) => {
     const referencia = await tx.cobrancaAsaas.findUniqueOrThrow({
       where: { id: cobrancaId },
-      select: { mensalidadeId: true, splits: { orderBy: { criadoEm: "asc" } } },
+      select: { mensalidadeId: true },
     })
     await bloquearMensalidades(tx, [referencia.mensalidadeId])
-    const anterior = await tx.cobrancaAsaas.findUniqueOrThrow({ where: { id: cobrancaId } })
+    const anterior = await tx.cobrancaAsaas.findUniqueOrThrow({
+      where: { id: cobrancaId },
+      include: { splits: { orderBy: { criadoEm: "asc" } } },
+    })
     const outraAtiva =
       cobrancaRemotaContinuaAtiva(remota.status) && !anterior.ativa
         ? await tx.cobrancaAsaas.findFirst({
@@ -434,6 +626,38 @@ async function persistirCobrancaRemota(
             select: { id: true },
           })
         : null
+    const splitsLocais = anterior.splits ?? []
+    const splitsDaContingencia = splitsLocais.filter(
+      (split) => split.motivo === MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
+    )
+    if (splitsDaContingencia.length > 0 && (remota.split?.length ?? 0) > 0) {
+      const motivo = ERRO_SPLIT_INESPERADO_CONTINGENCIA
+      const comErro = await tx.cobrancaAsaas.update({
+        where: { id: anterior.id },
+        data: {
+          asaasPaymentId: remota.id,
+          status: "ERRO",
+          ativa: false,
+          statusAsaas: remota.status,
+          invoiceUrl: remota.invoiceUrl ?? null,
+          pixCopiaECola: null,
+          qrCodeExpiraEm: null,
+          ultimoErro: motivo,
+        },
+      })
+      await registrarLog(
+        {
+          autorId,
+          acao: "PAGAMENTO",
+          entidade: "CobrancaAsaas",
+          entidadeId: comErro.id,
+          valorAntigo: { status: anterior.status, asaasPaymentId: anterior.asaasPaymentId },
+          valorNovo: { status: comErro.status, asaasPaymentId: comErro.asaasPaymentId, motivo },
+        },
+        tx,
+      )
+      return { cobranca: comErro, erroSplit: motivo }
+    }
     const cobranca = await tx.cobrancaAsaas.update({
       where: { id: cobrancaId },
       data: {
@@ -451,7 +675,11 @@ async function persistirCobrancaRemota(
         ultimoErro: null,
       },
     })
-    const resultadoSplit = await persistirSplitsRemotos(tx, referencia.splits, remota)
+    const resultadoSplit = await persistirSplitsRemotos(
+      tx,
+      splitsLocais.filter((split) => split.motivo !== MOTIVO_CONTINGENCIA_SPLIT_ASAAS),
+      remota,
+    )
     if (!resultadoSplit.ok) {
       const comErro = await tx.cobrancaAsaas.update({
         where: { id: cobranca.id },
@@ -636,23 +864,35 @@ export async function gerarCobrancaPixMensal(params: {
       }
       return cliente
     }
+    const splitsEnviaveis = (intencao.splits ?? []).filter(
+      (split) => split.motivo !== MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
+    )
     const remota = intencao.asaasPaymentId
       ? await obterCobrancaAsaas(intencao.asaasPaymentId)
       : await criarOuRecuperarCobrancaRemota({
+          cobrancaId: intencao.id,
+          mensalidadeId: mensalidade.id,
+          tipo: intencao.tipo,
+          splitIds: splitsEnviaveis.map((split) => split.id),
+          autorId: params.autorId,
           customerId: cliente.customerId,
           externalReference: intencao.externalReference,
           value: Number(mensalidade.valor),
           dueDate: intencao.vencimentoAsaas ?? vencimentoAsaas,
           description: descricaoMensalidade(mensalidade.competencia),
-          split: payloadSplitAsaas(intencao.splits),
+          split: payloadSplitAsaas(splitsEnviaveis),
         })
     const cobranca = await persistirCobrancaRemota(intencao.id, remota, true, params.autorId)
     return { ok: true as const, cobranca }
   } catch (erro) {
     const motivo = mensagemErroAsaasSegura(erro)
-    await db.cobrancaAsaas.update({
-      where: { id: intencao.id },
-      data: { status: "ERRO", ultimoErro: motivo },
+    await registrarFalhaCriacaoCobranca({
+      cobrancaId: intencao.id,
+      mensalidadeId: mensalidade.id,
+      atualizadoEm: intencao.atualizadoEm,
+      ultimoErroAnterior: intencao.ultimoErro,
+      motivo,
+      autorId: params.autorId,
     })
     return { ok: false as const, motivo }
   }
@@ -1238,7 +1478,12 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
       continue
     }
 
-    let intencaoId: string | null = null
+    let intencaoParaFalha: {
+      id: string
+      mensalidadeId: string
+      atualizadoEm: Date
+      ultimoErro?: string | null
+    } | null = null
     try {
       const cobrancaAtual = mensalidade.cobrancasAsaas[0] ?? null
       if (cobrancaAtual?.ativa && cobrancaAtual.asaasPaymentId) continue
@@ -1284,10 +1529,23 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
         continue
       }
       const intencao = reserva.intencao
-      intencaoId = intencao.id
+      intencaoParaFalha = {
+        id: intencao.id,
+        mensalidadeId: mensalidade.id,
+        atualizadoEm: intencao.atualizadoEm,
+        ultimoErro: intencao.ultimoErro,
+      }
       if (intencao.asaasPaymentId) continue
 
+      const splitsEnviaveis = (intencao.splits ?? []).filter(
+        (split) => split.motivo !== MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
+      )
       const remota = await criarOuRecuperarCobrancaRemota({
+        cobrancaId: intencao.id,
+        mensalidadeId: mensalidade.id,
+        tipo: intencao.tipo,
+        splitIds: splitsEnviaveis.map((split) => split.id),
+        autorId: null,
         customerId,
         externalReference: intencao.externalReference,
         value: Number(mensalidade.valor),
@@ -1296,7 +1554,7 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
           ? `Mensalidade ${numero} de ${TOTAL_CICLOS_PIX_AUTOMATICO}`
           : `Mensalidade ${numero} de ${TOTAL_CICLOS_PIX_AUTOMATICO} — contingência`,
         pixAutomaticAuthorizationId: dentroDaJanela ? authorizationId : undefined,
-        split: payloadSplitAsaas(intencao.splits),
+        split: payloadSplitAsaas(splitsEnviaveis),
       })
       await persistirCobrancaRemota(intencao.id, remota, !dentroDaJanela)
       if (!dentroDaJanela && reserva.proprietaria) {
@@ -1305,10 +1563,14 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
       criadas++
     } catch (erro) {
       const motivo = mensagemErroAsaasSegura(erro)
-      if (intencaoId) {
-        await db.cobrancaAsaas.update({
-          where: { id: intencaoId },
-          data: { status: "ERRO", ultimoErro: motivo },
+      if (intencaoParaFalha) {
+        await registrarFalhaCriacaoCobranca({
+          cobrancaId: intencaoParaFalha.id,
+          mensalidadeId: intencaoParaFalha.mensalidadeId,
+          atualizadoEm: intencaoParaFalha.atualizadoEm,
+          ultimoErroAnterior: intencaoParaFalha.ultimoErro,
+          motivo,
+          autorId: null,
         })
       }
       falhas.push({ mensalidadeId: mensalidade.id, motivo })
@@ -2343,6 +2605,90 @@ export async function cancelarPixAutomatico(params: { alunoId: string; autorId: 
   }
 }
 
+async function bloquearWebhookComSplitInesperadoDaContingencia(
+  tx: Prisma.TransactionClient,
+  webhook: WebhookAsaas,
+) {
+  const informaSplit =
+    webhook.event.startsWith("PAYMENT_SPLIT_") || (webhook.payment?.split?.length ?? 0) > 0
+  if (!informaSplit || !webhook.payment) return false
+
+  const referencias = [
+    webhook.payment.id ? { asaasPaymentId: webhook.payment.id } : null,
+    webhook.payment.externalReference
+      ? { externalReference: webhook.payment.externalReference }
+      : null,
+  ].filter((item): item is NonNullable<typeof item> => Boolean(item))
+  if (referencias.length === 0) return false
+
+  let identificada = await tx.cobrancaAsaas.findFirst({
+    where: { OR: referencias },
+    select: { id: true, mensalidadeId: true },
+  })
+  if (!identificada) {
+    const referenciasSplit = (webhook.payment.split ?? [])
+      .map((split) => split.externalReference)
+      .filter((referencia): referencia is string => Boolean(referencia))
+    if (referenciasSplit.length > 0) {
+      const split = await tx.splitPagamentoAsaas.findFirst({
+        where: {
+          externalReference: { in: referenciasSplit },
+          motivo: MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
+          cobrancaAsaasId: { not: null },
+        },
+        select: {
+          cobrancaAsaas: { select: { id: true, mensalidadeId: true } },
+        },
+      })
+      identificada = split?.cobrancaAsaas ?? null
+    }
+  }
+  if (!identificada) return false
+
+  await bloquearMensalidades(tx, [identificada.mensalidadeId])
+  const cobranca = await tx.cobrancaAsaas.findUnique({
+    where: { id: identificada.id },
+    include: { splits: { orderBy: { criadoEm: "asc" } } },
+  })
+  if (
+    !cobranca ||
+    !(cobranca.splits ?? []).some((split) => split.motivo === MOTIVO_CONTINGENCIA_SPLIT_ASAAS)
+  ) {
+    return false
+  }
+
+  const atualizada = await tx.cobrancaAsaas.update({
+    where: { id: cobranca.id },
+    data: {
+      asaasPaymentId: cobranca.asaasPaymentId ?? webhook.payment.id,
+      status: "ERRO",
+      ativa: false,
+      statusAsaas: webhook.payment.status ?? cobranca.statusAsaas,
+      pixCopiaECola: null,
+      qrCodeExpiraEm: null,
+      ultimoEventoAsaas: webhook.event,
+      ultimoErro: ERRO_SPLIT_INESPERADO_CONTINGENCIA,
+    },
+  })
+  await registrarLog(
+    {
+      autorId: null,
+      acao: "PAGAMENTO",
+      entidade: "CobrancaAsaas",
+      entidadeId: cobranca.id,
+      valorAntigo: { status: cobranca.status, asaasPaymentId: cobranca.asaasPaymentId },
+      valorNovo: {
+        status: atualizada.status,
+        asaasPaymentId: atualizada.asaasPaymentId,
+        motivo: ERRO_SPLIT_INESPERADO_CONTINGENCIA,
+      },
+      justificativa: `Evento Asaas ${webhook.id}.`,
+    },
+    tx,
+  )
+  return true
+}
+
 async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
   const authorizationId = idAutorizacaoDoWebhook(webhook)
   const paymentInstructionId = idPagamentoInstrucaoDoWebhook(webhook)
@@ -2373,6 +2719,10 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
           motivo: "A conta ainda não foi materializada localmente; o evento deve ser reenviado.",
         }
       }
+      return { ok: true as const, duplicado: false }
+    }
+
+    if (await bloquearWebhookComSplitInesperadoDaContingencia(tx, webhook)) {
       return { ok: true as const, duplicado: false }
     }
 

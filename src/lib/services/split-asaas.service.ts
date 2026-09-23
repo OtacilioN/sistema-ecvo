@@ -7,6 +7,9 @@ import {
   lerRepasseSnapshotMensalidade,
 } from "@/lib/services/financeiro.service"
 
+export const MOTIVO_CONTINGENCIA_SPLIT_ASAAS =
+  "O Asaas recusou o split automático (invalid_action). O split foi desativado nesta cobrança; qualquer recebimento exige repasse manual."
+
 type AlvoCobranca =
   | { cobrancaAsaasId: string; cobrancaMatriculaAsaasId?: never }
   | { cobrancaAsaasId?: never; cobrancaMatriculaAsaasId: string }
@@ -264,6 +267,16 @@ export async function reconciliarSplitsWebhook(
       },
     })
     if (!local) continue
+    if (local.motivo === MOTIVO_CONTINGENCIA_SPLIT_ASAAS) {
+      idsAtualizados.push(local.id)
+      if (
+        params.splitId &&
+        (remoto.id === params.splitId || local.asaasSplitId === params.splitId)
+      ) {
+        splitIndividualAtualizado = true
+      }
+      continue
+    }
     // O evento individual confirma somente seu split, mesmo com um snapshot ainda pendente.
     const alvoDoEvento = Boolean(
       params.splitId && (remoto.id === params.splitId || local.asaasSplitId === params.splitId),

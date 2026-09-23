@@ -33,6 +33,7 @@ const mocks = vi.hoisted(() => {
       findUnique: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
   }
   const db = {
@@ -78,6 +79,14 @@ vi.mock("@/lib/asaas/client", () => ({
   criarAutorizacaoPixAutomaticoAsaas: vi.fn(),
   criarClienteAsaas: vi.fn(),
   criarCobrancaAsaas: mocks.criarCobrancaAsaas,
+  erroApiAsaasTemCodigo: (erro: unknown, codigo: string) =>
+    Boolean(
+      erro &&
+        typeof erro === "object" &&
+        Reflect.get(erro, "name") === "ErroApiAsaas" &&
+        Array.isArray(Reflect.get(erro, "codes")) &&
+        Reflect.get(erro, "codes").includes(codigo),
+    ),
   excluirCobrancaAsaas: mocks.excluirCobrancaAsaas,
   listarAutorizacoesPixAutomaticoAsaas: mocks.listarAutorizacoesPixAutomaticoAsaas,
   listarClientesAsaas: vi.fn(),
@@ -370,6 +379,67 @@ describe("processarWebhookAsaas", () => {
       where: { id: "split-local-1" },
       data: expect.objectContaining({ status: "CONCLUIDO", statusAsaas: "DONE" }),
     })
+  })
+
+  it("bloqueia split remoto inesperado sem apagar o marcador de repasse manual", async () => {
+    const motivoContingencia =
+      "O Asaas recusou o split automático (invalid_action). O split foi desativado nesta cobrança; qualquer recebimento exige repasse manual."
+    const cobrancaContingencia = {
+      ...cobrancaLocal,
+      status: "CRIANDO" as const,
+      asaasPaymentId: null,
+      ativa: true,
+      splits: [
+        {
+          id: "split-contingencia",
+          asaasSplitId: null,
+          status: "RECUSADO",
+          statusAsaas: null,
+          motivo: motivoContingencia,
+        },
+      ],
+    }
+    mocks.tx.cobrancaAsaas.findFirst.mockResolvedValue({
+      id: cobrancaContingencia.id,
+      mensalidadeId: cobrancaContingencia.mensalidadeId,
+    })
+    mocks.tx.cobrancaAsaas.findUnique.mockResolvedValue(cobrancaContingencia)
+    mocks.tx.cobrancaAsaas.update.mockImplementation(({ data }) => ({
+      ...cobrancaContingencia,
+      ...data,
+    }))
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_split_contingencia",
+      event: "PAYMENT_SPLIT_DONE",
+      payment: {
+        id: "pay_split_contingencia",
+        externalReference: cobrancaContingencia.externalReference,
+        split: [
+          {
+            id: "split-remoto-contingencia",
+            walletId: "wallet-professor",
+            fixedValue: 60,
+            status: "DONE",
+            externalReference: "mensalidade:mensalidade-1:split:0",
+          },
+        ],
+      },
+      additionalInfo: { splitId: "split-remoto-contingencia" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.cobrancaAsaas.update).toHaveBeenCalledWith({
+      where: { id: cobrancaContingencia.id },
+      data: expect.objectContaining({
+        status: "ERRO",
+        ativa: false,
+        ultimoErro:
+          "A cobrança emitida pela contingência retornou um split inesperado; concilie antes de cobrar.",
+      }),
+    })
+    expect(mocks.tx.splitPagamentoAsaas.update).not.toHaveBeenCalled()
+    expect(cobrancaContingencia.splits[0].motivo).toBe(motivoContingencia)
   })
 
   it("solicita reentrega quando o split ainda não foi materializado", async () => {
@@ -1655,6 +1725,141 @@ describe("processarCobrancasPixAutomaticoPendentes", () => {
 })
 
 describe("gerarCobrancaPixMensal", () => {
+  it("emite a mensalidade sem split após invalid_action e mantém o repasse manual auditado", async () => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-09-09T12:00:00.000Z"))
+    const intencao = {
+      id: "cobranca-fallback-split",
+      mensalidadeId: "mensalidade-fallback-split",
+      contratoPixAutomaticoId: null,
+      tipo: "PIX_MENSAL" as const,
+      status: "CRIANDO" as const,
+      geracao: 1,
+      ativa: true,
+      asaasPaymentId: null,
+      externalReference: "mensalidade:mensalidade-fallback-split",
+      vencimentoAsaas: vencimento,
+      ultimoErro: null,
+      atualizadoEm: new Date("2026-09-09T12:00:00.000Z"),
+    }
+    const split = {
+      id: "split-fallback-mensalidade",
+      cobrancaAsaasId: intencao.id,
+      asaasSplitId: null,
+      status: "PREPARADO",
+      statusAsaas: null,
+      motivo: null as string | null,
+      walletIdSnapshot: "wallet-professor",
+      valorFixoSnapshot: 60,
+      externalReference: `${intencao.externalReference}:split:0`,
+      criadoEm: new Date("2026-09-09T12:00:00.000Z"),
+    }
+    const remotoSemSplit = {
+      object: "payment" as const,
+      id: "pay-fallback-split",
+      customer: "cus-fallback-split",
+      billingType: "PIX" as const,
+      value: 100,
+      status: "PENDING" as const,
+      dueDate: "2026-09-10",
+      externalReference: intencao.externalReference,
+      split: [],
+    }
+    mocks.db.mensalidade.findFirst.mockResolvedValue({
+      id: intencao.mensalidadeId,
+      alunoId: "aluno-fallback-split",
+      status: "EM_ABERTO",
+      valor: 100,
+      vencimento,
+      competencia: "2026-09",
+      contratoPixAutomaticoId: null,
+      aluno: { tipoCobrancaPix: "MENSAL" },
+      cobrancasAsaas: [],
+      contratoPixAutomatico: null,
+    })
+    mocks.db.aluno.findUnique.mockResolvedValue({
+      id: "aluno-fallback-split",
+      cpf: "39053344705",
+      telefone: null,
+      usuario: { nome: "Aluno", email: "aluno@example.com" },
+      responsavel: null,
+      clienteAsaas: { asaasCustomerId: "cus-fallback-split" },
+    })
+    mocks.tx.mensalidade.findUnique.mockResolvedValue({
+      status: "EM_ABERTO",
+      valor: 100,
+      repasseSnapshot: [],
+    })
+    mocks.tx.cobrancaAsaas.findFirst.mockResolvedValue(null)
+    mocks.tx.cobrancaAsaas.findUnique.mockImplementation(({ where }) =>
+      where.id === intencao.id ? intencao : null,
+    )
+    mocks.tx.cobrancaAsaas.create.mockResolvedValue(intencao)
+    mocks.tx.cobrancaAsaas.findUniqueOrThrow.mockImplementation(({ select }) =>
+      select ? { mensalidadeId: intencao.mensalidadeId } : { ...intencao, splits: [split] },
+    )
+    mocks.tx.cobrancaAsaas.update.mockImplementation(({ data }) => ({
+      ...intencao,
+      ...data,
+      id: intencao.id,
+    }))
+    mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([split])
+    mocks.tx.splitPagamentoAsaas.updateMany.mockImplementation(({ data }) => {
+      Object.assign(split, data)
+      return { count: 1 }
+    })
+    mocks.listarCobrancasAsaas.mockResolvedValue({ data: [], totalCount: 0, hasMore: false })
+    const erroSplit = Object.assign(new Error("split recusado"), {
+      name: "ErroApiAsaas",
+      status: 400,
+      codes: ["invalid_action"],
+    })
+    mocks.criarCobrancaAsaas.mockRejectedValueOnce(erroSplit).mockResolvedValueOnce(remotoSemSplit)
+    mocks.obterQrCodePixAsaas.mockResolvedValue({
+      encodedImage: "",
+      payload: "pix-sem-split",
+      expirationDate: "2026-09-10 12:00:00",
+    })
+
+    const resultado = await gerarCobrancaPixMensal({
+      alunoId: "aluno-fallback-split",
+      mensalidadeId: intencao.mensalidadeId,
+      autorId: "usuario-fallback-split",
+    })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      cobranca: { status: "PENDENTE", pixCopiaECola: "pix-sem-split" },
+    })
+    expect(mocks.listarCobrancasAsaas).toHaveBeenCalledTimes(2)
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledTimes(2)
+    expect(mocks.criarCobrancaAsaas.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        split: [expect.objectContaining({ walletId: "wallet-professor", fixedValue: 60 })],
+      }),
+    )
+    expect(mocks.criarCobrancaAsaas.mock.calls[1]?.[0]).not.toHaveProperty("split")
+    expect(mocks.tx.splitPagamentoAsaas.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: { in: [split.id] },
+        cobrancaAsaasId: intencao.id,
+        status: "PREPARADO",
+        asaasSplitId: null,
+        statusAsaas: null,
+      },
+      data: expect.objectContaining({ status: "RECUSADO" }),
+    })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entidade: "CobrancaAsaas",
+        entidadeId: intencao.id,
+        valorNovo: expect.objectContaining({ repasse: "CONCILIACAO_MANUAL" }),
+      }),
+      mocks.tx,
+    )
+  })
+
   it.each([
     null,
     "11111111111",
