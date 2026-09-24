@@ -134,6 +134,20 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const mesRepasse = mesRepasseValido(valorUnico(params.competencia))
   const { inicio, fim } = intervaloMesRepasse(mesRepasse)
 
+  const aulasAvulsasPromise = db.cobrancaMatriculaAsaas.findMany({
+    where: {
+      finalidade: "AULA_AVULSA",
+      status: "RECEBIDA",
+      recebidaEmAsaas: { gte: inicio, lt: fim },
+    },
+    select: {
+      id: true,
+      valor: true,
+      recebidaEmAsaas: true,
+      solicitacao: { select: { nome: true } },
+    },
+  })
+
   const [mensalidades, registrosExternos, custosMensais, exclusoesExternas, outrasReceitas] =
     await Promise.all([
       db.mensalidade.findMany({
@@ -144,6 +158,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         include: {
           cobrancaQuitacaoAsaas: {
             select: {
+              valorCobrado: true,
               splits: {
                 select: {
                   valorFixoSnapshot: true,
@@ -238,6 +253,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       db.exclusaoRepasseExternoMensal.findMany({ where: { competencia: mesRepasse } }),
       obterOutrasReceitasMensais(mesRepasse),
     ])
+  const aulasAvulsas = await aulasAvulsasPromise
 
   const linhas = new Map<string, LinhaRepasse>()
   const pendencias: PendenciaRepasse[] = []
@@ -278,7 +294,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   for (const mensalidade of mensalidades) {
     const splits = mensalidade.cobrancaQuitacaoAsaas?.splits ?? []
-    const valorRecebido = mensalidade.status === "PAGA" ? Number(mensalidade.valor) : 0
+    const valorRecebido =
+      mensalidade.status === "PAGA"
+        ? mensalidade.formaPagamento === "PIX_ASAAS_COMPLEMENTO_AULA_AVULSA" &&
+          mensalidade.cobrancaQuitacaoAsaas?.valorCobrado != null
+          ? Number(mensalidade.cobrancaQuitacaoAsaas.valorCobrado)
+          : Number(mensalidade.valor)
+        : 0
     const snapshot = lerRepasseSnapshotMensalidade(mensalidade.repasseSnapshot)
     const itens =
       snapshot.length > 0
@@ -374,6 +396,29 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         repasseManual: composicao?.repasseManual,
       })
     }
+  }
+
+  for (const aulaAvulsa of aulasAvulsas) {
+    const valorRecebido = Number(aulaAvulsa.valor)
+    totalRecebido += valorRecebido
+    extrato.push({
+      chave: `aula-avulsa:${aulaAvulsa.id}`,
+      origem: "Aula avulsa",
+      status: "Recebida",
+      competencia: mesRepasse,
+      pagador: aulaAvulsa.solicitacao.nome,
+      data: aulaAvulsa.recebidaEmAsaas,
+      formaPagamento: "PIX Asaas",
+      valorRecebido,
+      professorIds: [],
+      professores: "Sem repasse",
+      repasseProfessores: 0,
+      splitConcluido: 0,
+      splitEmProcessamento: 0,
+      repasseManual: 0,
+      detalheRepasse: "Receita integral da escola; não compõe o repasse dos professores.",
+      sobraAposProfessores: valorRecebido,
+    })
   }
 
   const receitasMensaisExternas = registrosExternos.flatMap((registro) => {
@@ -619,6 +664,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     (totais, receita) => {
       if (receita.origem === "Mensalidade interna") {
         totais.mensalistas += Math.round(receita.valorRecebido * 100)
+      } else if (receita.origem === "Aula avulsa") {
+        totais.aulasAvulsas += Math.round(receita.valorRecebido * 100)
       } else if (receita.origem !== "Outras fontes de receita") {
         totais.plataformas += Math.round(receita.valorRecebido * 100)
         totais.professoresPlataformas += Math.round(receita.repasseProfessores * 100)
@@ -626,7 +673,13 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       }
       return totais
     },
-    { mensalistas: 0, plataformas: 0, professoresPlataformas: 0, sobraPlataformas: 0 },
+    {
+      mensalistas: 0,
+      aulasAvulsas: 0,
+      plataformas: 0,
+      professoresPlataformas: 0,
+      sobraPlataformas: 0,
+    },
   )
 
   const distribuicaoSobra = calcularDistribuicaoSobraFinanceira({
@@ -751,12 +804,17 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
       <section
         aria-label="Receitas por origem"
-        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
       >
         <Resumo
           rotulo="Receita de mensalistas"
           valor={formatarBRL(resumoReceitas.mensalistas / 100)}
           descricao="Mensalidades recebidas no mês e incluídas no repasse."
+        />
+        <Resumo
+          rotulo="Receita de aulas avulsas"
+          valor={formatarBRL(resumoReceitas.aulasAvulsas / 100)}
+          descricao="Aulas de R$ 20,00 recebidas no mês; na conversão, o complemento entra separadamente."
         />
         <Resumo
           rotulo="Receita de plataformas"

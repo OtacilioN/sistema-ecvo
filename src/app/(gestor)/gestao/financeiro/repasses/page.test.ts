@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   mensalidades: vi.fn(),
+  aulasAvulsas: vi.fn(),
   registros: vi.fn(),
   exclusoes: vi.fn(),
   custosFixos: vi.fn(),
@@ -12,6 +13,7 @@ vi.mock("@/lib/auth/dal", () => ({ exigirGestao: async () => ({ papel: "GESTOR" 
 vi.mock("@/lib/db", () => ({
   db: {
     mensalidade: { findMany: mocks.mensalidades },
+    cobrancaMatriculaAsaas: { findMany: mocks.aulasAvulsas },
     registroImportado: { findMany: mocks.registros },
     exclusaoRepasseExternoMensal: { findMany: mocks.exclusoes },
   },
@@ -108,6 +110,7 @@ function registro(
 
 beforeEach(() => {
   mocks.mensalidades.mockResolvedValue([])
+  mocks.aulasAvulsas.mockResolvedValue([])
   mocks.registros.mockReset()
   mocks.exclusoes.mockResolvedValue([])
   mocks.custosFixos.mockReset().mockImplementation(async (competencia: string) => ({
@@ -121,6 +124,112 @@ beforeEach(() => {
     total: competencia >= "2026-09" ? 500 : 0,
     personalizado: false,
   }))
+})
+
+describe("receita de aulas avulsas no repasse mensal", () => {
+  beforeEach(() => mocks.registros.mockResolvedValue([]))
+
+  it("soma somente a aula avulsa recebida sem mensalidade paga à sobra da escola", async () => {
+    mocks.aulasAvulsas.mockResolvedValue([
+      {
+        id: "aula-avulsa-1",
+        valor: 20,
+        recebidaEmAsaas: new Date("2026-09-16T15:00:00Z"),
+        solicitacao: { nome: "Aluno avulso" },
+      },
+    ])
+
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+
+    expect(mocks.aulasAvulsas).toHaveBeenCalledWith({
+      where: {
+        finalidade: "AULA_AVULSA",
+        status: "RECEBIDA",
+        recebidaEmAsaas: {
+          gte: new Date("2026-09-01T03:00:00.000Z"),
+          lt: new Date("2026-10-01T03:00:00.000Z"),
+        },
+      },
+      select: {
+        id: true,
+        valor: true,
+        recebidaEmAsaas: true,
+        solicitacao: { select: { nome: true } },
+      },
+    })
+    expect(resumo(pagina, "Receita de aulas avulsas")).toMatch(/20,00$/)
+    expect(resumo(pagina, "Recebido")).toMatch(/520,00$/)
+    expect(resumo(pagina, "Sobra após professores")).toMatch(/520,00$/)
+    expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/\s0,00$/)
+    expect(linhasExtrato(pagina)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Pagador: "Aluno avulso",
+          Origem: "Aula avulsa",
+          Recebido: expect.stringMatching(/20,00$/),
+          Professores: "Sem repasse",
+          "Sobra após professor": expect.stringMatching(/20,00$/),
+        }),
+      ]),
+    )
+  })
+
+  it("soma R$ 20 + complemento de R$ 80 sem contar R$ 100 novamente", async () => {
+    mocks.mensalidades.mockResolvedValue([
+      {
+        id: "mensalidade-convertida",
+        competencia: "2026-09",
+        valor: 100,
+        status: "PAGA",
+        pagoEm: new Date("2026-09-16T15:00:00Z"),
+        atualizadoEm: new Date("2026-09-16T15:00:00Z"),
+        formaPagamento: "PIX_ASAAS_COMPLEMENTO_AULA_AVULSA",
+        aluno: { usuario: { nome: "Aluno convertido" }, modalidadesPlano: [] },
+        repasseSnapshot: [
+          {
+            modalidadeId: "muay-thai",
+            modalidadeNome: "Muay Thai",
+            professorId: "professor-1",
+            professorNome: "Professor 1",
+            plataformaExterna: null,
+            valorBase: 100,
+            valorRepasseProfessor: 60,
+          },
+        ],
+        cobrancaQuitacaoAsaas: { valorCobrado: 80, splits: [] },
+      },
+    ])
+    mocks.aulasAvulsas.mockResolvedValue([
+      {
+        id: "aula-avulsa-convertida",
+        valor: 20,
+        recebidaEmAsaas: new Date("2026-09-14T15:00:00Z"),
+        solicitacao: { nome: "Aluno convertido" },
+      },
+    ])
+
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+
+    expect(resumo(pagina, "Receita de mensalistas")).toMatch(/80,00$/)
+    expect(resumo(pagina, "Receita de aulas avulsas")).toMatch(/20,00$/)
+    expect(resumo(pagina, "Recebido")).toMatch(/600,00$/)
+    expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/60,00$/)
+    expect(resumo(pagina, "Sobra após professores")).toMatch(/540,00$/)
+    expect(linhasExtrato(pagina)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Pagador: "Aluno convertido",
+          Origem: "Mensalidade interna",
+          Recebido: expect.stringMatching(/80,00$/),
+        }),
+        expect.objectContaining({
+          Pagador: "Aluno convertido",
+          Origem: "Aula avulsa",
+          Recebido: expect.stringMatching(/20,00$/),
+        }),
+      ]),
+    )
+  })
 })
 
 describe("outras fontes de receita no repasse mensal", () => {
