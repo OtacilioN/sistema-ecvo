@@ -502,6 +502,46 @@ describe("processarWebhookAsaas", () => {
     expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
   })
 
+  it("consome vencimento remoto de matrícula cancelada já vinculada à mensalidade", async () => {
+    const cobrancaMatricula = {
+      id: "cobranca-matricula-cancelada",
+      solicitacaoId: "solicitacao-1",
+      mensalidadeId: "mensalidade-1",
+      status: "CANCELADA" as const,
+      asaasPaymentId: "pay_matricula_cancelada",
+      asaasCustomerId: "cus_matricula",
+      externalReference: "matricula:solicitacao-1:tentativa:2",
+      finalidade: "PRIMEIRA_MENSALIDADE" as const,
+      valor: 100,
+      vencimentoAsaas: new Date("2026-09-23T12:00:00.000Z"),
+    }
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(cobrancaMatricula)
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockResolvedValue(cobrancaMatricula)
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      id: "pay_matricula_cancelada",
+      customer: "cus_matricula",
+      value: 100,
+      status: "OVERDUE",
+      dueDate: "2026-09-23",
+      externalReference: "matricula:solicitacao-1:tentativa:2",
+    })
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_matricula_cancelada_vencida",
+      event: "PAYMENT_OVERDUE",
+      payment: { id: "pay_matricula_cancelada" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).toHaveBeenCalledWith({
+      where: { id: cobrancaMatricula.id },
+      data: { statusAsaas: "OVERDUE", ultimoEventoAsaas: "PAYMENT_OVERDUE" },
+    })
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+    expect(mocks.tx.eventoWebhookAsaas.delete).not.toHaveBeenCalled()
+  })
+
   it("envia o push de aprovação automática somente após confirmar a transação do webhook", async () => {
     const cobrancaMatricula = {
       id: "cobranca-matricula-1",

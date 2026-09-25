@@ -2762,7 +2762,6 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
     if (webhook.payment && statusPagamento) {
       const matriculaIdentificada = await tx.cobrancaMatriculaAsaas.findFirst({
         where: {
-          mensalidadeId: null,
           OR: [
             { asaasPaymentId: webhook.payment.id },
             ...(webhook.payment.externalReference
@@ -2789,8 +2788,13 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
             vencimentoAsaas: true,
           },
         })
-        // A consulta ao Asaas pode ter convertido o complemento enquanto o lock era aguardado.
-        if (cobrancaMatricula && !cobrancaMatricula.mensalidadeId) {
+        // Uma cobrança de matrícula cancelada pode já ter sido vinculada à mensalidade.
+        // Seu vencimento remoto ainda precisa ser consumido sem desfazer a conciliação local.
+        if (
+          cobrancaMatricula &&
+          (!cobrancaMatricula.mensalidadeId ||
+            (cobrancaMatricula.status === "CANCELADA" && webhook.event === "PAYMENT_OVERDUE"))
+        ) {
           const resultado = await aplicarWebhookPagamentoMatricula(tx, cobrancaMatricula, webhook)
           if (resultado.ok && "notificacoes" in resultado && resultado.notificacoes) {
             notificacoesParaEnviar.push(...resultado.notificacoes)
