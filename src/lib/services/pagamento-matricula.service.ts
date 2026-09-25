@@ -1563,6 +1563,31 @@ export async function aplicarWebhookPagamentoMatricula(
   const divergencia = divergenciaWebhook(cobranca, webhook.payment)
   if (divergencia) return { ok: false as const, duplicado: false as const, motivo: divergencia }
 
+  // Uma cobrança encerrada localmente pode vencer no Asaas enquanto o encerramento remoto
+  // ainda está pendente. O vencimento não deve desfazer a conciliação administrativa.
+  if (cobranca.status === "CANCELADA" && webhook.event === "PAYMENT_OVERDUE") {
+    await tx.cobrancaMatriculaAsaas.update({
+      where: { id: cobranca.id },
+      data: {
+        statusAsaas: webhook.payment.status ?? "OVERDUE",
+        ultimoEventoAsaas: webhook.event,
+      },
+    })
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaMatriculaAsaas",
+        entidadeId: cobranca.id,
+        valorAntigo: { status: cobranca.status },
+        valorNovo: { status: cobranca.status, statusAsaas: webhook.payment.status ?? "OVERDUE" },
+        justificativa: `Vencimento remoto informado pelo evento Asaas ${webhook.id}; cobrança local cancelada preservada.`,
+      },
+      tx,
+    )
+    return { ok: true as const, duplicado: false as const }
+  }
+
   const recebido = statusMatriculaPorEvento(webhook.event)
   const status = recebido ? proximoStatusCobrancaAsaas(cobranca.status, recebido) : cobranca.status
   const pagamentoRecebido = webhook.event === "PAYMENT_RECEIVED"

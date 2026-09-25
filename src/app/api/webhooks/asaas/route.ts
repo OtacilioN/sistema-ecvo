@@ -1,4 +1,4 @@
-import { tokenWebhookValido } from "@/lib/asaas/seguranca"
+import { mensagemErroAsaasSegura, tokenWebhookValido } from "@/lib/asaas/seguranca"
 import { processarWebhookAsaas } from "@/lib/services/asaas.service"
 import { webhookAsaasSchema } from "@/lib/validations/asaas"
 
@@ -53,6 +53,11 @@ export async function POST(request: Request) {
   try {
     const resultado = await processarWebhookAsaas(parsed.data)
     if (!resultado.ok) {
+      console.error("Evento Asaas rejeitado pela conciliação.", {
+        evento: parsed.data.event,
+        eventoId: parsed.data.id,
+        motivo: mensagemErroAsaasSegura(new Error(resultado.motivo)),
+      })
       return Response.json({ erro: "Evento não processado." }, { status: 500 })
     }
     return Response.json({ received: true }, { status: 200 })

@@ -1010,6 +1010,37 @@ describe("sincronização e reemissão", () => {
     })
   })
 
+  it("preserva cobrança cancelada administrativamente quando ela vence no Asaas", async () => {
+    const cobrancaCancelada = {
+      ...cobrancaAntiga,
+      status: "CANCELADA" as const,
+      ativa: false,
+      valor: new Prisma.Decimal(100),
+    }
+
+    const resultado = await aplicarWebhookPagamentoMatricula(mocks.tx as never, cobrancaCancelada, {
+      id: "evt_vencimento_cobranca_cancelada",
+      event: "PAYMENT_OVERDUE",
+      payment: pagamentoRemoto("OVERDUE"),
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).toHaveBeenCalledWith({
+      where: { id: cobrancaCancelada.id },
+      data: { statusAsaas: "OVERDUE", ultimoEventoAsaas: "PAYMENT_OVERDUE" },
+    })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entidade: "CobrancaMatriculaAsaas",
+        entidadeId: cobrancaCancelada.id,
+        valorNovo: expect.objectContaining({ status: "CANCELADA", statusAsaas: "OVERDUE" }),
+      }),
+      mocks.tx,
+    )
+    expect(mocks.aprovarMatricula).not.toHaveBeenCalled()
+    expect(mocks.tx.mensalidade.update).not.toHaveBeenCalled()
+  })
+
   it("devolve as notificações da aprovação para envio somente após o commit do webhook", async () => {
     const notificacao = {
       id: "notificacao-gestor-1",

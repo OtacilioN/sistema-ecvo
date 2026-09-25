@@ -103,6 +103,7 @@ describe("webhook Asaas", () => {
   })
 
   it("solicita reentrega quando o evento autenticado não foi processado", async () => {
+    const erroConsole = vi.spyOn(console, "error").mockImplementation(() => undefined)
     vi.mocked(processarWebhookAsaas).mockResolvedValueOnce({
       ok: false,
       duplicado: false,
@@ -114,6 +115,14 @@ describe("webhook Asaas", () => {
 
     expect(resposta.status).toBe(500)
     expect(await resposta.json()).toEqual({ erro: "Evento não processado." })
+    expect(erroConsole).toHaveBeenCalledWith(
+      "Evento Asaas rejeitado pela conciliação.",
+      expect.objectContaining({
+        eventoId: "evt_2",
+        motivo: "Divergência interna que não deve ser exposta.",
+      }),
+    )
+    erroConsole.mockRestore()
   })
 
   it("responde 500 genérico quando o processamento falha", async () => {
