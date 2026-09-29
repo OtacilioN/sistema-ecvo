@@ -26,6 +26,7 @@ function serializarCustos(competencia: string, registro: CustoFixoMensal | null)
   return {
     competencia,
     valores,
+    observacoesOutros: registro?.observacoesOutros ?? "",
     personalizado: registro !== null,
     total: totalizarCustosFixos(valores),
   }

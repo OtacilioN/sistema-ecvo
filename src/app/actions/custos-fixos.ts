@@ -18,8 +18,10 @@ export async function acaoSalvarCustosFixos(
       return [nome, typeof valor === "string" && valor.trim() !== "" ? Number(valor) : NaN]
     }),
   )
+  const observacoesOutros = formData.get("observacoesOutros")
   const parsed = custosFixosMensaisSchema.safeParse({
     competencia: formData.get("competencia"),
+    observacoesOutros: typeof observacoesOutros === "string" ? observacoesOutros : "",
     ...valores,
   })
   if (!parsed.success) {

@@ -790,6 +790,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         key={mesRepasse}
         competencia={mesRepasse}
         valores={custosMensais.valores}
+        observacoesOutros={custosMensais.observacoesOutros}
         personalizado={custosMensais.personalizado}
         somenteLeitura={usuario.papel !== "GESTOR"}
       />

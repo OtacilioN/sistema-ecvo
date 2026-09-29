@@ -39,9 +39,14 @@ export const custosFixosMensaisSchema = z.object({
   internet: valorCustoSchema,
   limpeza: valorCustoSchema,
   outros: valorCustoSchema,
+  observacoesOutros: z
+    .string()
+    .trim()
+    .max(2000, "As observações podem ter no máximo 2.000 caracteres.")
+    .default(""),
 })
 
-export type CustosFixosMensaisInput = z.infer<typeof custosFixosMensaisSchema>
+export type CustosFixosMensaisInput = z.input<typeof custosFixosMensaisSchema>
 
 export function totalizarCustosFixos(valores: ValoresCustosFixos): number {
   return (

@@ -99,6 +99,7 @@ describe("custos fixos por competência", () => {
     expect(await obterCustosFixosMensais(competencia)).toEqual({
       competencia,
       valores: CUSTOS_FIXOS_PADRAO,
+      observacoesOutros: "",
       personalizado: false,
       total: 2640,
     })
@@ -115,6 +116,7 @@ describe("custos fixos por competência", () => {
     expect(await obterCustosFixosMensais(competencia)).toEqual({
       competencia,
       valores: zerados,
+      observacoesOutros: "",
       personalizado: true,
       total: 0,
     })
@@ -122,13 +124,24 @@ describe("custos fixos por competência", () => {
 
   it("salva somente o mês informado e audita a troca dos padrões pela configuração", async () => {
     const valores = { ...CUSTOS_FIXOS_PADRAO, aluguel: 2300, outros: 45.67 }
-    const resultado = await salvarCustosFixosMensais("gestor-1", { competencia, ...valores })
+    const observacoesOutros = "Taxas bancárias e material de limpeza."
+    const resultado = await salvarCustosFixosMensais("gestor-1", {
+      competencia,
+      ...valores,
+      observacoesOutros,
+    })
 
-    expect(resultado).toEqual({ competencia, valores, personalizado: true, total: 2785.67 })
+    expect(resultado).toEqual({
+      competencia,
+      valores,
+      observacoesOutros,
+      personalizado: true,
+      total: 2785.67,
+    })
     expect(mocks.db.custoFixoMensal.upsert).toHaveBeenCalledWith({
       where: { competencia },
-      create: { competencia, ...valores },
-      update: valores,
+      create: { competencia, ...valores, observacoesOutros },
+      update: { ...valores, observacoesOutros },
     })
     expect(mocks.registrarLog).toHaveBeenCalledWith(
       {
@@ -139,6 +152,7 @@ describe("custos fixos por competência", () => {
         valorAntigo: {
           competencia,
           valores: CUSTOS_FIXOS_PADRAO,
+          observacoesOutros: "",
           personalizado: false,
           total: 2640,
         },
@@ -169,6 +183,7 @@ describe("custos fixos por competência", () => {
     expect(await obterCustosFixosMensais("2026-10")).toEqual({
       competencia: "2026-10",
       valores: CUSTOS_FIXOS_PADRAO,
+      observacoesOutros: "",
       personalizado: false,
       total: 2640,
     })
@@ -180,7 +195,13 @@ describe("custos fixos por competência", () => {
     await salvarCustosFixosMensais("gestor-1", dados)
     expect(mocks.registrarLog).toHaveBeenCalledWith(
       expect.objectContaining({
-        valorAntigo: { competencia, valores: zerados, personalizado: true, total: 0 },
+        valorAntigo: {
+          competencia,
+          valores: zerados,
+          observacoesOutros: "",
+          personalizado: true,
+          total: 0,
+        },
       }),
       mocks.tx,
     )

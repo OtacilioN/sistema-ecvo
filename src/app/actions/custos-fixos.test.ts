@@ -61,11 +61,13 @@ describe("salvar custos fixos pela ação", () => {
     const form = formulario()
     form.set("aluguel", "0")
     form.set("outros", "15.25")
+    form.set("observacoesOutros", "Reparo emergencial")
     form.set("autorId", "outro-usuario")
     expect(await acaoSalvarCustosFixos(undefined, form)).toEqual({ ok: true })
     expect(mocks.salvar).toHaveBeenCalledWith("gestor-teste", {
       competencia: "2026-09",
       ...CUSTOS_FIXOS_PADRAO,
+      observacoesOutros: "Reparo emergencial",
       aluguel: 0,
       outros: 15.25,
     })

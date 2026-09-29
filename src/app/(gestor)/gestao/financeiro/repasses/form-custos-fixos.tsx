@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { CAMPOS_CUSTOS_FIXOS, type ValoresCustosFixos } from "@/lib/financeiro/custos-fixos"
 import { formatarCompetencia } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
@@ -14,11 +15,13 @@ import { formatarBRL } from "@/lib/utils/formato"
 export function FormCustosFixos({
   competencia,
   valores,
+  observacoesOutros,
   personalizado,
   somenteLeitura,
 }: {
   competencia: string
   valores: ValoresCustosFixos
+  observacoesOutros: string
   personalizado: boolean
   somenteLeitura: boolean
 }) {
@@ -26,6 +29,7 @@ export function FormCustosFixos({
   const [rascunho, setRascunho] = useState(() =>
     Object.fromEntries(CAMPOS_CUSTOS_FIXOS.map(({ nome }) => [nome, valores[nome].toFixed(2)])),
   )
+  const [observacoesRascunho, setObservacoesRascunho] = useState(observacoesOutros)
   const totalCentavos = CAMPOS_CUSTOS_FIXOS.reduce((total, { nome }) => {
     const valor = Number(rascunho[nome])
     return total + (Number.isFinite(valor) ? Math.round(valor * 100) : 0)
@@ -71,6 +75,22 @@ export function FormCustosFixos({
               </div>
             ))}
           </fieldset>
+          <div className="space-y-1.5">
+            <Label htmlFor="observacoes-outros-custos">Observações para outros custos</Label>
+            <Textarea
+              id="observacoes-outros-custos"
+              name="observacoesOutros"
+              value={observacoesRascunho}
+              onChange={(event) => setObservacoesRascunho(event.target.value)}
+              maxLength={2000}
+              rows={4}
+              placeholder="Descreva o que está incluído em outros custos neste mês."
+              disabled={somenteLeitura || pendente}
+            />
+            <p className="text-xs text-muted-foreground">
+              {observacoesRascunho.length}/2.000 caracteres
+            </p>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
             <p className="text-sm">
               Total informado:{" "}
