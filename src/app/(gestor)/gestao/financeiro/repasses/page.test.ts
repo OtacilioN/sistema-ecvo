@@ -153,13 +153,15 @@ describe("receita de aulas avulsas no repasse mensal", () => {
       select: {
         id: true,
         valor: true,
+        taxaAsaas: true,
         recebidaEmAsaas: true,
         solicitacao: { select: { nome: true } },
       },
     })
     expect(resumo(pagina, "Receita de aulas avulsas")).toMatch(/20,00$/)
     expect(resumo(pagina, "Recebido")).toMatch(/520,00$/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/520,00$/)
+    expect(resumo(pagina, "Taxas Asaas")).toMatch(/0,40$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/519,60$/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/\s0,00$/)
     expect(linhasExtrato(pagina)).toEqual(
       expect.arrayContaining([
@@ -167,8 +169,9 @@ describe("receita de aulas avulsas no repasse mensal", () => {
           Pagador: "Aluno avulso",
           Origem: "Aula avulsa",
           Recebido: expect.stringMatching(/20,00$/),
+          "Taxa Asaas": expect.stringMatching(/0,40$/),
           Professores: "Sem repasse",
-          "Sobra após professor": expect.stringMatching(/20,00$/),
+          "Sobra após professor e taxa": expect.stringMatching(/19,60$/),
         }),
       ]),
     )
@@ -214,18 +217,71 @@ describe("receita de aulas avulsas no repasse mensal", () => {
     expect(resumo(pagina, "Receita de aulas avulsas")).toMatch(/20,00$/)
     expect(resumo(pagina, "Recebido")).toMatch(/600,00$/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/60,00$/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/540,00$/)
+    expect(resumo(pagina, "Taxas Asaas")).toMatch(/1,99$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/538,01$/)
     expect(linhasExtrato(pagina)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           Pagador: "Aluno convertido",
           Origem: "Mensalidade interna",
           Recebido: expect.stringMatching(/80,00$/),
+          "Taxa Asaas": expect.stringMatching(/1,59$/),
         }),
         expect.objectContaining({
           Pagador: "Aluno convertido",
           Origem: "Aula avulsa",
           Recebido: expect.stringMatching(/20,00$/),
+          "Taxa Asaas": expect.stringMatching(/0,40$/),
+        }),
+      ]),
+    )
+  })
+
+  it("desconta a taxa Asaas depois do repasse do professor", async () => {
+    mocks.outrasReceitas.mockResolvedValue({
+      competencia: "2026-09",
+      valores: { aluguelHorario: 0, outros: 0 },
+      total: 0,
+      personalizado: false,
+    })
+    mocks.mensalidades.mockResolvedValue([
+      {
+        id: "mensalidade-asaas",
+        competencia: "2026-09",
+        valor: 100,
+        status: "PAGA",
+        pagoEm: new Date("2026-09-16T15:00:00Z"),
+        atualizadoEm: new Date("2026-09-16T15:00:00Z"),
+        formaPagamento: "PIX_ASAAS",
+        aluno: { usuario: { nome: "Aluno Asaas" }, modalidadesPlano: [] },
+        repasseSnapshot: [
+          {
+            modalidadeId: "muay-thai",
+            modalidadeNome: "Muay Thai",
+            professorId: "professor-1",
+            professorNome: "Professor 1",
+            plataformaExterna: null,
+            valorBase: 100,
+            valorRepasseProfessor: 60,
+          },
+        ],
+        cobrancaQuitacaoAsaas: { valorCobrado: 100, taxaAsaas: null, splits: [] },
+      },
+    ])
+
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+
+    expect(resumo(pagina, "Recebido")).toMatch(/100,00$/)
+    expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/60,00$/)
+    expect(resumo(pagina, "Taxas Asaas")).toMatch(/1,99$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/38,01$/)
+    expect(linhasExtrato(pagina)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Recebido: expect.stringMatching(/100,00$/),
+          "Taxa Asaas": expect.stringMatching(/1,99$/),
+          Professor: expect.stringMatching(/60,00$/),
+          "Sobra após professor e taxa": expect.stringMatching(/38,01$/),
         }),
       ]),
     )
@@ -240,7 +296,7 @@ describe("outras fontes de receita no repasse mensal", () => {
     expect(mocks.outrasReceitas).toHaveBeenCalledWith("2026-08")
     expect(resumo(pagina, "Recebido", "descricao")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "Recebido")).toMatch(/\s0,00$/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/\s0,00$/)
     expect(linhasExtrato(pagina)).toEqual([])
   })
 
@@ -250,7 +306,7 @@ describe("outras fontes de receita no repasse mensal", () => {
     expect(resumo(pagina, "Recebido", "descricao")).toMatch(
       /Inclui outras fontes de receita:.*500,00$/,
     )
-    for (const rotulo of ["Recebido", "Sobra após professores"]) {
+    for (const rotulo of ["Recebido", "Sobra após professores e taxa Asaas"]) {
       expect(resumo(pagina, rotulo)).toMatch(/500,00$/)
     }
     for (const rotulo of [
@@ -273,7 +329,7 @@ describe("outras fontes de receita no repasse mensal", () => {
       Origem: "Outras fontes de receita",
       Competência: "2026-09",
       Recebido: expect.stringMatching(/500,00$/),
-      "Sobra após professor": expect.stringMatching(/500,00$/),
+      "Sobra após professor e taxa": expect.stringMatching(/500,00$/),
     })
     for (const coluna of ["Professor", "Split concluído", "Em processamento", "Repasse manual"]) {
       expect(linhas[0][coluna]).toMatch(/\s0,00$/)
@@ -290,7 +346,7 @@ describe("outras fontes de receita no repasse mensal", () => {
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
     expect(resumo(pagina, "Recebido", "descricao")).toMatch(/660,00$/)
     expect(resumo(pagina, "Recebido")).toMatch(/660,00$/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/660,00$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/660,00$/)
     for (const rotulo of ["Caixa/investimento", "Sócio A", "Sócio B"]) {
       expect(resumo(pagina, rotulo)).toMatch(/220,00$/)
     }
@@ -339,7 +395,7 @@ describe("outras fontes de receita no repasse mensal", () => {
     expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/30,00$/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/45,00$/)
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/45,00$/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/530,00$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/530,00$/)
     for (const rotulo of [
       "Recebido",
       "Receita de mensalistas",
@@ -347,7 +403,7 @@ describe("outras fontes de receita no repasse mensal", () => {
       "Plataformas: repasse aos professores",
       "Plataformas: sobra após professores",
       "Direito identificado dos professores",
-      "Sobra após professores",
+      "Sobra após professores e taxa Asaas",
       "Caixa/investimento",
       "Sócio A",
       "Sócio B",
@@ -367,7 +423,7 @@ describe("outras fontes de receita no repasse mensal", () => {
     mocks.custosFixos.mockResolvedValue({ total: cenario.custos, competencia: "2026-09" })
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
     expect(resumo(pagina, "Recebido")).toMatch(/500,00$/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/500,00$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/500,00$/)
     expect(resumo(pagina, "Saldo após custos fixos")).toMatch(cenario.saldo)
     for (const rotulo of ["Caixa/investimento", "Sócio A", "Sócio B"]) {
       expect(resumo(pagina, rotulo)).toMatch(cenario.distribuicao)
@@ -421,7 +477,7 @@ describe("repasses de resumos mensais Wellhub", () => {
     expect(resumo(pagina, "Plataformas: repasse aos professores")).toMatch(/105,00/)
     expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/163,50/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/165,00/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/193,50/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/193,50/)
     expect(textoPagina(pagina)).toContain("Ajuste desta competência: muay-thai fora do repasse")
     const filtrada = await Page({
       searchParams: Promise.resolve({ competencia: "2026-08", professorId: "prof-muay-thai" }),
@@ -458,7 +514,7 @@ describe("repasses de resumos mensais Wellhub", () => {
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
     expect(resumo(pagina, "Recebido")).toMatch(/75,00/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/\s0,00$/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/75,00/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/75,00/)
     expect(resumo(pagina, "Pendências sem professor definido")).toMatch(/\s0,00$/)
   })
 
@@ -489,7 +545,7 @@ describe("repasses de resumos mensais Wellhub", () => {
     expect(resumo(pagina, "Recebido")).toMatch(/200,00/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/110,00/)
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/110,00/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/90,00/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/90,00/)
   })
 
   it("inclui receita sem modalidade no recebido, reserva integralmente e impede distribuir a sobra", async () => {
@@ -499,7 +555,7 @@ describe("repasses de resumos mensais Wellhub", () => {
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "Pendências sem professor definido")).toMatch(/200,00/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/\s0,00$/)
     expect(textoPagina(pagina)).toContain("Receita integralmente reservada")
   })
 
@@ -523,7 +579,7 @@ describe("repasses de resumos mensais Wellhub", () => {
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/110,00/)
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/110,00/)
     expect(resumo(pagina, "Pendências sem professor definido")).toMatch(/81,00/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/90,00/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/90,00/)
     expect(textoPagina(pagina)).toContain("Aluno desconhecido")
   })
 
@@ -536,7 +592,7 @@ describe("repasses de resumos mensais Wellhub", () => {
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "Pendências sem professor definido")).toMatch(/81,00/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/\s0,00$/)
   })
 })
 
@@ -564,7 +620,7 @@ describe("repasses de resumos mensais TotalPass", () => {
     expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/89,14/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/133,72/)
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/133,72/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/89,14/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/89,14/)
   })
 
   it("separa plataformas do mesmo aluno e competência e respeita cobertura explícita", async () => {
@@ -585,7 +641,7 @@ describe("repasses de resumos mensais TotalPass", () => {
     const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-08" }) })
     expect(resumo(pagina, "Recebido")).toMatch(/400,00/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/110,00/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/290,00/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/290,00/)
     expect(textoPagina(pagina)).toContain("TOTALPASS")
     expect(textoPagina(pagina)).toContain("WELLHUB")
   })
@@ -616,7 +672,7 @@ describe("repasses de resumos mensais TotalPass", () => {
     expect(resumo(pagina, "A repassar manualmente")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/\s0,00$/)
     expect(resumo(pagina, "Pendências sem professor definido")).toMatch(/70,91/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/\s0,00$/)
   })
 
   it("preserva 60% por registro diário legado TotalPass sem aplicar o teto mensal", async () => {
@@ -645,6 +701,6 @@ describe("repasses de resumos mensais TotalPass", () => {
     expect(resumo(pagina, "Receita de plataformas")).toMatch(/200,00/)
     expect(resumo(pagina, "Plataformas: repasse aos professores")).toMatch(/120,00/)
     expect(resumo(pagina, "Plataformas: sobra após professores")).toMatch(/80,00/)
-    expect(resumo(pagina, "Sobra após professores")).toMatch(/80,00/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/80,00/)
   })
 })

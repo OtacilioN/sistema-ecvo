@@ -29,6 +29,7 @@ import {
   VALOR_COMPLEMENTO_AULA_AVULSA,
 } from "@/lib/aula-avulsa"
 import { db } from "@/lib/db"
+import { calcularTaxaAsaas } from "@/lib/financeiro/taxa-asaas"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import {
   montarRepasseSnapshotMensalidade,
@@ -553,6 +554,9 @@ async function persistirCobranca(
         asaasCustomerId: customerId,
         asaasPaymentId: remota.id,
         status,
+        taxaAsaas: recebida
+          ? (anterior.taxaAsaas ?? calcularTaxaAsaas(Number(anterior.valor)))
+          : undefined,
         ativa: !STATUS_SEM_PIX.includes(status),
         statusAsaas: remota.status,
         pixCopiaECola: qrValido ? qrCode?.payload : recebida ? anterior.pixCopiaECola : null,
@@ -1410,6 +1414,7 @@ async function concluirConversaoAulaAvulsa(
       tipo: "PIX_MENSAL",
       status: "RECEBIDA",
       valorCobrado: acesso.valorComplemento,
+      taxaAsaas: cobranca.taxaAsaas ?? calcularTaxaAsaas(Number(acesso.valorComplemento)),
       ativa: true,
       asaasPaymentId: cobranca.asaasPaymentId,
       externalReference: cobranca.externalReference,
@@ -1554,6 +1559,7 @@ export async function aplicarWebhookPagamentoMatricula(
     asaasCustomerId: string | null
     externalReference: string
     valor: Prisma.Decimal
+    taxaAsaas?: Prisma.Decimal | null
     vencimentoAsaas: Date
     finalidade: FinalidadeCobrancaMatriculaAsaas
   },
@@ -1632,6 +1638,9 @@ export async function aplicarWebhookPagamentoMatricula(
       status,
       asaasPaymentId: webhook.payment.id,
       asaasCustomerId: webhook.payment.customer,
+      taxaAsaas: pagamentoRecebido
+        ? (cobranca.taxaAsaas ?? calcularTaxaAsaas(Number(cobranca.valor)))
+        : undefined,
       ativa: pagamentoPriorizado || (!STATUS_SEM_PIX.includes(status) && !outraAtiva),
       statusAsaas: webhook.payment.status ?? null,
       pixCopiaECola: !pagamentoRecebido ? null : undefined,

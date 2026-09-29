@@ -16,6 +16,7 @@ import {
   normalizarProfessorFiltro,
 } from "@/lib/financeiro/filtros-repasse"
 import { CAMPOS_OUTRAS_RECEITAS } from "@/lib/financeiro/outras-receitas"
+import { calcularTaxaAsaas } from "@/lib/financeiro/taxa-asaas"
 import { obterCustosFixosMensais } from "@/lib/services/custos-fixos.service"
 import {
   calcularComposicaoRepasseProfessor,
@@ -81,6 +82,7 @@ type LinhaExtratoRepasse = {
   data: Date | null
   formaPagamento: string | null
   valorRecebido: number
+  taxaAsaas: number
   professorIds: string[]
   professores: string
   repasseProfessores: number
@@ -143,6 +145,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     select: {
       id: true,
       valor: true,
+      taxaAsaas: true,
       recebidaEmAsaas: true,
       solicitacao: { select: { nome: true } },
     },
@@ -159,6 +162,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           cobrancaQuitacaoAsaas: {
             select: {
               valorCobrado: true,
+              taxaAsaas: true,
               splits: {
                 select: {
                   valorFixoSnapshot: true,
@@ -259,6 +263,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const pendencias: PendenciaRepasse[] = []
   let totalRecebido = 0
   let totalProfessores = 0
+  let totalTaxasAsaas = 0
   let totalReservadoPendente = 0
   const extrato: LinhaExtratoRepasse[] = []
 
@@ -301,6 +306,18 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           ? Number(mensalidade.cobrancaQuitacaoAsaas.valorCobrado)
           : Number(mensalidade.valor)
         : 0
+    const pagamentoAsaas =
+      Boolean(mensalidade.cobrancaQuitacaoAsaas) ||
+      mensalidade.formaPagamento?.startsWith("PIX_ASAAS") === true
+    const valorBaseTaxaAsaas =
+      mensalidade.cobrancaQuitacaoAsaas?.valorCobrado != null
+        ? Number(mensalidade.cobrancaQuitacaoAsaas.valorCobrado)
+        : valorRecebido
+    const taxaAsaas = pagamentoAsaas
+      ? Number(
+          mensalidade.cobrancaQuitacaoAsaas?.taxaAsaas ?? calcularTaxaAsaas(valorBaseTaxaAsaas),
+        )
+      : 0
     const snapshot = lerRepasseSnapshotMensalidade(mensalidade.repasseSnapshot)
     const itens =
       snapshot.length > 0
@@ -358,6 +375,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     )
     totalRecebido += repasse.valorRecebido
     totalProfessores += repasseProfessores
+    totalTaxasAsaas += taxaAsaas
     extrato.push({
       chave: `mensalidade:${mensalidade.id}`,
       origem: "Mensalidade interna",
@@ -367,6 +385,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       data: mensalidade.pagoEm ?? mensalidade.atualizadoEm,
       formaPagamento: mensalidade.formaPagamento,
       valorRecebido: repasse.valorRecebido,
+      taxaAsaas,
       professorIds: repasse.professores.map((professor) => professor.professorId),
       professores: nomesProfessoresRepasse(repasse.professores),
       repasseProfessores,
@@ -380,7 +399,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         splitEmProcessamento,
         repasseManual,
       }),
-      sobraAposProfessores: repasse.sobraAposProfessores,
+      sobraAposProfessores: repasse.sobraAposProfessores - taxaAsaas,
     })
 
     for (const professor of repasse.professores) {
@@ -400,7 +419,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   for (const aulaAvulsa of aulasAvulsas) {
     const valorRecebido = Number(aulaAvulsa.valor)
+    const taxaAsaas = Number(aulaAvulsa.taxaAsaas ?? calcularTaxaAsaas(valorRecebido))
     totalRecebido += valorRecebido
+    totalTaxasAsaas += taxaAsaas
     extrato.push({
       chave: `aula-avulsa:${aulaAvulsa.id}`,
       origem: "Aula avulsa",
@@ -410,14 +431,16 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       data: aulaAvulsa.recebidaEmAsaas,
       formaPagamento: "PIX Asaas",
       valorRecebido,
+      taxaAsaas,
       professorIds: [],
       professores: "Sem repasse",
       repasseProfessores: 0,
       splitConcluido: 0,
       splitEmProcessamento: 0,
       repasseManual: 0,
-      detalheRepasse: "Receita integral da escola; não compõe o repasse dos professores.",
-      sobraAposProfessores: valorRecebido,
+      detalheRepasse:
+        "Receita da escola, sem repasse aos professores; a sobra já desconta a taxa Asaas.",
+      sobraAposProfessores: valorRecebido - taxaAsaas,
     })
   }
 
@@ -505,6 +528,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       data: null,
       formaPagamento: grupo.plataforma,
       valorRecebido: repasse.valorRecebido,
+      taxaAsaas: 0,
       professorIds: repasse.professores.map((item) => item.professorId),
       professores: nomesProfessoresRepasse(repasse.professores),
       repasseProfessores,
@@ -555,6 +579,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       data: null,
       formaPagamento: params.plataforma,
       valorRecebido: params.valor,
+      taxaAsaas: 0,
       professorIds: [],
       professores: "Modalidades pendentes",
       repasseProfessores: 0,
@@ -612,6 +637,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       data: registro.dataReferencia,
       formaPagamento: origem,
       valorRecebido: repasse.valorRecebido,
+      taxaAsaas: 0,
       professorIds: repasse.professores.map((professor) => professor.professorId),
       professores: nomesProfessoresRepasse(repasse.professores),
       repasseProfessores,
@@ -649,6 +675,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       data: null,
       formaPagamento: null,
       valorRecebido: valor,
+      taxaAsaas: 0,
       professorIds: [],
       professores: "Sem repasse",
       repasseProfessores: 0,
@@ -683,7 +710,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   )
 
   const distribuicaoSobra = calcularDistribuicaoSobraFinanceira({
-    totalRecebido,
+    totalRecebido: totalRecebido - totalTaxasAsaas,
     totalProfessores: totalProfessores + totalReservadoPendente,
     custosFixos: custosMensais.total,
   })
@@ -846,6 +873,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           valor={formatarBRL(totalDireitoIdentificado)}
         />
         <Resumo
+          rotulo="Taxas Asaas"
+          valor={formatarBRL(totalTaxasAsaas)}
+          descricao="1,99% por cobrança recebida via Asaas."
+        />
+        <Resumo
           rotulo="Já repassado por split automático"
           valor={formatarBRL(totalSplitConcluido)}
           icone={<CircleCheckBig className="size-4" />}
@@ -868,7 +900,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
           valor={formatarBRL(valorPendenteProfessor)}
         />
         <Resumo
-          rotulo="Sobra após professores"
+          rotulo="Sobra após professores e taxa Asaas"
           valor={formatarBRL(distribuicaoSobra.sobraAposProfessores)}
         />
         <Resumo rotulo="Custos fixos" valor={formatarBRL(distribuicaoSobra.custosFixos)} />
@@ -1079,11 +1111,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   <th className="p-4 font-medium">Situação do repasse</th>
                   <th className="p-4 font-medium">Professores</th>
                   <th className="p-4 text-right font-medium">Recebido</th>
+                  <th className="p-4 text-right font-medium">Taxa Asaas</th>
                   <th className="p-4 text-right font-medium">Direito professor</th>
                   <th className="p-4 text-right font-medium text-emerald-700">Split concluído</th>
                   <th className="p-4 text-right font-medium text-amber-700">Em processamento</th>
                   <th className="p-4 text-right font-medium text-sky-700">Manual</th>
-                  <th className="p-4 text-right font-medium">Sobra após professor</th>
+                  <th className="p-4 text-right font-medium">Sobra após professor e taxa</th>
                 </tr>
               </thead>
               <tbody>
@@ -1118,6 +1151,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     <td className="p-4 text-right tabular-nums" data-label="Recebido">
                       {formatarBRL(linha.valorRecebido)}
                     </td>
+                    <td className="p-4 text-right tabular-nums" data-label="Taxa Asaas">
+                      {formatarBRL(linha.taxaAsaas)}
+                    </td>
                     <td className="p-4 text-right tabular-nums" data-label="Professor">
                       {formatarBRL(linha.repasseProfessores)}
                     </td>
@@ -1139,14 +1175,17 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                     >
                       {formatarBRL(linha.repasseManual)}
                     </td>
-                    <td className="p-4 text-right tabular-nums" data-label="Sobra após professor">
+                    <td
+                      className="p-4 text-right tabular-nums"
+                      data-label="Sobra após professor e taxa"
+                    >
                       {formatarBRL(linha.sobraAposProfessores)}
                     </td>
                   </tr>
                 ))}
                 {extratoFiltrado.length === 0 && (
                   <tr>
-                    <td colSpan={14} className="p-10 text-center text-muted-foreground">
+                    <td colSpan={15} className="p-10 text-center text-muted-foreground">
                       {professorFiltro
                         ? "Nenhuma receita encontrada para o professor selecionado neste mês."
                         : "Nenhuma receita encontrada no mês selecionado."}

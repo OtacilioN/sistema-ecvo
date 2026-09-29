@@ -821,6 +821,7 @@ model CobrancaMatriculaAsaas {
   externalReference        String                           @unique
   competencia              String
   valor                    Decimal                          @db.Decimal(10, 2)
+  taxaAsaas                Decimal?                         @db.Decimal(10, 2)
   repasseSnapshot          Json?
   vencimentoAsaas          DateTime
   statusAsaas              String?
@@ -951,6 +952,7 @@ model CobrancaAsaas {
   tipo                     TipoCobrancaAsaas
   status                   StatusCobrancaAsaas    @default(CRIANDO)
   valorCobrado             Decimal?               @db.Decimal(10, 2)
+  taxaAsaas                Decimal?               @db.Decimal(10, 2)
   geracao                  Int                    @default(1)
   ativa                    Boolean                @default(true)
   asaasPaymentId           String?                @unique

@@ -334,6 +334,7 @@ export function listarMatriculasPendentes() {
           externalReference: true,
           competencia: true,
           valor: true,
+          taxaAsaas: true,
           vencimentoAsaas: true,
           pixCopiaECola: true,
           qrCodeExpiraEm: true,
@@ -654,6 +655,7 @@ export async function aprovarMatricula(
             ultimoEventoAsaas: cobrancaMatricula.ultimoEventoAsaas,
             recebidaEmAsaas: cobrancaMatricula.recebidaEmAsaas,
             valorCobrado: cobrancaMatricula.valor,
+            taxaAsaas: cobrancaMatricula.taxaAsaas,
           },
         })
         await tx.splitPagamentoAsaas.updateMany({

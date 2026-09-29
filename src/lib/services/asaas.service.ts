@@ -37,6 +37,7 @@ import {
 } from "@/lib/asaas/estado"
 import { mensagemErroAsaasSegura } from "@/lib/asaas/seguranca"
 import { db } from "@/lib/db"
+import { calcularTaxaAsaas } from "@/lib/financeiro/taxa-asaas"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { aplicarStatusContaAsaasDoWebhook } from "@/lib/services/conta-asaas-professor.service"
 import {
@@ -663,6 +664,11 @@ async function persistirCobrancaRemota(
       data: {
         asaasPaymentId: remota.id,
         status: remota.status === "RECEIVED" ? "RECEBIDA" : "PENDENTE",
+        taxaAsaas:
+          remota.status === "RECEIVED"
+            ? (anterior.taxaAsaas ??
+              calcularTaxaAsaas(Number(anterior.valorCobrado ?? remota.value)))
+            : undefined,
         ativa: cobrancaRemotaContinuaAtiva(remota.status) && !outraAtiva,
         recebidaEmAsaas:
           remota.status === "RECEIVED"
@@ -2174,6 +2180,7 @@ type CobrancaParaValidacaoWebhook = {
   asaasPaymentId: string | null
   externalReference: string
   valorCobrado: Prisma.Decimal | null
+  taxaAsaas: Prisma.Decimal | null
   tipo:
     | "PIX_MENSAL"
     | "PIX_AUTOMATICO_INICIAL"
@@ -2198,6 +2205,7 @@ const selecaoCobrancaWebhook = {
   asaasPaymentId: true,
   externalReference: true,
   valorCobrado: true,
+  taxaAsaas: true,
   tipo: true,
   status: true,
   vencimentoAsaas: true,
@@ -2785,6 +2793,7 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
             externalReference: true,
             finalidade: true,
             valor: true,
+            taxaAsaas: true,
             vencimentoAsaas: true,
           },
         })
@@ -2920,6 +2929,15 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
           data: {
             asaasPaymentId: webhook.payment.id,
             status: statusAplicado,
+            taxaAsaas:
+              statusAplicado === "RECEBIDA"
+                ? (cobranca.taxaAsaas ??
+                  calcularTaxaAsaas(
+                    Number(
+                      cobranca.valorCobrado ?? webhook.payment.value ?? cobranca.mensalidade.valor,
+                    ),
+                  ))
+                : undefined,
             ativa,
             recebidaEmAsaas,
             statusAsaas:
@@ -3078,6 +3096,13 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
               data: {
                 asaasPaymentId: webhook.payment?.id ?? undefined,
                 status: statusCobrancaAplicado,
+                taxaAsaas:
+                  statusCobrancaAplicado === "RECEBIDA"
+                    ? (cobrancaInicial.taxaAsaas ??
+                      calcularTaxaAsaas(
+                        Number(cobrancaInicial.valorCobrado ?? primeira?.valor ?? 0),
+                      ))
+                    : undefined,
                 ativa: true,
                 recebidaEmAsaas:
                   interpretarDataAsaas(webhook.payment?.paymentDate ?? webhook.dateCreated) ??
