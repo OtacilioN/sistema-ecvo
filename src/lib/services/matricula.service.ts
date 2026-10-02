@@ -8,6 +8,10 @@ import {
 } from "@/lib/aula-avulsa"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
+import {
+  ratearTaxaMatriculaFamilia,
+  snapshotPessoaMatriculaFamilia,
+} from "@/lib/financeiro/matricula-familia"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { registrarMensalidadeInicialPagaAsaas } from "@/lib/services/financeiro.service"
 import { criarNotificacao, enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
@@ -177,6 +181,7 @@ export async function solicitarMatricula(
           ? await tx.plano.findFirst({
               where: {
                 quantidadeModalidadesMatricula: modalidades.length,
+                familia: false,
                 ativo: true,
                 periodicidade: "MENSAL",
               },
@@ -359,6 +364,13 @@ export async function aprovarMatricula(
     origem?: "MANUAL" | "AUTOMATICA"
     transacao?: Prisma.TransactionClient
     enviarPush?: boolean
+    pagamentoFamilia?: {
+      cobrancaId: string
+      valorUnitario: number
+      taxaAsaas: number
+      snapshot: Prisma.InputJsonValue
+      titular: boolean
+    }
   },
 ) {
   const agora = params.agora ?? new Date()
@@ -392,6 +404,15 @@ export async function aprovarMatricula(
       })
       if (solicitacao?.status !== "PENDENTE") {
         return { ok: false as const, motivo: "Esta matrícula já foi analisada ou não existe." }
+      }
+      if (
+        solicitacao.matriculaFamiliaId &&
+        (!params.pagamentoFamilia || !params.transacao || origem !== "AUTOMATICA")
+      ) {
+        return {
+          ok: false as const,
+          motivo: "A matrícula família depende da confirmação do PIX do grupo.",
+        }
       }
       if (!solicitacao.senhaHash) {
         return { ok: false as const, motivo: "Esta solicitação não possui credenciais válidas." }
@@ -432,9 +453,30 @@ export async function aprovarMatricula(
             : null
       const plano = solicitacao.plano
       const finalidadeEsperada = aulaAvulsa ? "AULA_AVULSA" : "PRIMEIRA_MENSALIDADE"
-      const cobrancaMatricula = solicitacao.cobrancasAsaas.find(
-        (cobranca) => cobranca.status === "RECEBIDA" && cobranca.finalidade === finalidadeEsperada,
-      )
+      const cobrancaMatricula = params.pagamentoFamilia
+        ? await tx.cobrancaMatriculaAsaas.findUnique({
+            where: { id: params.pagamentoFamilia.cobrancaId },
+          })
+        : solicitacao.cobrancasAsaas.find(
+            (cobranca) =>
+              cobranca.status === "RECEBIDA" && cobranca.finalidade === finalidadeEsperada,
+          )
+      if (params.pagamentoFamilia) {
+        const grupo = await tx.matriculaFamilia.findUnique({
+          where: { id: solicitacao.matriculaFamiliaId ?? "" },
+          select: { titularSolicitacaoId: true, _count: { select: { pessoas: true } } },
+        })
+        if (
+          !grupo ||
+          grupo.titularSolicitacaoId !== cobrancaMatricula?.solicitacaoId ||
+          grupo._count.pessoas < 2 ||
+          grupo._count.pessoas > 4 ||
+          Math.round(Number(cobrancaMatricula.valor) * 100) !==
+            Math.round(grupo._count.pessoas * params.pagamentoFamilia.valorUnitario * 100)
+        ) {
+          return { ok: false as const, motivo: "Pagamento da matrícula família inconsistente." }
+        }
+      }
       const diaVencimento =
         mensalista && origem === "AUTOMATICA" && cobrancaMatricula?.recebidaEmAsaas
           ? Math.min(Number(formatarDataInput(cobrancaMatricula.recebidaEmAsaas).slice(-2)), 28)
@@ -451,7 +493,9 @@ export async function aprovarMatricula(
           modalidades.length > 3 ||
           !plano.ativo ||
           plano.periodicidade !== "MENSAL" ||
-          plano.quantidadeModalidadesMatricula !== modalidades.length
+          (params.pagamentoFamilia
+            ? !plano.familia
+            : plano.familia || plano.quantidadeModalidadesMatricula !== modalidades.length)
         ) {
           return {
             ok: false as const,
@@ -459,6 +503,7 @@ export async function aprovarMatricula(
           }
         }
         if (
+          cobrancaMatricula?.status !== "RECEBIDA" ||
           !cobrancaMatricula?.recebidaEmAsaas ||
           !cobrancaMatricula.asaasPaymentId ||
           !cobrancaMatricula.asaasCustomerId
@@ -618,35 +663,44 @@ export async function aprovarMatricula(
         const mensalidade = await registrarMensalidadeInicialPagaAsaas(tx, {
           alunoId: usuario.aluno.id,
           competencia: cobrancaMatricula.competencia,
-          valor: cobrancaMatricula.valor,
+          valor: params.pagamentoFamilia
+            ? params.pagamentoFamilia.valorUnitario
+            : cobrancaMatricula.valor,
           pagoEm: cobrancaMatricula.recebidaEmAsaas!,
           autorId: params.autorId,
           agora,
         })
         if (!mensalidade.ok) throw new ErroMatricula(mensalidade.motivo)
 
-        if (cobrancaMatricula.repasseSnapshot) {
+        if (params.pagamentoFamilia || cobrancaMatricula.repasseSnapshot) {
           await tx.mensalidade.update({
             where: { id: mensalidade.mensalidade.id },
-            data: { repasseSnapshot: cobrancaMatricula.repasseSnapshot },
+            data: {
+              repasseSnapshot:
+                params.pagamentoFamilia?.snapshot ?? cobrancaMatricula.repasseSnapshot!,
+            },
           })
         }
 
-        await tx.clienteAsaas.create({
-          data: {
-            alunoId: usuario.aluno.id,
-            asaasCustomerId: cobrancaMatricula.asaasCustomerId!,
-            tipoPagador: "ALUNO",
-          },
-        })
+        if (!params.pagamentoFamilia || params.pagamentoFamilia.titular)
+          await tx.clienteAsaas.create({
+            data: {
+              alunoId: usuario.aluno.id,
+              asaasCustomerId: cobrancaMatricula.asaasCustomerId!,
+              tipoPagador: "ALUNO",
+            },
+          })
         const cobrancaCanonica = await tx.cobrancaAsaas.create({
           data: {
             mensalidadeId: mensalidade.mensalidade.id,
             tipo: "PIX_MENSAL",
             status: "RECEBIDA",
             ativa: true,
-            asaasPaymentId: cobrancaMatricula.asaasPaymentId!,
-            externalReference: cobrancaMatricula.externalReference,
+            asaasPaymentId: params.pagamentoFamilia ? null : cobrancaMatricula.asaasPaymentId!,
+            cobrancaFamiliaId: params.pagamentoFamilia?.cobrancaId,
+            externalReference: params.pagamentoFamilia
+              ? `${cobrancaMatricula.externalReference}:pessoa:${solicitacao.id}`
+              : cobrancaMatricula.externalReference,
             vencimentoAsaas: cobrancaMatricula.vencimentoAsaas,
             statusAsaas: cobrancaMatricula.statusAsaas,
             pixCopiaECola: cobrancaMatricula.pixCopiaECola,
@@ -654,22 +708,28 @@ export async function aprovarMatricula(
             invoiceUrl: cobrancaMatricula.invoiceUrl,
             ultimoEventoAsaas: cobrancaMatricula.ultimoEventoAsaas,
             recebidaEmAsaas: cobrancaMatricula.recebidaEmAsaas,
-            valorCobrado: cobrancaMatricula.valor,
-            taxaAsaas: cobrancaMatricula.taxaAsaas,
+            valorCobrado: params.pagamentoFamilia
+              ? params.pagamentoFamilia.valorUnitario
+              : cobrancaMatricula.valor,
+            taxaAsaas: params.pagamentoFamilia
+              ? params.pagamentoFamilia.taxaAsaas
+              : cobrancaMatricula.taxaAsaas,
           },
         })
-        await tx.splitPagamentoAsaas.updateMany({
-          where: { cobrancaMatriculaAsaasId: cobrancaMatricula.id },
-          data: { cobrancaMatriculaAsaasId: null, cobrancaAsaasId: cobrancaCanonica.id },
-        })
+        if (!params.pagamentoFamilia)
+          await tx.splitPagamentoAsaas.updateMany({
+            where: { cobrancaMatriculaAsaasId: cobrancaMatricula.id },
+            data: { cobrancaMatriculaAsaasId: null, cobrancaAsaasId: cobrancaCanonica.id },
+          })
         await tx.mensalidade.update({
           where: { id: mensalidade.mensalidade.id },
           data: { cobrancaQuitacaoAsaasId: cobrancaCanonica.id },
         })
-        await tx.cobrancaMatriculaAsaas.update({
-          where: { id: cobrancaMatricula.id },
-          data: { mensalidadeId: mensalidade.mensalidade.id, ativa: false },
-        })
+        if (!params.pagamentoFamilia)
+          await tx.cobrancaMatriculaAsaas.update({
+            where: { id: cobrancaMatricula.id },
+            data: { mensalidadeId: mensalidade.mensalidade.id, ativa: false },
+          })
       }
 
       if (aulaAvulsa && cobrancaMatricula) {
@@ -796,6 +856,7 @@ export async function rejeitarMatricula(
         nome: true,
         status: true,
         tipoPagamento: true,
+        matriculaFamiliaId: true,
         cobrancasAsaas: {
           where: { status: "RECEBIDA" },
           select: { id: true },
@@ -806,6 +867,11 @@ export async function rejeitarMatricula(
     if (solicitacao?.status !== "PENDENTE") {
       return { ok: false as const, motivo: "Esta matrícula já foi analisada ou não existe." }
     }
+    if (solicitacao.matriculaFamiliaId)
+      return {
+        ok: false as const,
+        motivo: "A matrícula família deve ser conciliada como um único grupo.",
+      }
     if (
       (solicitacao.tipoPagamento === "MENSALISTA" || solicitacao.tipoPagamento === "AULA_AVULSA") &&
       solicitacao.cobrancasAsaas.length > 0
@@ -849,3 +915,80 @@ export async function rejeitarMatricula(
 }
 
 class ErroMatricula extends Error {}
+
+/** Executada somente com a cobrança bloqueada, na transação do recebimento. */
+export async function aprovarMatriculaFamilia(tx: Prisma.TransactionClient, cobrancaId: string) {
+  const cobranca = await tx.cobrancaMatriculaAsaas.findUnique({
+    where: { id: cobrancaId },
+    include: {
+      solicitacao: {
+        include: {
+          matriculaFamilia: {
+            include: { pessoas: { orderBy: { id: "asc" }, include: { plano: true } } },
+          },
+        },
+      },
+    },
+  })
+  const familia = cobranca?.solicitacao.matriculaFamilia
+  if (!familia) return null
+  await tx.$queryRaw`SELECT "id" FROM "MatriculaFamilia" WHERE "id" = ${familia.id} FOR UPDATE`
+  const grupoBloqueado = await tx.matriculaFamilia.findUnique({
+    where: { id: familia.id },
+    include: { pessoas: { orderBy: { id: "asc" }, include: { plano: true } } },
+  })
+  if (!grupoBloqueado) throw new ErroMatricula("Matrícula família não encontrada.")
+  const pessoas = grupoBloqueado.pessoas
+  if (
+    familia.titularSolicitacaoId !== cobranca.solicitacaoId ||
+    pessoas.length < 2 ||
+    pessoas.length > 4 ||
+    Number(cobranca.valor) <= 0 ||
+    Math.round(Number(cobranca.valor) * 100) % pessoas.length !== 0 ||
+    cobranca.finalidade !== "PRIMEIRA_MENSALIDADE" ||
+    cobranca.status !== "RECEBIDA" ||
+    cobranca.estornoParcialPendenteEm ||
+    !cobranca.recebidaEmAsaas ||
+    !cobranca.asaasPaymentId ||
+    !cobranca.asaasCustomerId
+  ) {
+    throw new ErroMatricula("O pagamento da matrícula família possui dados inconsistentes.")
+  }
+  if (pessoas.every((pessoa) => pessoa.status === "APROVADA")) return []
+  if (
+    pessoas.some(
+      (pessoa) =>
+        pessoa.status !== "PENDENTE" ||
+        pessoa.tipoPagamento !== "MENSALISTA" ||
+        !pessoa.plano?.familia ||
+        !pessoa.plano.ativo ||
+        pessoa.plano.periodicidade !== "MENSAL" ||
+        pessoa.plano.id !== cobranca.solicitacao.planoId,
+    )
+  ) {
+    throw new ErroMatricula("Os participantes da matrícula família possuem dados inconsistentes.")
+  }
+  const taxas = ratearTaxaMatriculaFamilia(Number(cobranca.taxaAsaas ?? 0), pessoas.length)
+  const notificacoes: NotificacaoMatriculaConcluida[] = []
+  for (const [indice, pessoa] of pessoas.entries()) {
+    const resultado = await aprovarMatricula({
+      solicitacaoId: pessoa.id,
+      autorId: null,
+      agora: cobranca.recebidaEmAsaas,
+      origem: "AUTOMATICA",
+      transacao: tx,
+      enviarPush: false,
+      pagamentoFamilia: {
+        cobrancaId,
+        valorUnitario: Number(cobranca.valor) / pessoas.length,
+        taxaAsaas: taxas[indice],
+        snapshot: snapshotPessoaMatriculaFamilia(cobranca.repasseSnapshot, pessoa.id),
+        titular: pessoa.id === familia.titularSolicitacaoId,
+      },
+    })
+    if (!resultado.ok) throw new ErroMatricula(resultado.motivo)
+    if ("notificacoes" in resultado) notificacoes.push(...resultado.notificacoes)
+  }
+  await tx.cobrancaMatriculaAsaas.update({ where: { id: cobrancaId }, data: { ativa: false } })
+  return notificacoes
+}

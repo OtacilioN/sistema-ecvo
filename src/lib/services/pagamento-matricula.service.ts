@@ -30,16 +30,22 @@ import {
 } from "@/lib/aula-avulsa"
 import { db } from "@/lib/db"
 import { calcularTaxaAsaas } from "@/lib/financeiro/taxa-asaas"
+import {
+  conciliarEstornoParcialPeloAsaas,
+  estornarMensalidadePeloAsaas,
+} from "@/lib/services/asaas.service"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import {
+  calcularRepasseFinanceiro,
   montarRepasseSnapshotMensalidade,
   obterOuCriarMensalidadeNaTransacao,
 } from "@/lib/services/financeiro.service"
 import {
   aprovarMatricula,
+  aprovarMatriculaFamilia,
   type NotificacaoMatriculaConcluida,
 } from "@/lib/services/matricula.service"
-import { criarNotificacao } from "@/lib/services/notificacao.service"
+import { criarNotificacao, enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
 import {
   MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
   payloadSplitAsaas,
@@ -133,6 +139,7 @@ export function obterPlanosMatriculaMensalista() {
   return db.plano.findMany({
     where: {
       quantidadeModalidadesMatricula: { not: null },
+      familia: false,
       ativo: true,
       periodicidade: "MENSAL",
     },
@@ -154,6 +161,7 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
       id: true,
       tokenAcompanhamento: true,
       tipoPagamento: true,
+      matriculaFamilia: { select: { tokenAcompanhamento: true } },
       status: true,
       criadoEm: true,
       aulaAvulsa: {
@@ -182,7 +190,7 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
   })
 }
 
-async function reservarCobranca(tokenAcompanhamento: string) {
+async function reservarCobranca(tokenAcompanhamento: string, familiaId?: string) {
   return db.$transaction(async (tx) => {
     const identificada = await tx.solicitacaoMatricula.findUnique({
       where: { tokenAcompanhamento },
@@ -196,6 +204,27 @@ async function reservarCobranca(tokenAcompanhamento: string) {
       where: { id: identificada.id },
       include: {
         plano: true,
+        matriculaFamilia: {
+          include: {
+            pessoas: {
+              include: {
+                plano: true,
+                modalidades: {
+                  include: {
+                    modalidade: {
+                      include: {
+                        turmas: {
+                          where: { ativa: true, professorId: { not: null } },
+                          include: { professor: { include: { usuario: true } } },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         modalidadePrincipal: {
           select: {
             id: true,
@@ -237,6 +266,33 @@ async function reservarCobranca(tokenAcompanhamento: string) {
     if (solicitacao.tipoPagamento !== "MENSALISTA" && solicitacao.tipoPagamento !== "AULA_AVULSA") {
       return { ok: false as const, motivo: "Esta modalidade de matrícula não possui cobrança." }
     }
+    const familia = solicitacao.matriculaFamilia
+    if (
+      familia &&
+      (!familiaId || familiaId !== familia.id || familia.titularSolicitacaoId !== solicitacao.id)
+    ) {
+      return { ok: false as const, motivo: "Use o pagamento único da matrícula família." }
+    }
+    if (
+      familia &&
+      (familia.pessoas.length < 2 ||
+        familia.pessoas.length > 4 ||
+        familia.pessoas.some(
+          (pessoa) =>
+            pessoa.status !== "PENDENTE" ||
+            pessoa.tipoPagamento !== "MENSALISTA" ||
+            !pessoa.plano?.familia ||
+            !pessoa.plano.ativo ||
+            pessoa.plano.periodicidade !== "MENSAL" ||
+            pessoa.plano.id !== solicitacao.planoId ||
+            Number(pessoa.plano.valor) <= 0,
+        ))
+    ) {
+      return {
+        ok: false as const,
+        motivo: "Os participantes da matrícula família estão inconsistentes.",
+      }
+    }
     if (!solicitacao.plano) {
       return { ok: false as const, motivo: "A solicitação não possui um plano vinculado." }
     }
@@ -253,8 +309,32 @@ async function reservarCobranca(tokenAcompanhamento: string) {
       solicitacao.modalidades.length > 0
         ? solicitacao.modalidades
         : [{ modalidade: solicitacao.modalidadePrincipal }]
-    const repasseSnapshot =
-      solicitacao.tipoPagamento === "MENSALISTA"
+    const repasseSnapshot = familia
+      ? familia.pessoas.flatMap((pessoa) => {
+          const snapshot = montarRepasseSnapshotMensalidade({
+            modalidadesPlano: pessoa.modalidades.map(({ modalidade }) => ({
+              plataformaExterna: null,
+              modalidade,
+            })),
+          })
+          const repasse = calcularRepasseFinanceiro({
+            valorRecebido: Number(solicitacao.plano!.valor),
+            itens: snapshot.map((item, index) => ({
+              ...item,
+              professorId: item.professorId ?? `pendencia:${index}`,
+            })),
+          })
+          return snapshot.map((item) => ({
+            ...item,
+            solicitacaoFamiliaId: pessoa.id,
+            valorRepasseProfessorOriginal: item.valorRepasseProfessor ?? null,
+            valorRepasseProfessor:
+              repasse.professores
+                .flatMap((professor) => professor.modalidades)
+                .find((modalidade) => modalidade.modalidadeId === item.modalidadeId)?.valor ?? 0,
+          }))
+        })
+      : solicitacao.tipoPagamento === "MENSALISTA"
         ? montarRepasseSnapshotMensalidade({
             modalidadesPlano: modalidadesRepasse.map(({ modalidade }) => ({
               plataformaExterna: null,
@@ -316,8 +396,11 @@ async function reservarCobranca(tokenAcompanhamento: string) {
         geracao,
         externalReference: referenciaCobranca(solicitacao.id, geracao),
         competencia: chaveCompetencia(),
-        valor:
-          solicitacao.tipoPagamento === "AULA_AVULSA" ? VALOR_AULA_AVULSA : solicitacao.plano.valor,
+        valor: familia
+          ? solicitacao.plano.valor.mul(familia.pessoas.length)
+          : solicitacao.tipoPagamento === "AULA_AVULSA"
+            ? VALOR_AULA_AVULSA
+            : solicitacao.plano.valor,
         repasseSnapshot: repasseSnapshot ?? Prisma.JsonNull,
         vencimentoAsaas: hoje,
       },
@@ -536,8 +619,32 @@ async function persistirCobranca(
       where: { cobrancaMatriculaAsaasId: id },
       orderBy: { criadoEm: "asc" },
     })
-    if (anterior.status === "RECEBIDA" && !recebida) {
+    const solicitacaoFamilia = await tx.solicitacaoMatricula.findUnique({
+      where: { id: anterior.solicitacaoId },
+      select: { matriculaFamiliaId: true },
+    })
+    const pagamentoFamilia = Boolean(solicitacaoFamilia?.matriculaFamiliaId)
+    if (
+      anterior.status === "RECEBIDA" &&
+      !recebida &&
+      !(pagamentoFamilia && ["REFUNDED", "PARTIALLY_REFUNDED"].includes(remota.status))
+    ) {
       return { cobranca: anterior, erroSplit: null }
+    }
+    if (
+      pagamentoFamilia &&
+      recebida &&
+      (anterior.status === "ESTORNADA" || anterior.estornoParcialPendenteEm)
+    ) {
+      return { cobranca: anterior, erroSplit: null }
+    }
+    if (pagamentoFamilia) {
+      const divergencia = divergenciaWebhook(anterior, remota)
+      if (divergencia) throw new Error(divergencia)
+      if (remota.customer !== customerId)
+        throw new Error("Cliente da cobrança de matrícula divergente.")
+      if (recebida && !interpretarDataAsaas(remota.paymentDate))
+        throw new Error("Data do recebimento da matrícula família ausente ou inválida.")
     }
     const converterComplemento = recebida && anterior.finalidade === "COMPLEMENTO_MENSALIDADE"
     if (converterComplemento) {
@@ -564,6 +671,8 @@ async function persistirCobranca(
         invoiceUrl: remota.invoiceUrl ?? null,
         recebidaEmAsaas: recebida ? recebidaEm : undefined,
         ultimoErro,
+        estornoParcialPendenteEm:
+          pagamentoFamilia && remota.status === "PARTIALLY_REFUNDED" ? new Date() : undefined,
       },
     })
     const splitsDaContingencia = splits.filter(
@@ -635,17 +744,29 @@ async function persistirCobranca(
         erroSplit: null,
       }
     }
-    return { cobranca: atualizada, erroSplit: null }
+    const notificacoes = pagamentoFamilia && recebida ? await aprovarMatriculaFamilia(tx, id) : []
+    if (
+      pagamentoFamilia &&
+      (remota.status === "REFUNDED" || remota.status === "PARTIALLY_REFUNDED")
+    )
+      await tratarEstornoMatriculaFamilia(tx, id, {
+        id: `consulta:${remota.id}:${remota.status}`,
+        event: remota.status === "REFUNDED" ? "PAYMENT_REFUNDED" : "PAYMENT_PARTIALLY_REFUNDED",
+        payment: remota,
+      } as WebhookAsaas)
+    return { cobranca: atualizada, erroSplit: null, notificacoes }
   })
+  if ("notificacoes" in persistencia && persistencia.notificacoes?.length)
+    await enviarPushParaNotificacoes(persistencia.notificacoes)
   if (persistencia.erroSplit) throw new Error(persistencia.erroSplit)
   return persistencia.cobranca
 }
 
-export async function gerarCobrancaMatriculaAsaas(
+async function gerarCobrancaMatriculaInterna(
   tokenAcompanhamento: string,
-  opcoes: { verificar?: boolean } = {},
+  opcoes: { verificar?: boolean; familiaId?: string } = {},
 ) {
-  const reserva = await reservarCobranca(tokenAcompanhamento)
+  const reserva = await reservarCobranca(tokenAcompanhamento, opcoes.familiaId)
   if (!reserva.ok) return reserva
   if (
     reserva.cobranca.status === "RECEBIDA" ||
@@ -969,7 +1090,7 @@ export async function gerarCobrancaComplementoAulaAvulsaAsaas(
   }
 }
 
-async function reservarReemissao(tokenAcompanhamento: string) {
+async function reservarReemissao(tokenAcompanhamento: string, familiaId?: string) {
   return db.$transaction(async (tx) => {
     const identificada = await tx.solicitacaoMatricula.findUnique({
       where: { tokenAcompanhamento },
@@ -988,6 +1109,9 @@ async function reservarReemissao(tokenAcompanhamento: string) {
       (solicitacao.tipoPagamento !== "MENSALISTA" && solicitacao.tipoPagamento !== "AULA_AVULSA")
     ) {
       return { ok: false as const, motivo: "Esta solicitação não aceita uma nova cobrança." }
+    }
+    if (solicitacao.matriculaFamiliaId && solicitacao.matriculaFamiliaId !== familiaId) {
+      return { ok: false as const, motivo: "Use o pagamento único da matrícula família." }
     }
     if (!solicitacao.plano || !solicitacao.cpf) {
       return {
@@ -1162,11 +1286,11 @@ async function registrarFalhaReemissao(params: {
   })
 }
 
-export async function reemitirCobrancaMatriculaAsaas(tokenAcompanhamento: string) {
-  const reserva = await reservarReemissao(tokenAcompanhamento)
+async function reemitirCobrancaMatriculaInterna(tokenAcompanhamento: string, familiaId?: string) {
+  const reserva = await reservarReemissao(tokenAcompanhamento, familiaId)
   if (!reserva.ok) return reserva
   if (reserva.retomar) {
-    return gerarCobrancaMatriculaAsaas(tokenAcompanhamento, { verificar: true })
+    return gerarCobrancaMatriculaInterna(tokenAcompanhamento, { verificar: true, familiaId })
   }
 
   const { cobranca, solicitacao } = reserva
@@ -1560,6 +1684,7 @@ export async function aplicarWebhookPagamentoMatricula(
     externalReference: string
     valor: Prisma.Decimal
     taxaAsaas?: Prisma.Decimal | null
+    estornoParcialPendenteEm?: Date | null
     vencimentoAsaas: Date
     finalidade: FinalidadeCobrancaMatriculaAsaas
   },
@@ -1597,6 +1722,27 @@ export async function aplicarWebhookPagamentoMatricula(
   const recebido = statusMatriculaPorEvento(webhook.event)
   const status = recebido ? proximoStatusCobrancaAsaas(cobranca.status, recebido) : cobranca.status
   const pagamentoRecebido = webhook.event === "PAYMENT_RECEIVED"
+  const solicitacaoDoPagamento = await tx.solicitacaoMatricula.findUnique({
+    where: { id: cobranca.solicitacaoId },
+    select: { matriculaFamiliaId: true },
+  })
+  if (
+    solicitacaoDoPagamento?.matriculaFamiliaId &&
+    (pagamentoRecebido || webhook.event === "PAYMENT_CONFIRMED") &&
+    (cobranca.status === "ESTORNADA" || cobranca.estornoParcialPendenteEm)
+  ) {
+    return { ok: true as const, duplicado: false as const }
+  }
+  if (
+    pagamentoRecebido &&
+    solicitacaoDoPagamento?.matriculaFamiliaId &&
+    !interpretarDataAsaas(webhook.payment.paymentDate ?? webhook.dateCreated)
+  )
+    return {
+      ok: false as const,
+      motivo: "Data do recebimento da matrícula família ausente ou inválida.",
+      duplicado: false as const,
+    }
   let notificacoes: NotificacaoMatriculaConcluida[] = []
   const pagamentoPriorizado = pagamentoRecebido || webhook.event === "PAYMENT_CONFIRMED"
   const outraAtiva = pagamentoPriorizado
@@ -1661,16 +1807,24 @@ export async function aplicarWebhookPagamentoMatricula(
     pagamentoRecebido &&
     (cobranca.finalidade === "PRIMEIRA_MENSALIDADE" || cobranca.finalidade === "AULA_AVULSA")
   ) {
-    const aprovacao = await aprovarMatricula({
-      solicitacaoId: cobranca.solicitacaoId,
-      autorId: null,
-      agora: interpretarDataAsaas(webhook.payment.paymentDate ?? webhook.dateCreated) ?? new Date(),
-      origem: "AUTOMATICA",
-      transacao: tx,
-      enviarPush: false,
-    })
-    if (!aprovacao.ok) throw new Error(aprovacao.motivo)
-    notificacoes = "notificacoes" in aprovacao ? (aprovacao.notificacoes ?? []) : []
+    const notificacoesFamilia = solicitacaoDoPagamento?.matriculaFamiliaId
+      ? await aprovarMatriculaFamilia(tx, cobranca.id)
+      : null
+    if (notificacoesFamilia) {
+      notificacoes = notificacoesFamilia
+    } else {
+      const aprovacao = await aprovarMatricula({
+        solicitacaoId: cobranca.solicitacaoId,
+        autorId: null,
+        agora:
+          interpretarDataAsaas(webhook.payment.paymentDate ?? webhook.dateCreated) ?? new Date(),
+        origem: "AUTOMATICA",
+        transacao: tx,
+        enviarPush: false,
+      })
+      if (!aprovacao.ok) throw new Error(aprovacao.motivo)
+      notificacoes = "notificacoes" in aprovacao ? (aprovacao.notificacoes ?? []) : []
+    }
   }
   if (pagamentoRecebido && cobranca.finalidade === "COMPLEMENTO_MENSALIDADE") {
     const recebidaEm =
@@ -1683,6 +1837,8 @@ export async function aplicarWebhookPagamentoMatricula(
       eventoId: webhook.id,
     })
   }
+  if (webhook.event === "PAYMENT_REFUNDED" || webhook.event === "PAYMENT_PARTIALLY_REFUNDED")
+    await tratarEstornoMatriculaFamilia(tx, cobranca.id, webhook)
   if (status !== cobranca.status) {
     await registrarLog(
       {
@@ -1700,4 +1856,116 @@ export async function aplicarWebhookPagamentoMatricula(
   return notificacoes.length > 0
     ? { ok: true as const, duplicado: false as const, notificacoes }
     : { ok: true as const, duplicado: false as const }
+}
+
+export function gerarCobrancaMatriculaAsaas(token: string, opcoes: { verificar?: boolean } = {}) {
+  return gerarCobrancaMatriculaInterna(token, opcoes)
+}
+
+export function reemitirCobrancaMatriculaAsaas(token: string) {
+  return reemitirCobrancaMatriculaInterna(token)
+}
+
+async function titularPagamentoFamilia(token: string) {
+  const familia = await db.matriculaFamilia.findUnique({
+    where: { tokenAcompanhamento: token },
+    include: { titularSolicitacao: true },
+  })
+  if (!familia?.titularSolicitacao || familia.titularSolicitacao.matriculaFamiliaId !== familia.id)
+    return null
+  return familia
+}
+
+export async function gerarPagamentoMatriculaFamilia(
+  token: string,
+  opcoes: { verificar?: boolean } = {},
+) {
+  const familia = await titularPagamentoFamilia(token)
+  if (!familia?.titularSolicitacao)
+    return { ok: false as const, motivo: "Matrícula família não encontrada." }
+  if (familia.titularSolicitacao.status === "APROVADA") {
+    const cobranca = await db.cobrancaMatriculaAsaas.findFirst({
+      where: { solicitacaoId: familia.titularSolicitacao.id, status: "RECEBIDA" },
+      orderBy: { geracao: "desc" },
+    })
+    if (cobranca) {
+      const atual =
+        opcoes.verificar && cobranca.asaasPaymentId && cobranca.asaasCustomerId
+          ? await persistirCobranca(
+              cobranca.id,
+              cobranca.asaasCustomerId,
+              await obterCobrancaAsaas(cobranca.asaasPaymentId),
+            )
+          : cobranca
+      if (
+        atual.estornoParcialPendenteEm ||
+        atual.statusAsaas === "PARTIALLY_REFUNDED" ||
+        atual.status === "ESTORNADA"
+      )
+        return {
+          ok: false as const,
+          motivo: "O pagamento da matrícula família requer conciliação.",
+        }
+      return { ok: true as const, cobranca: atual }
+    }
+    return { ok: false as const, motivo: "O pagamento da matrícula família requer conciliação." }
+  }
+  return gerarCobrancaMatriculaInterna(familia.titularSolicitacao.tokenAcompanhamento, {
+    ...opcoes,
+    familiaId: familia.id,
+  })
+}
+
+export async function reemitirPagamentoMatriculaFamilia(token: string) {
+  const familia = await titularPagamentoFamilia(token)
+  if (!familia?.titularSolicitacao)
+    return { ok: false as const, motivo: "Matrícula família não encontrada." }
+  return reemitirCobrancaMatriculaInterna(
+    familia.titularSolicitacao.tokenAcompanhamento,
+    familia.id,
+  )
+}
+
+async function tratarEstornoMatriculaFamilia(
+  tx: Prisma.TransactionClient,
+  cobrancaId: string,
+  webhook: WebhookAsaas,
+) {
+  const solicitacao = await tx.cobrancaMatriculaAsaas.findUnique({
+    where: { id: cobrancaId },
+    select: { solicitacao: { select: { matriculaFamiliaId: true } } },
+  })
+  if (!solicitacao?.solicitacao.matriculaFamiliaId) return
+  const alocacoes = await tx.cobrancaAsaas.findMany({
+    where: { cobrancaFamiliaId: cobrancaId },
+    orderBy: { id: "asc" },
+  })
+  for (const alocacao of alocacoes) {
+    await tx.$queryRaw`SELECT "id" FROM "Mensalidade" WHERE "id" = ${alocacao.mensalidadeId} FOR UPDATE`
+    if (webhook.event === "PAYMENT_REFUNDED") {
+      await tx.cobrancaAsaas.update({
+        where: { id: alocacao.id },
+        data: {
+          status: "ESTORNADA",
+          ativa: false,
+          statusAsaas: "REFUNDED",
+          ultimoEventoAsaas: webhook.event,
+          estornoParcialPendenteEm: null,
+        },
+      })
+      await estornarMensalidadePeloAsaas(tx, alocacao, webhook)
+    } else {
+      await tx.cobrancaAsaas.update({
+        where: { id: alocacao.id },
+        data: {
+          ativa: false,
+          statusAsaas: "PARTIALLY_REFUNDED",
+          ultimoEventoAsaas: webhook.event,
+          estornoParcialPendenteEm: new Date(),
+          ultimoErro: "Estorno parcial do PIX família; conciliação manual necessária.",
+        },
+      })
+      await conciliarEstornoParcialPeloAsaas(tx, alocacao, webhook)
+    }
+  }
 }

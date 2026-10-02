@@ -288,6 +288,73 @@ describe("receita de aulas avulsas no repasse mensal", () => {
   })
 })
 
+describe("recebimento único da matrícula família", () => {
+  it("conta receita, taxa e split do pai somente uma vez ao somar alocações", async () => {
+    mocks.registros.mockResolvedValue([])
+    mocks.outrasReceitas.mockResolvedValue({
+      total: 0,
+      valores: { aluguelHorario: 0, outros: 0 },
+      personalizado: false,
+      competencia: "2026-09",
+    })
+    const snapshot = [
+      {
+        modalidadeId: "boxe",
+        modalidadeNome: "Boxe",
+        professorId: "prof-boxe",
+        professorNome: "Professor Boxe",
+        plataformaExterna: null,
+        valorBase: 100,
+        valorRepasseProfessor: 60,
+      },
+    ]
+    const pai = {
+      splits: [
+        {
+          valorFixoSnapshot: 120,
+          status: "CONCLUIDO",
+          motivo: null,
+          contaAsaasProfessor: { professorId: "prof-boxe" },
+        },
+      ],
+      alocacoesFamilia: ["alocacao-1", "alocacao-2"].map((id) => ({
+        id,
+        valorCobrado: 90,
+        mensalidade: { repasseSnapshot: snapshot },
+      })),
+    }
+    mocks.mensalidades.mockResolvedValue(
+      [1, 2].map((indice) => ({
+        id: `mensalidade-${indice}`,
+        competencia: "2026-09",
+        valor: 90,
+        status: "PAGA",
+        pagoEm: new Date("2026-09-16T15:00:00Z"),
+        atualizadoEm: new Date("2026-09-16T15:00:00Z"),
+        formaPagamento: "PIX_ASAAS",
+        aluno: { usuario: { nome: `Pessoa ${indice}` }, modalidadesPlano: [] },
+        repasseSnapshot: snapshot,
+        cobrancaQuitacaoAsaas: {
+          id: `alocacao-${indice}`,
+          valorCobrado: 90,
+          taxaAsaas: 1.79,
+          splits: [],
+          cobrancaFamilia: pai,
+        },
+      })),
+    )
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+    expect(resumo(pagina, "Recebido")).toMatch(/180,00$/)
+    expect(resumo(pagina, "Taxas Asaas")).toMatch(/3,58$/)
+    expect(resumo(pagina, "Já repassado por split automático")).toMatch(/120,00$/)
+    expect(resumo(pagina, "A repassar manualmente")).toMatch(/\s0,00$/)
+    expect(resumo(pagina, "Sobra após professores e taxa Asaas")).toMatch(/56,42$/)
+    expect(linhasExtrato(pagina).every((linha) => /60,00$/.test(linha["Split concluído"]))).toBe(
+      true,
+    )
+  })
+})
+
 describe("outras fontes de receita no repasse mensal", () => {
   beforeEach(() => mocks.registros.mockResolvedValue([]))
 

@@ -6,17 +6,20 @@ import {
   CreditCard,
   ShieldCheck,
   TicketCheck,
+  Users,
 } from "lucide-react"
 import type { Metadata } from "next"
 import Link from "next/link"
 import { Marca } from "@/components/marca"
 import { planoCompativelComAulaAvulsa } from "@/lib/aula-avulsa"
 import { listarOpcoesPublicasMatricula } from "@/lib/services/matricula.service"
+import { obterPlanoFamilia } from "@/lib/services/matricula-familia.service"
 import {
   obterPlanoPadraoMatricula,
   obterPlanosMatriculaMensalista,
 } from "@/lib/services/pagamento-matricula.service"
 import { FormMatricula } from "./form-matricula"
+import { FormMatriculaFamilia } from "./form-matricula-familia"
 
 export const metadata: Metadata = {
   title: "Cadastro e matrícula",
@@ -25,7 +28,12 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic"
 
-export type TipoPagamentoMatriculaPublica = "MENSALISTA" | "AULA_AVULSA" | "WELLHUB" | "TOTALPASS"
+export type TipoPagamentoMatriculaPublica =
+  | "MENSALISTA"
+  | "AULA_AVULSA"
+  | "WELLHUB"
+  | "TOTALPASS"
+  | "FAMILIA"
 
 const OPCOES: Array<{
   tipo: TipoPagamentoMatriculaPublica
@@ -51,6 +59,15 @@ const OPCOES: Array<{
     chamada: "Plano direto ECVO",
     descricao: "Matrícula com primeira mensalidade via PIX e pagamentos mensais à ECVO.",
     icone: CreditCard,
+  },
+  {
+    tipo: "FAMILIA",
+    parametro: "familia",
+    titulo: "Matrícula plano família",
+    chamada: "De 2 a 4 pessoas",
+    descricao:
+      "Preencha os dados de cada pessoa na mesma matrícula e pague o total em um único PIX.",
+    icone: Users,
   },
   {
     tipo: "WELLHUB",
@@ -81,22 +98,27 @@ export default async function MatriculaPage({
   let modalidades: Awaited<ReturnType<typeof listarOpcoesPublicasMatricula>> = []
   let planoPadrao: Awaited<ReturnType<typeof obterPlanoPadraoMatricula>> = null
   let planosMensalista: Awaited<ReturnType<typeof obterPlanosMatriculaMensalista>> = []
+  let planoFamilia: Awaited<ReturnType<typeof obterPlanoFamilia>> = null
   if (tipoPagamento) {
     const resultados = await Promise.all([
       listarOpcoesPublicasMatricula(),
       tipoPagamento === "AULA_AVULSA" ? obterPlanoPadraoMatricula() : Promise.resolve(null),
       tipoPagamento === "MENSALISTA" ? obterPlanosMatriculaMensalista() : Promise.resolve([]),
+      tipoPagamento === "FAMILIA" ? obterPlanoFamilia() : Promise.resolve(null),
     ])
     modalidades = resultados[0]
     planoPadrao = resultados[1]
     planosMensalista = resultados[2]
+    planoFamilia = resultados[3]
   }
 
   const formularioDisponivel =
-    tipoPagamento === "AULA_AVULSA"
-      ? Boolean(planoPadrao && planoCompativelComAulaAvulsa(Number(planoPadrao.valor)))
-      : tipoPagamento !== "MENSALISTA" ||
-        planosMensalista.some((plano) => plano.quantidadeModalidadesMatricula === 1)
+    tipoPagamento === "FAMILIA"
+      ? Boolean(planoFamilia)
+      : tipoPagamento === "AULA_AVULSA"
+        ? Boolean(planoPadrao && planoCompativelComAulaAvulsa(Number(planoPadrao.valor)))
+        : tipoPagamento !== "MENSALISTA" ||
+          planosMensalista.some((plano) => plano.quantidadeModalidadesMatricula === 1)
 
   return (
     <main className="w-full max-w-5xl py-4">
@@ -138,6 +160,11 @@ export default async function MatriculaPage({
 
         {!tipoPagamento ? (
           <EscolhaTipoPagamento />
+        ) : tipoPagamento === "FAMILIA" && planoFamilia ? (
+          <FormMatriculaFamilia
+            modalidades={modalidades}
+            plano={{ ...planoFamilia, valor: Number(planoFamilia.valor) }}
+          />
         ) : formularioDisponivel ? (
           <FormMatricula
             modalidades={modalidades}
@@ -151,9 +178,11 @@ export default async function MatriculaPage({
           />
         ) : (
           <p className="p-8 text-center text-sm text-destructive">
-            {tipoPagamento === "AULA_AVULSA"
-              ? "A aula avulsa está temporariamente indisponível porque exige o plano mensal padrão de R$ 100,00."
-              : "A matrícula mensalista online está temporariamente indisponível porque o plano de 1 modalidade não foi configurado. As matrículas por Wellhub e TotalPass continuam disponíveis."}
+            {tipoPagamento === "FAMILIA"
+              ? "A matrícula plano família está temporariamente indisponível porque o plano unitário não está configurado."
+              : tipoPagamento === "AULA_AVULSA"
+                ? "A aula avulsa está temporariamente indisponível porque exige o plano mensal padrão de R$ 100,00."
+                : "A matrícula mensalista online está temporariamente indisponível porque o plano de 1 modalidade não foi configurado. As matrículas por Wellhub e TotalPass continuam disponíveis."}
           </p>
         )}
       </section>
@@ -169,7 +198,7 @@ export default async function MatriculaPage({
 function EscolhaTipoPagamento() {
   return (
     <div className="p-5 sm:p-8">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {OPCOES.map((opcao, indice) => {
           const Icone = opcao.icone
           return (
@@ -215,6 +244,7 @@ function normalizarTipoPagamento(
   const normalizado = valor.trim().toUpperCase()
   if (
     normalizado === "MENSALISTA" ||
+    normalizado === "FAMILIA" ||
     normalizado === "AULA_AVULSA" ||
     normalizado === "AULA-AVULSA" ||
     normalizado === "WELLHUB" ||
@@ -226,6 +256,7 @@ function normalizarTipoPagamento(
 }
 
 function tituloDoFluxo(tipo: TipoPagamentoMatriculaPublica) {
+  if (tipo === "FAMILIA") return "Matrícula plano família"
   if (tipo === "AULA_AVULSA") return "Cadastro para aula avulsa"
   if (tipo === "WELLHUB") return "Matrícula Wellhub"
   if (tipo === "TOTALPASS") return "Matrícula TotalPass"
@@ -233,6 +264,8 @@ function tituloDoFluxo(tipo: TipoPagamentoMatriculaPublica) {
 }
 
 function descricaoDoFluxo(tipo: TipoPagamentoMatriculaPublica) {
+  if (tipo === "FAMILIA")
+    return "Cadastre de 2 a 4 pessoas, cada uma vinculada ao plano unitário família. Confira o total e conclua a matrícula com um único PIX."
   if (tipo === "AULA_AVULSA") {
     return "Escolha uma aula real do calendário e pague R$ 20,00 por PIX. Na semana da aula, você poderá fechar a mensalidade por mais R$ 80,00."
   }

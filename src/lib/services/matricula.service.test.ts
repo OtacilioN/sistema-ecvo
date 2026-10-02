@@ -16,7 +16,8 @@ const mocks = vi.hoisted(() => {
     clienteAsaas: { create: vi.fn() },
     cobrancaAsaas: { create: vi.fn() },
     mensalidade: { update: vi.fn() },
-    cobrancaMatriculaAsaas: { update: vi.fn() },
+    cobrancaMatriculaAsaas: { update: vi.fn(), findUnique: vi.fn() },
+    matriculaFamilia: { findUnique: vi.fn() },
     splitPagamentoAsaas: { updateMany: vi.fn() },
     acessoAulaAvulsa: { create: vi.fn() },
     comparecimento: { findMany: vi.fn(), create: vi.fn() },
@@ -51,6 +52,7 @@ vi.mock("@/lib/services/notificacao.service", () => ({
 
 import {
   aprovarMatricula,
+  aprovarMatriculaFamilia,
   listarMatriculasPendentes,
   rejeitarMatricula,
   solicitarMatricula,
@@ -116,6 +118,7 @@ describe("solicitarMatricula", () => {
       expect.objectContaining({
         where: {
           quantidadeModalidadesMatricula: 1,
+          familia: false,
           ativo: true,
           periodicidade: "MENSAL",
         },
@@ -158,6 +161,7 @@ describe("solicitarMatricula", () => {
       expect.objectContaining({
         where: {
           quantidadeModalidadesMatricula: 3,
+          familia: false,
           ativo: true,
           periodicidade: "MENSAL",
         },
@@ -758,5 +762,141 @@ describe("rejeitarMatricula", () => {
         "Esta matrícula possui pagamento confirmado. Concilie o pagamento antes de rejeitar a solicitação.",
     })
     expect(mocks.tx.solicitacaoMatricula.updateMany).not.toHaveBeenCalled()
+  })
+})
+
+describe("aprovação do pagamento único família", () => {
+  function configurarFamilia(quantidade = 3) {
+    const plano = {
+      id: "plano-familia",
+      familia: true,
+      valor: 90,
+      ativo: true,
+      periodicidade: "MENSAL",
+      quantidadeModalidadesMatricula: null,
+    }
+    const pessoas = Array.from({ length: quantidade }, (_, index) => ({
+      id: `pessoa-${index}`,
+      nome: `Pessoa ${index}`,
+      email: `pessoa${index}@exemplo.com`,
+      cpf: `cpf-${index}`,
+      status: "PENDENTE",
+      senhaHash: "hash",
+      tipoPagamento: "MENSALISTA",
+      matriculaFamiliaId: "familia",
+      plano,
+      modalidadePrincipal: { id: "jiu", nome: "Jiu-Jitsu", ativa: true },
+      modalidades: [{ modalidade: { id: "jiu", nome: "Jiu-Jitsu", ativa: true } }],
+      cobrancasAsaas: [],
+    }))
+    const familia = { id: "familia", titularSolicitacaoId: pessoas[0].id, pessoas }
+    const cobranca = {
+      id: "pagamento-familia",
+      solicitacaoId: pessoas[0].id,
+      valor: quantidade * 90,
+      status: "RECEBIDA",
+      finalidade: "PRIMEIRA_MENSALIDADE",
+      taxaAsaas: 5.37,
+      recebidaEmAsaas: new Date("2026-09-02T12:00:00Z"),
+      asaasPaymentId: "pay-familia",
+      asaasCustomerId: "cus-titular",
+      competencia: "2026-09",
+      externalReference: "matricula:pessoa-0",
+      repasseSnapshot: pessoas.map((pessoa) => ({
+        solicitacaoFamiliaId: pessoa.id,
+        modalidadeId: "jiu",
+        modalidadeNome: "Jiu-Jitsu",
+        professorId: "professor",
+        professorNome: "Professor",
+        plataformaExterna: null,
+        valorBase: 100,
+        valorRepasseProfessor: 50,
+        valorRepasseProfessorOriginal: 50,
+      })),
+      solicitacao: { matriculaFamilia: familia, planoId: plano.id },
+    }
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockResolvedValue(cobranca)
+    mocks.tx.matriculaFamilia.findUnique.mockImplementation(({ include }) =>
+      include ? familia : { titularSolicitacaoId: pessoas[0].id, _count: { pessoas: quantidade } },
+    )
+    mocks.tx.solicitacaoMatricula.findUnique.mockImplementation(({ where }) =>
+      pessoas.find((pessoa) => pessoa.id === where.id),
+    )
+    mocks.tx.usuario.create.mockImplementation(({ data }) => ({
+      id: data.email,
+      aluno: { id: `aluno-${data.email}` },
+    }))
+    mocks.registrarMensalidadeInicialPagaAsaas.mockImplementation((_tx, params) => ({
+      ok: true,
+      mensalidade: { id: `mensalidade-${params.alunoId}` },
+    }))
+    mocks.tx.cobrancaAsaas.create.mockImplementation(({ data }) => ({
+      id: `alocacao-${data.mensalidadeId}`,
+      ...data,
+    }))
+    return { pessoas, cobranca }
+  }
+
+  it("distribui PIX R$270 em três mensalidades R$90 e taxa exata sem duplicar cliente, pagamento remoto ou splits", async () => {
+    configurarFamilia()
+    const notificacoes = await aprovarMatriculaFamilia(mocks.tx as never, "pagamento-familia")
+    expect(notificacoes).toHaveLength(6)
+    expect(mocks.registrarMensalidadeInicialPagaAsaas).toHaveBeenCalledTimes(3)
+    for (const chamada of mocks.registrarMensalidadeInicialPagaAsaas.mock.calls)
+      expect(chamada[1].valor).toBe(90)
+    const alocacoes = mocks.tx.cobrancaAsaas.create.mock.calls.map(([args]) => args.data)
+    expect(alocacoes.map((a) => a.taxaAsaas)).toEqual([1.79, 1.79, 1.79])
+    expect(
+      alocacoes.every(
+        (a) =>
+          a.asaasPaymentId === null &&
+          a.cobrancaFamiliaId === "pagamento-familia" &&
+          a.valorCobrado === 90,
+      ),
+    ).toBe(true)
+    expect(mocks.tx.clienteAsaas.create).toHaveBeenCalledTimes(1)
+    expect(mocks.tx.splitPagamentoAsaas.updateMany).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).toHaveBeenCalledWith({
+      where: { id: "pagamento-familia" },
+      data: { ativa: false },
+    })
+  })
+
+  it("preserva o valor congelado da cobrança após mudar o preço do plano", async () => {
+    const { pessoas } = configurarFamilia(3)
+    for (const pessoa of pessoas) pessoa.plano.valor = 120
+    await aprovarMatriculaFamilia(mocks.tx as never, "pagamento-familia")
+    expect(
+      mocks.registrarMensalidadeInicialPagaAsaas.mock.calls.map((chamada) => chamada[1].valor),
+    ).toEqual([90, 90, 90])
+  })
+
+  it("é idempotente após a aprovação de todos os participantes", async () => {
+    const { pessoas } = configurarFamilia(2)
+    for (const pessoa of pessoas) pessoa.status = "APROVADA"
+    expect(await aprovarMatriculaFamilia(mocks.tx as never, "pagamento-familia")).toEqual([])
+    expect(mocks.tx.usuario.create).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaAsaas.create).not.toHaveBeenCalled()
+  })
+
+  it("impede aprovação individual e total divergente", async () => {
+    const { cobranca } = configurarFamilia(2)
+    expect(
+      await aprovarMatricula({ solicitacaoId: "pessoa-0", autorId: null, origem: "AUTOMATICA" }),
+    ).toEqual({ ok: false, motivo: "A matrícula família depende da confirmação do PIX do grupo." })
+    cobranca.valor = 180.01
+    await expect(aprovarMatriculaFamilia(mocks.tx as never, "pagamento-familia")).rejects.toThrow(
+      "dados inconsistentes",
+    )
+    expect(mocks.tx.usuario.create).not.toHaveBeenCalled()
+  })
+
+  it("não cria nenhum aluno se um participante está rejeitado", async () => {
+    const { pessoas } = configurarFamilia(2)
+    pessoas[1].status = "REJEITADA"
+    await expect(aprovarMatriculaFamilia(mocks.tx as never, "pagamento-familia")).rejects.toThrow(
+      "participantes",
+    )
+    expect(mocks.tx.usuario.create).not.toHaveBeenCalled()
   })
 })

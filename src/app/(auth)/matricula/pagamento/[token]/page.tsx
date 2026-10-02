@@ -1,6 +1,6 @@
 import { CheckCircle2, Clock3, QrCode, RefreshCw, ShieldCheck } from "lucide-react"
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import QRCode from "qrcode"
 import {
   acaoGerarPagamentoMatricula,
@@ -27,6 +27,8 @@ export default async function PagamentoMatriculaPage({
 }) {
   const { token } = await params
   const solicitacao = await obterPagamentoMatriculaPublico(token)
+  if (solicitacao?.matriculaFamilia)
+    redirect(`/matricula/familia/pagamento/${solicitacao.matriculaFamilia.tokenAcompanhamento}`)
   if (
     !solicitacao?.plano ||
     (solicitacao.tipoPagamento !== "MENSALISTA" && solicitacao.tipoPagamento !== "AULA_AVULSA")

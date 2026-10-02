@@ -1,4 +1,4 @@
-import type { Plataforma, Prisma, StatusSplitPagamentoAsaas } from "@prisma/client"
+import { type Plataforma, Prisma, type StatusSplitPagamentoAsaas } from "@prisma/client"
 import { CircleCheckBig, Clock3, HandCoins } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +16,7 @@ import {
   normalizarProfessorFiltro,
 } from "@/lib/financeiro/filtros-repasse"
 import { CAMPOS_OUTRAS_RECEITAS } from "@/lib/financeiro/outras-receitas"
+import { ratearCentavos } from "@/lib/financeiro/rateio-familia"
 import { calcularTaxaAsaas } from "@/lib/financeiro/taxa-asaas"
 import { obterCustosFixosMensais } from "@/lib/services/custos-fixos.service"
 import {
@@ -100,6 +101,46 @@ type SplitRepasse = {
   contaAsaasProfessor: { professorId: string }
 }
 
+function splitsAlocacaoFamilia(
+  alocacaoId: string,
+  familia: {
+    splits: SplitRepasse[]
+    alocacoesFamilia: Array<{
+      id: string
+      valorCobrado: Prisma.Decimal | null
+      mensalidade: { repasseSnapshot: Prisma.JsonValue | null }
+    }>
+  },
+): SplitRepasse[] {
+  const indice = familia.alocacoesFamilia.findIndex((alocacao) => alocacao.id === alocacaoId)
+  if (indice < 0) return []
+  const direitos = familia.alocacoesFamilia.map((alocacao) => {
+    const itens = lerRepasseSnapshotMensalidade(alocacao.mensalidade.repasseSnapshot)
+      .filter((item) => !item.plataformaExterna && item.professorId)
+      .map((item) => ({ ...item, professorId: item.professorId! }))
+    return itens.length
+      ? calcularRepasseFinanceiro({
+          valorRecebido: Number(alocacao.valorCobrado),
+          itens,
+          politica: "MENSALIDADE_INTERNA",
+        }).professores
+      : []
+  })
+  return familia.splits.flatMap((split) => {
+    const pesos = direitos.map(
+      (professores) =>
+        professores.find(
+          (professor) => professor.professorId === split.contaAsaasProfessor.professorId,
+        )?.valor ?? 0,
+    )
+    if (!pesos.some((peso) => peso > 0)) return []
+    const parcelas = ratearCentavos(Math.round(Number(split.valorFixoSnapshot) * 100), pesos)
+    return parcelas[indice] > 0
+      ? [{ ...split, valorFixoSnapshot: new Prisma.Decimal(parcelas[indice] / 100) }]
+      : []
+  })
+}
+
 function valorUnico(valor: string | string[] | undefined) {
   return Array.isArray(valor) ? valor[0] : valor
 }
@@ -161,8 +202,29 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         include: {
           cobrancaQuitacaoAsaas: {
             select: {
+              id: true,
               valorCobrado: true,
               taxaAsaas: true,
+              cobrancaFamilia: {
+                select: {
+                  splits: {
+                    select: {
+                      valorFixoSnapshot: true,
+                      status: true,
+                      motivo: true,
+                      contaAsaasProfessor: { select: { professorId: true } },
+                    },
+                  },
+                  alocacoesFamilia: {
+                    orderBy: { id: "asc" },
+                    select: {
+                      id: true,
+                      valorCobrado: true,
+                      mensalidade: { select: { repasseSnapshot: true } },
+                    },
+                  },
+                },
+              },
               splits: {
                 select: {
                   valorFixoSnapshot: true,
@@ -298,7 +360,10 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   }
 
   for (const mensalidade of mensalidades) {
-    const splits = mensalidade.cobrancaQuitacaoAsaas?.splits ?? []
+    const quitacao = mensalidade.cobrancaQuitacaoAsaas
+    const splits = quitacao?.cobrancaFamilia
+      ? splitsAlocacaoFamilia(quitacao.id, quitacao.cobrancaFamilia)
+      : (quitacao?.splits ?? [])
     const valorRecebido =
       mensalidade.status === "PAGA"
         ? mensalidade.formaPagamento === "PIX_ASAAS_COMPLEMENTO_AULA_AVULSA" &&

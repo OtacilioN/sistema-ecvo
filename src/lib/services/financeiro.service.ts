@@ -14,6 +14,10 @@ import { CUSTOS_FIXOS_PADRAO, totalizarCustosFixos } from "@/lib/financeiro/cust
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
 import {
+  MOTIVO_VINCULO_PLANO_FAMILIA,
+  validarNovoVinculoPlanoFamilia,
+} from "@/lib/services/vinculo-plano-familia"
+import {
   chaveCompetencia,
   fimExclusivoDoDiaAcademia,
   formatarCompetencia,
@@ -880,9 +884,15 @@ export async function atualizarPlano(params: {
       quantidadeModalidadesMatricula: true,
       ativo: true,
       padrao: true,
+      familia: true,
     },
   })
   if (!anterior) return { ok: false as const, motivo: "Plano não encontrado." }
+  if (anterior.familia && (params.padrao || params.quantidadeModalidadesMatricula !== null))
+    return {
+      ok: false as const,
+      motivo: "O plano família não pode ser padrão nem uma oferta de matrícula individual.",
+    }
   if (params.padrao && (!params.ativo || params.periodicidade !== "MENSAL")) {
     return { ok: false as const, motivo: "O plano padrão precisa estar ativo e ser mensal." }
   }
@@ -992,7 +1002,7 @@ export async function excluirPlano(params: {
     }
   }
 
-  let planoDestino: { id: string; nome: string } | null = null
+  let planoDestino: { id: string; nome: string; familia: boolean } | null = null
   if (plano._count.alunos > 0) {
     if (!params.planoDestinoId) {
       return {
@@ -1005,9 +1015,10 @@ export async function excluirPlano(params: {
     }
     planoDestino = await db.plano.findUnique({
       where: { id: params.planoDestinoId },
-      select: { id: true, nome: true },
+      select: { id: true, nome: true, familia: true },
     })
     if (!planoDestino) return { ok: false as const, motivo: "Plano de destino não encontrado." }
+    if (planoDestino.familia) return { ok: false as const, motivo: MOTIVO_VINCULO_PLANO_FAMILIA }
   }
 
   await db.$transaction(async (tx) => {
@@ -1064,6 +1075,14 @@ export async function vincularPlanoMensalista(params: {
     },
   })
   if (!anterior) return { ok: false as const, motivo: "Aluno não encontrado." }
+  if (
+    !(await validarNovoVinculoPlanoFamilia(db, {
+      planoId: params.planoId,
+      planoAnteriorId: anterior.planoId,
+      alunoId: params.alunoId,
+    }))
+  )
+    return { ok: false as const, motivo: MOTIVO_VINCULO_PLANO_FAMILIA }
 
   const modalidadeIds = Array.from(new Set(params.modalidadeIds))
   const modalidadesDoAluno = new Set(anterior.modalidades.map((modalidade) => modalidade.id))

@@ -12,9 +12,12 @@ import {
   rejeitarMatricula,
   solicitarMatricula,
 } from "@/lib/services/matricula.service"
+import { solicitarMatriculaFamilia } from "@/lib/services/matricula-familia.service"
 import {
   gerarCobrancaMatriculaAsaas,
+  gerarPagamentoMatriculaFamilia,
   reemitirCobrancaMatriculaAsaas,
+  reemitirPagamentoMatriculaFamilia,
 } from "@/lib/services/pagamento-matricula.service"
 import {
   excluirComprovanteMatriculaSeExistir,
@@ -30,6 +33,59 @@ export type EstadoMatricula = { erro?: string; ok?: boolean } | undefined
 
 function primeiroErro(issues: { message: string }[]) {
   return issues[0]?.message ?? "Revise os dados informados."
+}
+
+export async function acaoSolicitarMatriculaFamilia(
+  _: EstadoMatricula,
+  formData: FormData,
+): Promise<EstadoMatricula> {
+  const quantidade = Number(formData.get("quantidadePessoas"))
+  if (!Number.isInteger(quantidade) || quantidade < 2 || quantidade > 4) {
+    return { erro: "O plano família exige de 2 a 4 pessoas." }
+  }
+  const pessoas = Array.from({ length: quantidade }, (_, indice) => {
+    const campo = (nome: string) => formData.get(`pessoas.${indice}.${nome}`)
+    return {
+      nome: campo("nome"),
+      email: campo("email"),
+      senha: campo("senha"),
+      confirmarSenha: campo("confirmarSenha"),
+      cpf: campo("cpf"),
+      telefone: campo("telefone"),
+      dataNascimento: campo("dataNascimento"),
+      endereco: campo("endereco"),
+      contatoEmergencia: campo("contatoEmergencia"),
+      restricoesMedicas: campo("restricoesMedicas"),
+      modalidadeIds: formData.getAll(`pessoas.${indice}.modalidadeIds`),
+      tipoPagamento: "MENSALISTA",
+      beneficioAtivoDeclarado: false,
+      aceiteDados: formData.get("aceiteDados"),
+    }
+  })
+  let resultado: Awaited<ReturnType<typeof solicitarMatriculaFamilia>>
+  try {
+    resultado = await solicitarMatriculaFamilia({ pessoas })
+  } catch {
+    return { erro: "Não foi possível enviar a matrícula família. Tente novamente em instantes." }
+  }
+  if (!resultado.ok) return { erro: resultado.motivo }
+  const token = resultado.matriculaFamilia.tokenAcompanhamento
+  await gerarPagamentoMatriculaFamilia(token)
+  redirect(`/matricula/familia/pagamento/${token}`)
+}
+
+export async function acaoGerarPagamentoMatriculaFamilia(formData: FormData) {
+  const token = formData.get("token")
+  if (typeof token !== "string" || token.length < 10) return
+  await gerarPagamentoMatriculaFamilia(token, { verificar: true })
+  revalidatePath(`/matricula/familia/pagamento/${token}`)
+}
+
+export async function acaoReemitirPagamentoMatriculaFamilia(formData: FormData) {
+  const token = formData.get("token")
+  if (typeof token !== "string" || token.length < 10) return
+  await reemitirPagamentoMatriculaFamilia(token)
+  revalidatePath(`/matricula/familia/pagamento/${token}`)
 }
 
 export async function acaoSolicitarMatricula(

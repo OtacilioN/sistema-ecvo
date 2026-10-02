@@ -8,6 +8,10 @@ import {
   atualizarVencimentosMensalidadesAluno,
   registrarMensalidadeInicialPaga,
 } from "@/lib/services/financeiro.service"
+import {
+  MOTIVO_VINCULO_PLANO_FAMILIA,
+  validarNovoVinculoPlanoFamilia,
+} from "@/lib/services/vinculo-plano-familia"
 import { excluirFotosInternasAntigas } from "@/lib/storage/blob-fotos"
 import { TERMO_RESPONSABILIDADE_VERSAO } from "@/lib/termo-responsabilidade"
 import { formatarDataHora } from "@/lib/utils/datas"
@@ -212,6 +216,8 @@ export async function criarAluno(
     cobrancasModalidades: params.cobrancasModalidades,
   })
   return db.$transaction(async (tx) => {
+    if (!(await validarNovoVinculoPlanoFamilia(tx, { planoId: params.planoId })))
+      throw new Error(MOTIVO_VINCULO_PLANO_FAMILIA)
     const usuario = await tx.usuario.create({
       data: {
         nome: params.nome,
@@ -346,6 +352,14 @@ export async function atualizarAluno(
     },
   })
   if (!atual) return { ok: false as const, motivo: "Aluno não encontrado." }
+  if (
+    !(await validarNovoVinculoPlanoFamilia(db, {
+      planoId: params.planoId,
+      planoAnteriorId: atual.planoId,
+      alunoId,
+    }))
+  )
+    return { ok: false as const, motivo: MOTIVO_VINCULO_PLANO_FAMILIA }
 
   const atualizado = await db.$transaction(async (tx) => {
     let mensalidadesAbertasMigradas = 0

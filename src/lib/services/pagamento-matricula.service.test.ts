@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => {
     alunoPlanoModalidade: { upsert: vi.fn() },
     comparecimento: { updateMany: vi.fn() },
     mensalidade: { update: vi.fn() },
-    cobrancaAsaas: { create: vi.fn() },
+    cobrancaAsaas: { create: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     cobrancaMatriculaAsaas: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -31,9 +31,10 @@ const mocks = vi.hoisted(() => {
   }
   const db = {
     plano: { findFirst: vi.fn() },
+    matriculaFamilia: { findUnique: vi.fn() },
     solicitacaoMatricula: { findUnique: vi.fn() },
     acessoAulaAvulsa: { findFirst: vi.fn() },
-    cobrancaMatriculaAsaas: { updateMany: vi.fn() },
+    cobrancaMatriculaAsaas: { updateMany: vi.fn(), findFirst: vi.fn() },
     splitPagamentoAsaas: { findMany: vi.fn() },
     $transaction: vi.fn(async (callback: (cliente: typeof tx) => unknown) => callback(tx)),
   }
@@ -58,6 +59,10 @@ const mocks = vi.hoisted(() => {
     calcularRepasseFinanceiro: vi.fn(),
     obterOuCriarMensalidadeNaTransacao: vi.fn(),
     criarNotificacao: vi.fn(),
+    aprovarMatriculaFamilia: vi.fn(),
+    estornarMensalidadePeloAsaas: vi.fn(),
+    conciliarEstornoParcialPeloAsaas: vi.fn(),
+    enviarPushParaNotificacoes: vi.fn(),
     aprovarMatricula: vi.fn().mockResolvedValue({ ok: true, alunoId: "aluno-1" }),
   }
 })
@@ -82,15 +87,23 @@ vi.mock("@/lib/services/financeiro.service", () => ({
 }))
 vi.mock("@/lib/services/notificacao.service", () => ({
   criarNotificacao: mocks.criarNotificacao,
+  enviarPushParaNotificacoes: mocks.enviarPushParaNotificacoes,
 }))
 vi.mock("@/lib/services/matricula.service", () => ({
   aprovarMatricula: mocks.aprovarMatricula,
+  aprovarMatriculaFamilia: mocks.aprovarMatriculaFamilia,
+}))
+
+vi.mock("@/lib/services/asaas.service", () => ({
+  estornarMensalidadePeloAsaas: mocks.estornarMensalidadePeloAsaas,
+  conciliarEstornoParcialPeloAsaas: mocks.conciliarEstornoParcialPeloAsaas,
 }))
 
 import {
   aplicarWebhookPagamentoMatricula,
   gerarCobrancaComplementoAulaAvulsaAsaas,
   gerarCobrancaMatriculaAsaas,
+  gerarPagamentoMatriculaFamilia,
   obterPagamentoMatriculaPublico,
   pixCobrancaMatriculaDisponivel,
   reemitirCobrancaMatriculaAsaas,
@@ -1450,5 +1463,172 @@ describe("conversão do complemento confirmado por consulta ao Asaas", () => {
     })
     expect(mocks.tx.aluno.update).not.toHaveBeenCalled()
     expect(mocks.obterOuCriarMensalidadeNaTransacao).not.toHaveBeenCalled()
+  })
+})
+
+describe("PIX agregado da matrícula família", () => {
+  function configurarFamilia(quantidade = 2, valor = 90) {
+    const pessoas = Array.from({ length: quantidade }, (_, index) => ({
+      ...solicitacao,
+      id: index === 0 ? solicitacao.id : `solicitacao-${index + 1}`,
+      planoId: "plano-familia",
+      plano: {
+        id: "plano-familia",
+        familia: true,
+        valor: new Prisma.Decimal(valor),
+        ativo: true,
+        periodicidade: "MENSAL",
+      },
+      modalidades: [{ modalidade: solicitacao.modalidadePrincipal }],
+    }))
+    const familia = { id: "familia", titularSolicitacaoId: solicitacao.id, pessoas }
+    const titular = { ...pessoas[0], matriculaFamiliaId: familia.id, matriculaFamilia: familia }
+    mocks.db.matriculaFamilia.findUnique.mockResolvedValue({
+      ...familia,
+      titularSolicitacao: titular,
+    })
+    mocks.tx.solicitacaoMatricula.findUnique.mockImplementation(({ select }) =>
+      select ? { id: titular.id, matriculaFamiliaId: familia.id } : titular,
+    )
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(null)
+    mocks.tx.cobrancaMatriculaAsaas.create.mockImplementation(({ data }) => ({
+      ...cobrancaAntiga,
+      ...data,
+      id: "cobranca-familia",
+      status: "CRIANDO",
+      asaasPaymentId: null,
+      atualizadoEm: new Date(),
+    }))
+    mocks.montarRepasseSnapshotMensalidade.mockReturnValue([
+      {
+        plataformaExterna: null,
+        modalidadeId: "modalidade-1",
+        professorId: "prof-1",
+        valorBase: 100,
+        valorRepasseProfessor: 50,
+      },
+    ])
+    mocks.calcularRepasseFinanceiro.mockReturnValue({
+      professores: [{ modalidades: [{ modalidadeId: "modalidade-1", valor: 50 }] }],
+    })
+    mocks.criarCobrancaAsaas.mockResolvedValue({ ...pagamentoRemoto(), value: quantidade * valor })
+    mocks.obterQrCodePixAsaas.mockResolvedValue({
+      payload: "pix-familia",
+      expirationDate: "2026-09-01 22:00:00",
+    })
+    mocks.tx.cobrancaMatriculaAsaas.findUniqueOrThrow.mockResolvedValue({
+      ...cobrancaAntiga,
+      valor: new Prisma.Decimal(quantidade * valor),
+      id: "cobranca-familia",
+      status: "CRIANDO",
+      asaasPaymentId: null,
+      vencimentoAsaas: new Date("2026-08-31T15:00:00Z"),
+    })
+    mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(({ data }) => ({
+      ...cobrancaAntiga,
+      ...data,
+    }))
+    mocks.aprovarMatriculaFamilia.mockResolvedValue([])
+    return { titular, familia }
+  }
+
+  it.each([
+    [2, 180],
+    [3, 270],
+    [4, 360],
+  ])("gera somente um PIX para %s participantes pelo total %s", async (quantidade, total) => {
+    configurarFamilia(quantidade)
+    expect((await gerarPagamentoMatriculaFamilia("token-familia")).ok).toBe(true)
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledTimes(1)
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledWith(expect.objectContaining({ value: total }))
+    expect(mocks.tx.cobrancaMatriculaAsaas.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        valor: new Prisma.Decimal(total),
+        repasseSnapshot: expect.arrayContaining([
+          expect.objectContaining({ solicitacaoFamiliaId: solicitacao.id }),
+        ]),
+      }),
+    })
+  })
+
+  it("usa o preço vigente do plano e bloqueia cobrança pelo token individual", async () => {
+    configurarFamilia(2, 95.25)
+    expect((await gerarPagamentoMatriculaFamilia("token-familia")).ok).toBe(true)
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledWith(expect.objectContaining({ value: 190.5 }))
+    mocks.criarCobrancaAsaas.mockClear()
+    expect((await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento)).ok).toBe(false)
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+  })
+
+  it("só libera os participantes na consulta validada RECEIVED", async () => {
+    configurarFamilia(2)
+    mocks.criarCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto("RECEIVED"),
+      value: 180,
+      paymentDate: "2026-08-31",
+    })
+    expect((await gerarPagamentoMatriculaFamilia("token-familia")).ok).toBe(true)
+    expect(mocks.aprovarMatriculaFamilia).toHaveBeenCalledWith(mocks.tx, "cobranca-familia")
+    mocks.aprovarMatriculaFamilia.mockClear()
+    mocks.criarCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto("RECEIVED"),
+      value: 90,
+      paymentDate: "2026-08-31",
+    })
+    expect((await gerarPagamentoMatriculaFamilia("token-familia")).ok).toBe(false)
+    expect(mocks.aprovarMatriculaFamilia).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "PAYMENT_REFUNDED",
+    "PAYMENT_PARTIALLY_REFUNDED",
+  ])("propaga %s para todas as alocações", async (event) => {
+    configurarFamilia(2)
+    const alocacoes = [
+      { id: "aloc-1", mensalidadeId: "mens-1" },
+      { id: "aloc-2", mensalidadeId: "mens-2" },
+    ]
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockResolvedValue({
+      solicitacao: { matriculaFamiliaId: "familia" },
+    })
+    mocks.tx.cobrancaAsaas.findMany.mockResolvedValue(alocacoes)
+    const resultado = await aplicarWebhookPagamentoMatricula(
+      mocks.tx as never,
+      { ...cobrancaAntiga, status: "RECEBIDA", valor: new Prisma.Decimal(180) },
+      {
+        id: "evento-estorno",
+        event,
+        payment: { ...pagamentoRemoto("REFUNDED"), value: 180 },
+      } as never,
+    )
+    expect(resultado.ok).toBe(true)
+    const reconciliar =
+      event === "PAYMENT_REFUNDED"
+        ? mocks.estornarMensalidadePeloAsaas
+        : mocks.conciliarEstornoParcialPeloAsaas
+    expect(reconciliar).toHaveBeenCalledTimes(2)
+    expect(mocks.tx.cobrancaAsaas.update).toHaveBeenCalledTimes(2)
+    expect(mocks.aprovarMatriculaFamilia).not.toHaveBeenCalled()
+  })
+})
+
+describe("proteção de estorno família contra eventos atrasados", () => {
+  it("mantém pendência parcial quando RECEIVED chega depois do estorno", async () => {
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({ matriculaFamiliaId: "familia" })
+    const cobranca = {
+      ...cobrancaAntiga,
+      status: "RECEBIDA" as const,
+      valor: new Prisma.Decimal(180),
+      estornoParcialPendenteEm: new Date(),
+      statusAsaas: "PARTIALLY_REFUNDED",
+    }
+    const resultado = await aplicarWebhookPagamentoMatricula(mocks.tx as never, cobranca, {
+      id: "evento-atrasado",
+      event: "PAYMENT_RECEIVED",
+      payment: { ...pagamentoRemoto("RECEIVED"), value: 180, paymentDate: "2026-08-31" },
+    } as never)
+    expect(resultado.ok).toBe(true)
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.aprovarMatriculaFamilia).not.toHaveBeenCalled()
   })
 })

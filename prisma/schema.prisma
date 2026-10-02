@@ -716,6 +716,7 @@ model Plano {
   limiteAulas                    Int? // null = ilimitado
   ativo                          Boolean                @default(true)
   padrao                         Boolean                @default(false)
+  familia                        Boolean                @default(false)
   quantidadeModalidadesMatricula Int?
   alunos                         Aluno[]
   mensalidades                   Mensalidade[]
@@ -723,6 +724,15 @@ model Plano {
   solicitacoesAprovadas          SolicitacaoMatricula[] @relation("PlanoAprovadoMatricula")
   criadoEm                       DateTime               @default(now())
   atualizadoEm                   DateTime               @updatedAt
+}
+
+model MatriculaFamilia {
+  id                   String                 @id @default(cuid())
+  tokenAcompanhamento  String                 @unique @default(cuid())
+  criadoEm             DateTime               @default(now())
+  pessoas              SolicitacaoMatricula[]
+  titularSolicitacaoId String?                @unique
+  titularSolicitacao   SolicitacaoMatricula?  @relation("TitularMatriculaFamilia", fields: [titularSolicitacaoId], references: [id], onDelete: Restrict)
 }
 
 model SolicitacaoMatricula {
@@ -746,6 +756,9 @@ model SolicitacaoMatricula {
   modalidades             SolicitacaoMatriculaModalidade[]
   plano                   Plano?                           @relation("PlanoSolicitacaoMatricula", fields: [planoId], references: [id], onDelete: Restrict)
   planoId                 String?
+  matriculaFamilia        MatriculaFamilia?                @relation(fields: [matriculaFamiliaId], references: [id], onDelete: Restrict)
+  matriculaFamiliaId      String?
+  titularDaFamilia        MatriculaFamilia?                @relation("TitularMatriculaFamilia")
   comprovantePagamentoUrl String?
   comprovanteContentType  String?
   comprovanteNomeOriginal String?
@@ -767,6 +780,7 @@ model SolicitacaoMatricula {
   @@index([modalidadePrincipalId], map: "SolicitacaoMatricula_modalidadeId_idx")
   @@index([aulaAvulsaId])
   @@index([planoId])
+  @@index([matriculaFamiliaId])
   @@index([tipoPagamento, status])
   @@index([analisadoPorId])
 }
@@ -835,6 +849,7 @@ model CobrancaMatriculaAsaas {
   criadoEm                 DateTime                         @default(now())
   atualizadoEm             DateTime                         @updatedAt
   splits                   SplitPagamentoAsaas[]
+  alocacoesFamilia         CobrancaAsaas[]                  @relation("AlocacoesPagamentoFamilia")
 
   @@unique([solicitacaoId, geracao])
   @@index([status])
@@ -944,19 +959,21 @@ model ClienteAsaas {
 }
 
 model CobrancaAsaas {
-  id                       String                 @id @default(cuid())
-  mensalidade              Mensalidade            @relation("TentativasCobrancaAsaas", fields: [mensalidadeId], references: [id], onDelete: Cascade)
+  id                       String                  @id @default(cuid())
+  mensalidade              Mensalidade             @relation("TentativasCobrancaAsaas", fields: [mensalidadeId], references: [id], onDelete: Cascade)
   mensalidadeId            String
-  contratoPixAutomatico    ContratoPixAutomatico? @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
+  cobrancaFamilia          CobrancaMatriculaAsaas? @relation("AlocacoesPagamentoFamilia", fields: [cobrancaFamiliaId], references: [id], onDelete: Restrict)
+  cobrancaFamiliaId        String?
+  contratoPixAutomatico    ContratoPixAutomatico?  @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
   contratoPixAutomaticoId  String?
   tipo                     TipoCobrancaAsaas
-  status                   StatusCobrancaAsaas    @default(CRIANDO)
-  valorCobrado             Decimal?               @db.Decimal(10, 2)
-  taxaAsaas                Decimal?               @db.Decimal(10, 2)
-  geracao                  Int                    @default(1)
-  ativa                    Boolean                @default(true)
-  asaasPaymentId           String?                @unique
-  externalReference        String                 @unique
+  status                   StatusCobrancaAsaas     @default(CRIANDO)
+  valorCobrado             Decimal?                @db.Decimal(10, 2)
+  taxaAsaas                Decimal?                @db.Decimal(10, 2)
+  geracao                  Int                     @default(1)
+  ativa                    Boolean                 @default(true)
+  asaasPaymentId           String?                 @unique
+  externalReference        String                  @unique
   vencimentoAsaas          DateTime?
   statusAsaas              String?
   pixCopiaECola            String?
@@ -966,13 +983,14 @@ model CobrancaAsaas {
   ultimoErro               String?
   recebidaEmAsaas          DateTime?
   estornoParcialPendenteEm DateTime?
-  criadoEm                 DateTime               @default(now())
-  atualizadoEm             DateTime               @updatedAt
-  mensalidadeQuitada       Mensalidade?           @relation("QuitacaoMensalidadeAsaas")
+  criadoEm                 DateTime                @default(now())
+  atualizadoEm             DateTime                @updatedAt
+  mensalidadeQuitada       Mensalidade?            @relation("QuitacaoMensalidadeAsaas")
   splits                   SplitPagamentoAsaas[]
 
   @@unique([mensalidadeId, geracao])
   @@index([contratoPixAutomaticoId])
+  @@index([cobrancaFamiliaId])
   @@index([status])
   @@index([mensalidadeId, ativa])
 }

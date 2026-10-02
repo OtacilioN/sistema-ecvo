@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => {
   const tx = {
+    solicitacaoMatricula: { findUnique: vi.fn() },
     $queryRaw: vi.fn(),
     eventoWebhookAsaas: { createMany: vi.fn(), delete: vi.fn() },
     clienteAsaas: { findUnique: vi.fn() },

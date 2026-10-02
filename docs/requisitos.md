@@ -81,6 +81,13 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   substitui nem duplica a confirmação integrada.
 - **RF-001.3** Cada nova solicitação Wellhub/TotalPass e cada aprovação concluída gera uma notificação interna
   para os gestores ativos.
+- **RF-001.4** A opção pública `?tipoPagamento=familia` permite uma matrícula conjunta de 2, 3 ou 4
+  pessoas, com dados e acesso próprios por pessoa. Cada participante escolhe uma modalidade e é
+  associado ao plano mensal **Valor unitario plano familia**, inicialmente R$ 90 por pessoa. O valor
+  vem do plano cadastrado: os totais iniciais são R$ 180, R$ 270 e R$ 360. Uma pessoa isolada não pode
+  usar essa opção. A primeira mensalidade é paga em um único PIX no nome da primeira pessoa;
+  a confirmação do recebimento libera todos os participantes na mesma transação e registra uma
+  mensalidade individual por pessoa, com rateio da taxa Asaas sem duplicar receita ou repasse.
 - **RF-001.4** No cadastro de aula avulsa, o candidato escolhe uma ocorrência futura, não cancelada e de
   turma recorrente ativa da modalidade selecionada. O Asaas cobra R$ 20,00; após `PAYMENT_RECEIVED` e
   aprovação automática, o aluno recebe reserva e check-in somente para essa `Aula`. Na semana civil

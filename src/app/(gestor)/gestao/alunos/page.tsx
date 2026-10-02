@@ -27,6 +27,7 @@ export default async function AlunosPage() {
     valor: Number(plano.valor),
     periodicidade: plano.periodicidade,
     ativo: plano.ativo,
+    familia: plano.familia,
   }))
 
   return (
@@ -34,7 +35,7 @@ export default async function AlunosPage() {
       <CabecalhoPagina titulo="Alunos" descricao="Cadastro e gestão de alunos.">
         <BotaoNovoAluno
           modalidades={opcoesModalidades}
-          planos={opcoesPlanos}
+          planos={opcoesPlanos.filter((plano) => !plano.familia)}
           competenciaAtual={competenciaAtual}
           dataHoje={dataHoje}
           diaVencimentoPadrao={diaVencimentoPadrao}

@@ -1872,7 +1872,7 @@ async function baixarMensalidadePeloAsaas(
   await sincronizarStatusFinanceiroAluno(tx, mensalidade.alunoId)
 }
 
-async function estornarMensalidadePeloAsaas(
+export async function estornarMensalidadePeloAsaas(
   tx: Prisma.TransactionClient,
   cobranca: { id: string; mensalidadeId: string; estornoParcialPendenteEm?: Date | null },
   webhook: WebhookAsaas,
@@ -1976,7 +1976,7 @@ async function estornarMensalidadePeloAsaas(
   await sincronizarStatusFinanceiroAluno(tx, mensalidade.alunoId)
 }
 
-async function conciliarEstornoParcialPeloAsaas(
+export async function conciliarEstornoParcialPeloAsaas(
   tx: Prisma.TransactionClient,
   cobranca: { id: string; mensalidadeId: string },
   webhook: WebhookAsaas,
@@ -2794,6 +2794,7 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
             finalidade: true,
             valor: true,
             taxaAsaas: true,
+            estornoParcialPendenteEm: true,
             vencimentoAsaas: true,
           },
         })
