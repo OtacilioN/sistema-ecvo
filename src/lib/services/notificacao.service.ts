@@ -129,6 +129,47 @@ export async function enviarPushParaNotificacoes(notificacoes: NotificacaoParaPu
   }
 }
 
+export async function gerarLembretesAluguelGestores(
+  cliente: Cliente = db,
+  params?: { agora?: Date },
+) {
+  const agora = params?.agora ?? new Date()
+  if (formatInTimeZone(agora, TIMEZONE, "dd") !== "15") {
+    return { ok: true as const, total: 0 }
+  }
+  if (!(await notificacaoAtiva(cliente, "FINANCEIRO"))) {
+    return { ok: true as const, total: 0 }
+  }
+
+  const competencia = formatInTimeZone(agora, TIMEZONE, "yyyy-MM")
+  const gestores = await cliente.usuario.findMany({
+    where: { papel: "GESTOR", ativo: true },
+    select: { id: true },
+  })
+
+  let total = 0
+  for (const gestor of gestores) {
+    const notificacao: NotificacaoParaPush = {
+      id: `lembrete-aluguel:${competencia}:${gestor.id}`,
+      usuarioId: gestor.id,
+      tipo: "FINANCEIRO",
+      titulo: "Lembrete de aluguel",
+      mensagem: "Hoje é dia 15. Lembre-se de pagar o aluguel da academia.",
+    }
+    // A chave mensal impede duplicação inclusive em execuções simultâneas do cron.
+    const criada = await cliente.notificacao.createMany({
+      data: [notificacao],
+      skipDuplicates: true,
+    })
+    if (criada.count === 0) continue
+
+    total++
+    await enviarPushParaNotificacoes([notificacao])
+  }
+
+  return { ok: true as const, total }
+}
+
 export async function gerarLembretesTreino(
   cliente: Cliente,
   params?: { agora?: Date; antecedenciaMinutos?: number; janelaMinutos?: number },

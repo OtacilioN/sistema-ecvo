@@ -305,6 +305,7 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 
 ### Notificações
 - **RF-073..078** Agendamento, lembrete de treino, cancelamento de aula, financeiro, graduação, check-in invalidado (configurável).
+- **Lembrete de aluguel**: no dia 15 de cada mês, às 8h no fuso da academia, notificar somente gestores ativos com “Hoje é dia 15. Lembre-se de pagar o aluguel da academia.”. Registrar notificação interna e tentar Web Push nas inscrições ativas, respeitando a configuração de notificações financeiras e limitando a um lembrete por gestor por mês.
 
 ### Auditoria
 - **RF-079** Log para ações críticas. **RF-080** Cada log: usuário, data/hora, tipo de ação, entidade, valor anterior, valor novo, justificativa.

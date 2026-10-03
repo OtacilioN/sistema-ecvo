@@ -8,6 +8,7 @@ import {
   enviarPushParaNotificacoes,
   expurgarNotificacoesAntigas,
   gerarLembretesAgendamentoAulasAmanha,
+  gerarLembretesAluguelGestores,
   gerarLembretesAniversario,
   gerarLembretesTreino,
   mensagemLembreteAgendamentoAmanha,
@@ -101,6 +102,106 @@ describe("campoConfiguracaoNotificacao", () => {
       },
     ])
 
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe("gerarLembretesAluguelGestores", () => {
+  function prepararCliente(notificarFinanceiro = true) {
+    const persistidas = new Map<string, NotificacaoData & { id: string }>()
+    const cliente = {
+      configuracaoAcademia: {
+        findUnique: vi.fn(async () => ({ notificarFinanceiro })),
+      },
+      usuario: {
+        findMany: vi.fn(async () => [{ id: "gestor-1" }, { id: "gestor-2" }]),
+      },
+      notificacao: {
+        createMany: vi.fn(async ({ data }: { data: Array<NotificacaoData & { id: string }> }) => {
+          let count = 0
+          for (const notificacao of data) {
+            if (persistidas.has(notificacao.id)) continue
+            persistidas.set(notificacao.id, notificacao)
+            count++
+          }
+          return { count }
+        }),
+      },
+    }
+    return {
+      cliente,
+      persistidas,
+      executar: (data: string) =>
+        gerarLembretesAluguelGestores(
+          cliente as unknown as Parameters<typeof gerarLembretesAluguelGestores>[0],
+          { agora: new Date(data) },
+        ),
+    }
+  }
+
+  it.each([
+    "2026-10-14T11:00:00Z",
+    "2026-10-16T11:00:00Z",
+    "2026-10-15T02:59:59Z",
+  ])("não envia fora do dia 15 no fuso da academia (%s)", async (data) => {
+    const { cliente, executar } = prepararCliente()
+    expect(await executar(data)).toEqual({ ok: true, total: 0 })
+    expect(cliente.usuario.findMany).not.toHaveBeenCalled()
+    expect(cliente.notificacao.createMany).not.toHaveBeenCalled()
+    expect(enviarPushParaNotificacao).not.toHaveBeenCalled()
+  })
+
+  it("notifica somente gestores ativos com a mensagem de aluguel e tenta o push", async () => {
+    const { cliente, persistidas, executar } = prepararCliente()
+    expect(await executar("2026-10-15T11:00:00Z")).toEqual({ ok: true, total: 2 })
+    expect(cliente.usuario.findMany).toHaveBeenCalledWith({
+      where: { papel: "GESTOR", ativo: true },
+      select: { id: true },
+    })
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(2)
+    for (const usuarioId of ["gestor-1", "gestor-2"]) {
+      const notificacao = {
+        id: `lembrete-aluguel:2026-10:${usuarioId}`,
+        usuarioId,
+        tipo: "FINANCEIRO",
+        titulo: "Lembrete de aluguel",
+        mensagem: "Hoje é dia 15. Lembre-se de pagar o aluguel da academia.",
+      }
+      expect(persistidas.get(notificacao.id)).toEqual(notificacao)
+      expect(enviarPushParaNotificacao).toHaveBeenCalledWith(notificacao)
+    }
+    expect(cliente.notificacao.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ usuarioId: "gestor-1" })],
+      skipDuplicates: true,
+    })
+  })
+
+  it("respeita a configuração de notificações financeiras", async () => {
+    const { cliente, executar } = prepararCliente(false)
+    expect(await executar("2026-10-15T11:00:00Z")).toEqual({ ok: true, total: 0 })
+    expect(cliente.usuario.findMany).not.toHaveBeenCalled()
+    expect(enviarPushParaNotificacao).not.toHaveBeenCalled()
+  })
+
+  it("não duplica em execuções concorrentes e permite novo lembrete no mês seguinte", async () => {
+    const { executar, persistidas } = prepararCliente()
+    const resultados = await Promise.all([
+      executar("2026-10-15T03:00:00Z"),
+      executar("2026-10-16T02:59:59Z"),
+    ])
+    expect(resultados.reduce((total, resultado) => total + resultado.total, 0)).toBe(2)
+    expect(persistidas.size).toBe(2)
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(2)
+    expect(await executar("2026-11-15T11:00:00Z")).toEqual({ ok: true, total: 2 })
+    expect(persistidas.size).toBe(4)
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(4)
+  })
+
+  it("mantém a notificação interna e continua os gestores quando o push falha", async () => {
+    const { executar, persistidas } = prepararCliente()
+    vi.mocked(enviarPushParaNotificacao).mockRejectedValueOnce(new Error("push indisponível"))
+    expect(await executar("2026-10-15T11:00:00Z")).toEqual({ ok: true, total: 2 })
+    expect(persistidas.size).toBe(2)
     expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(2)
   })
 })

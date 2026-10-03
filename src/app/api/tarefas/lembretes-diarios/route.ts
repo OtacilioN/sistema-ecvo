@@ -4,6 +4,7 @@ import {
 } from "@/lib/services/financeiro.service"
 import {
   expurgarNotificacoesAntigas,
+  gerarLembretesAluguelGestores,
   gerarLembretesAniversario,
 } from "@/lib/services/notificacao.service"
 
@@ -23,9 +24,10 @@ export async function GET(request: Request) {
   }
 
   const mensalidades = await gerarMensalidadesRecorrentes()
-  const [financeiro, aniversarios, expurgoNotificacoes] = await Promise.all([
+  const [financeiro, aniversarios, aluguel, expurgoNotificacoes] = await Promise.all([
     gerarLembretesFinanceiros(),
     gerarLembretesAniversario(),
+    gerarLembretesAluguelGestores(),
     expurgarNotificacoesAntigas(),
   ])
 
@@ -34,6 +36,7 @@ export async function GET(request: Request) {
     mensalidades,
     financeiro,
     aniversarios,
+    aluguel,
     expurgoNotificacoes,
   })
 }
