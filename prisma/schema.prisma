@@ -907,6 +907,8 @@ model Mensalidade {
   pagoEm                  DateTime?
   formaPagamento          String?
   observacao              String?
+  reativacaoMatricula     Boolean                 @default(false)
+  reativadaEm             DateTime?
   repasseSnapshot         Json?
   contratoPixAutomatico   ContratoPixAutomatico?  @relation(fields: [contratoPixAutomaticoId], references: [id], onDelete: SetNull)
   contratoPixAutomaticoId String?

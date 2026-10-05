@@ -1466,7 +1466,10 @@ async function concluirConversaoAulaAvulsa(
   await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${aluno.id} FOR UPDATE`
   const [acessoAtual, alunoAtual] = await Promise.all([
     tx.acessoAulaAvulsa.findUnique({ where: { id: acesso.id }, select: { status: true } }),
-    tx.aluno.findUnique({ where: { id: aluno.id }, select: { tipo: true, planoId: true } }),
+    tx.aluno.findUnique({
+      where: { id: aluno.id },
+      select: { tipo: true, planoId: true, status: true },
+    }),
   ])
   if (acessoAtual?.status === "CONVERTIDO") return
   if (!acessoAtual || !["ATIVO", "USADO"].includes(acessoAtual.status)) {
@@ -1479,7 +1482,7 @@ async function concluirConversaoAulaAvulsa(
   ) {
     throw new Error("O complemento foi recebido fora da semana elegível e requer conciliação.")
   }
-  if (alunoAtual?.tipo !== "AVULSO" || alunoAtual.planoId) {
+  if (alunoAtual?.tipo !== "AVULSO" || alunoAtual.planoId || alunoAtual.status === "CANCELADO") {
     throw new Error("O aluno não está mais elegível para a conversão da aula avulsa.")
   }
   if (
@@ -1498,7 +1501,12 @@ async function concluirConversaoAulaAvulsa(
   const diaVencimento = Math.min(28, Number(formatarDataInput(params.recebidaEm).slice(-2)))
   await tx.aluno.update({
     where: { id: aluno.id },
-    data: { tipo: "MENSALISTA", planoId: plano.id, diaVencimento },
+    data: {
+      tipo: "MENSALISTA",
+      planoId: plano.id,
+      diaVencimento,
+      ...(alunoAtual.status === "TRANCADO" ? { status: "ATIVO" as const } : {}),
+    },
   })
   await tx.alunoPlanoModalidade.upsert({
     where: {

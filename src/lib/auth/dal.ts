@@ -5,6 +5,7 @@ import { cache } from "react"
 import { alunoComMatriculaCancelada } from "@/lib/alunos/status"
 import { lerSessao, type SessaoPayload } from "@/lib/auth/session"
 import { db } from "@/lib/db"
+import { trancarAvulsosExpirados } from "@/lib/services/matricula-trancada.service"
 
 // Data Access Layer (DAL): camada central de autenticação/autorização.
 // Toda página, Server Action e Route Handler que toca dados protegidos DEVE
@@ -21,6 +22,7 @@ export const HOME_POR_PAPEL: Record<Papel, string> = {
 
 const ROTA_SESSAO_INVALIDA = "/api/auth/sessao-invalida"
 const ROTA_MATRICULA_CANCELADA = `${ROTA_SESSAO_INVALIDA}?motivo=matricula-cancelada`
+export const ROTA_REATIVACAO_MATRICULA = "/reativar-matricula"
 
 /** Verifica a sessão; redireciona para /login se ausente/inválida. Memoizado por render. */
 export const verificarSessao = cache(async (): Promise<SessaoPayload> => {
@@ -35,7 +37,7 @@ export const sessaoOpcional = cache(async (): Promise<SessaoPayload | null> => {
 })
 
 /** Carrega o usuário atual do banco (DTO enxuto — sem senha). */
-export const getUsuarioAtual = cache(async () => {
+const carregarUsuarioAtual = cache(async () => {
   const sessao = await verificarSessao()
   const usuario = await db.usuario.findUnique({
     where: { id: sessao.sub },
@@ -58,8 +60,35 @@ export const getUsuarioAtual = cache(async () => {
   ) {
     redirect(ROTA_MATRICULA_CANCELADA)
   }
+  if (usuario.papel === "ALUNO" && usuario.aluno) {
+    await trancarAvulsosExpirados({ alunoId: usuario.aluno.id })
+    const aluno = await db.aluno.findUnique({
+      where: { id: usuario.aluno.id },
+      select: { status: true },
+    })
+    if (!aluno) redirect(ROTA_SESSAO_INVALIDA)
+    if (alunoComMatriculaCancelada(aluno.status)) redirect(ROTA_MATRICULA_CANCELADA)
+    usuario.aluno.status = aluno.status
+  }
   return usuario
 })
+
+export const getUsuarioAtual = cache(async () => {
+  const usuario = await carregarUsuarioAtual()
+  if (usuario.papel === "ALUNO" && usuario.aluno?.status === "TRANCADO") {
+    redirect(ROTA_REATIVACAO_MATRICULA)
+  }
+  return usuario
+})
+
+/** Acesso restrito ao pagamento, sem liberar nenhuma operação normal do aluno. */
+export async function exigirAlunoTrancado() {
+  const usuario = await carregarUsuarioAtual()
+  if (usuario.papel !== "ALUNO") redirect(HOME_POR_PAPEL[usuario.papel])
+  if (!usuario.aluno) redirect(ROTA_SESSAO_INVALIDA)
+  if (usuario.aluno.status !== "TRANCADO") redirect(HOME_POR_PAPEL.ALUNO)
+  return { usuario, alunoId: usuario.aluno.id }
+}
 
 /**
  * Exige que o usuário tenha um dos papéis informados.

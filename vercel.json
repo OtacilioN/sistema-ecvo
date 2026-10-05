@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/tarefas/trancar-aulas-avulsas",
+      "schedule": "0 3 * * *"
+    },
+    {
       "path": "/api/tarefas/gerar-aulas-futuras",
       "schedule": "0 6 * * *"
     },

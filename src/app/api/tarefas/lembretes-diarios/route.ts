@@ -2,6 +2,7 @@ import {
   gerarLembretesFinanceiros,
   gerarMensalidadesRecorrentes,
 } from "@/lib/services/financeiro.service"
+import { trancarAvulsosExpirados } from "@/lib/services/matricula-trancada.service"
 import {
   expurgarNotificacoesAntigas,
   gerarLembretesAluguelGestores,
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
     return Response.json({ erro: "Não autorizado." }, { status: 401 })
   }
 
+  const avulsos = await trancarAvulsosExpirados()
   const mensalidades = await gerarMensalidadesRecorrentes()
   const [financeiro, aniversarios, aluguel, expurgoNotificacoes] = await Promise.all([
     gerarLembretesFinanceiros(),
@@ -33,6 +35,7 @@ export async function GET(request: Request) {
 
   return Response.json({
     ok: true,
+    avulsos,
     mensalidades,
     financeiro,
     aniversarios,

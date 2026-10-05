@@ -70,6 +70,7 @@ const mocks = vi.hoisted(() => {
     obterQrCodePixAsaas: vi.fn(),
     registrarLog: vi.fn(),
     sincronizarStatusFinanceiroAluno: vi.fn(),
+    efetivarReativacaoMatricula: vi.fn(),
     enviarPushParaNotificacoes: vi.fn(),
   }
 })
@@ -97,6 +98,9 @@ vi.mock("@/lib/asaas/client", () => ({
   obterQrCodePixAsaas: mocks.obterQrCodePixAsaas,
 }))
 vi.mock("@/lib/services/auditoria.service", () => ({ registrarLog: mocks.registrarLog }))
+vi.mock("@/lib/services/matricula-trancada.service", () => ({
+  efetivarReativacaoMatricula: mocks.efetivarReativacaoMatricula,
+}))
 vi.mock("@/lib/services/notificacao.service", () => ({
   enviarPushParaNotificacoes: mocks.enviarPushParaNotificacoes,
 }))
@@ -117,6 +121,7 @@ import {
   processarCobrancasPixAutomaticoPendentes,
   processarWebhookAsaas,
   reconciliarPendenciasAsaas,
+  verificarPagamentoReativacaoAsaas,
 } from "./asaas.service"
 import * as pagamentoMatriculaService from "./pagamento-matricula.service"
 
@@ -220,6 +225,71 @@ describe("processarWebhookAsaas", () => {
       },
     })
     expect(mocks.sincronizarStatusFinanceiroAluno).toHaveBeenCalledWith(mocks.tx, "aluno-1")
+  })
+
+  it("CONFIRMED não quita nem reativa uma matrícula trancada", async () => {
+    const atual = await mocks.tx.mensalidade.findUnique()
+    mocks.tx.mensalidade.findUnique.mockResolvedValue({ ...atual, reativacaoMatricula: true })
+    mocks.obterCobrancaAsaas.mockResolvedValue({ ...pagamentoRemoto(), status: "CONFIRMED" })
+    await processarWebhookAsaas({
+      id: "evt-reativacao-confirmed",
+      event: "PAYMENT_CONFIRMED",
+      payment: { id: "pay_1" },
+    })
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+    expect(mocks.efetivarReativacaoMatricula).not.toHaveBeenCalled()
+  })
+
+  it("RECEIVED quita e reativa na mesma transação após validar o pagamento", async () => {
+    const atual = await mocks.tx.mensalidade.findUnique()
+    const reativacao = { ...atual, reativacaoMatricula: true, reativadaEm: null }
+    mocks.tx.mensalidade.findUnique.mockResolvedValue(reativacao)
+    await processarWebhookAsaas({
+      id: "evt-reativacao-received",
+      event: "PAYMENT_RECEIVED",
+      payment: { id: "pay_1" },
+    })
+    expect(mocks.tx.mensalidade.updateMany).toHaveBeenCalled()
+    expect(mocks.efetivarReativacaoMatricula).toHaveBeenCalledWith(
+      mocks.tx,
+      reativacao,
+      new Date("2026-09-10T15:00:00Z"),
+    )
+  })
+
+  it("não consulta nem aceita pagamento de reativação de outro aluno", async () => {
+    mocks.db.cobrancaAsaas.findFirst.mockResolvedValue(null)
+    expect(
+      (
+        await verificarPagamentoReativacaoAsaas({
+          alunoId: "outro-aluno",
+          mensalidadeId: "mensalidade-1",
+        })
+      ).ok,
+    ).toBe(false)
+    expect(mocks.db.cobrancaAsaas.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          mensalidade: { alunoId: "outro-aluno", reativacaoMatricula: true },
+        }),
+      }),
+    )
+    expect(mocks.obterCobrancaAsaas).not.toHaveBeenCalled()
+  })
+
+  it("consulta PENDING mantém a matrícula aguardando sem falsa baixa", async () => {
+    mocks.db.cobrancaAsaas.findFirst.mockResolvedValue({ asaasPaymentId: "pay_1" })
+    mocks.obterCobrancaAsaas.mockResolvedValue({ ...pagamentoRemoto(), status: "PENDING" })
+    expect(
+      (
+        await verificarPagamentoReativacaoAsaas({
+          alunoId: "aluno-1",
+          mensalidadeId: "mensalidade-1",
+        })
+      ).ok,
+    ).toBe(true)
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+    expect(mocks.efetivarReativacaoMatricula).not.toHaveBeenCalled()
   })
 
   it.each([

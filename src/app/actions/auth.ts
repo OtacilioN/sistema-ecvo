@@ -3,10 +3,16 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { alunoComMatriculaCancelada } from "@/lib/alunos/status"
-import { exigirPapel, getUsuarioAtual, HOME_POR_PAPEL } from "@/lib/auth/dal"
+import {
+  exigirPapel,
+  getUsuarioAtual,
+  HOME_POR_PAPEL,
+  ROTA_REATIVACAO_MATRICULA,
+} from "@/lib/auth/dal"
 import { verificarSenha } from "@/lib/auth/senha"
 import { criarSessao, destruirSessao } from "@/lib/auth/session"
 import { db } from "@/lib/db"
+import { trancarAvulsosExpirados } from "@/lib/services/matricula-trancada.service"
 import {
   alterarSenhaPropria,
   atualizarFotoUsuario,
@@ -38,7 +44,7 @@ export async function entrar(_anterior: EstadoLogin, formData: FormData): Promis
   const { email, senha } = parsed.data
   const usuario = await db.usuario.findUnique({
     where: { email },
-    include: { aluno: { select: { status: true } } },
+    include: { aluno: { select: { id: true, status: true } } },
   })
 
   // Mensagem genérica para não revelar se o e-mail existe (segurança).
@@ -56,7 +62,21 @@ export async function entrar(_anterior: EstadoLogin, formData: FormData): Promis
     return { erro: "Matrícula cancelada. Procure a gestão." }
   }
 
+  if (usuario.papel === "ALUNO" && usuario.aluno) {
+    await trancarAvulsosExpirados({ alunoId: usuario.aluno.id })
+    const aluno = await db.aluno.findUnique({
+      where: { id: usuario.aluno.id },
+      select: { status: true },
+    })
+    if (!aluno || alunoComMatriculaCancelada(aluno.status)) {
+      return { erro: "Matrícula cancelada. Procure a gestão." }
+    }
+    usuario.aluno.status = aluno.status
+  }
   await criarSessao({ sub: usuario.id, papel: usuario.papel, nome: usuario.nome })
+  if (usuario.papel === "ALUNO" && usuario.aluno?.status === "TRANCADO") {
+    redirect(ROTA_REATIVACAO_MATRICULA)
+  }
   redirect(HOME_POR_PAPEL[usuario.papel])
 }
 

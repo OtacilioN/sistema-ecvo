@@ -75,7 +75,11 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
    Use Asaas Production somente no escopo Production; Preview e Development usam Sandbox.
 3. O `build` roda `prisma generate`; aplique migrations com `prisma migrate deploy`
    (via Build Command `npm run db:deploy && npm run build` ou um passo de CI).
-4. O Vercel Cron chama `/api/tarefas/gerar-aulas-futuras` diariamente às 06:00 UTC
+4. O Vercel Cron chama `/api/tarefas/trancar-aulas-avulsas` diariamente às 03:00 UTC
+   (meia-noite no horário da academia), trancando avulsos cujo prazo do complemento venceu;
+   o login também verifica esse prazo. Alunos trancados são encaminhados a `/reativar-matricula`,
+   com PIX da mensalidade integral e reativação após o recebimento pelo Asaas.
+   `/api/tarefas/gerar-aulas-futuras` roda diariamente às 06:00 UTC
    para manter oito semanas de aulas recorrentes futuras geradas, e
    `/api/tarefas/lembretes-diarios` às 11:00 UTC para gerar mensalidades recorrentes
    da competência atual, notificar gestores sobre mensalidades a vencer/inadimplentes

@@ -98,6 +98,17 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   R$ 20,00 e recebimento complementar de R$ 80,00 preservados para auditoria. A consulta valida
   identificador, cliente, referência, meio, valor e vencimento da cobrança; `CONFIRMED` não converte
   o acesso. A competência da cobrança e a data efetiva do pagamento são preservadas.
+- **RF-001.5** Ao encerrar o prazo do complemento, alunos avulsos operacionais sem plano interno
+  passam a `TRANCADO`, com auditoria, saindo das contagens e operações de alunos ativos. A tarefa
+  diária executa a mudança à meia-noite da academia; login e verificação da sessão também a
+  sincronizam. Aulas e pagamentos anteriores são preservados.
+- **RF-001.6** O aluno trancado pode autenticar somente para acessar a tela de reativação, que
+  avisa sobre o trancamento e já prepara o QR Code PIX da mensalidade. Avulsos contratam uma
+  mensalidade integral de R$ 100,00 na modalidade original, sem crédito dos R$ 20,00. Alunos com
+  plano mensal anterior preservam o plano, seu valor e modalidades. Gerar a cobrança não libera
+  a matrícula: somente o recebimento efetivo (`PAYMENT_RECEIVED` ou consulta autenticada com
+  status `RECEIVED`) baixa a mensalidade e reativa a conta na mesma transação. A mesma mensalidade
+  e cobrança são reutilizadas em visitas repetidas; matrículas canceladas não entram nesse fluxo.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,

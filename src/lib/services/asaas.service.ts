@@ -45,6 +45,7 @@ import {
   sincronizarStatusFinanceiroAluno,
   statusMensalidadeEfetivo,
 } from "@/lib/services/financeiro.service"
+import { efetivarReativacaoMatricula } from "@/lib/services/matricula-trancada.service"
 import { enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
 import { aplicarWebhookPagamentoMatricula } from "@/lib/services/pagamento-matricula.service"
 import {
@@ -776,7 +777,11 @@ export async function gerarCobrancaPixMensal(params: {
       (["RECUSADA", "CANCELADA", "VENCIDA"].includes(cobrancaAtual.status) ||
         cobrancaAtual.pixCopiaECola),
   )
-  if (mensalidade.aluno.tipoCobrancaPix !== "MENSAL" && !fallbackAutomatico) {
+  if (
+    mensalidade.aluno.tipoCobrancaPix !== "MENSAL" &&
+    !fallbackAutomatico &&
+    !mensalidade.reativacaoMatricula
+  ) {
     return { ok: false as const, motivo: "Esta mensalidade pertence ao PIX Automático." }
   }
   if (fallbackAutomatico && cobrancaAtual?.asaasPaymentId) {
@@ -1765,6 +1770,8 @@ async function baixarMensalidadePeloAsaas(
     include: { aluno: { select: { usuarioId: true } } },
   })
   if (!mensalidade) return
+  // Uma autorização/CONFIRMED não libera matrícula trancada; é necessário RECEIVED.
+  if (mensalidade.reativacaoMatricula && webhook.event !== "PAYMENT_RECEIVED") return
   if (
     mensalidade.status === "PAGA" &&
     mensalidade.formaPagamento === "PIX_ASAAS" &&
@@ -1869,7 +1876,55 @@ async function baixarMensalidadePeloAsaas(
       mensagem: `${mensalidade.competencia}: pagamento via PIX confirmado.`,
     },
   })
+  await efetivarReativacaoMatricula(tx, mensalidade, dataRecebimento)
   await sincronizarStatusFinanceiroAluno(tx, mensalidade.alunoId)
+}
+
+/** Consulta autenticada como contingência quando o webhook ainda não chegou. */
+export async function verificarPagamentoReativacaoAsaas(params: {
+  alunoId: string
+  mensalidadeId: string
+}) {
+  const cobranca = await db.cobrancaAsaas.findFirst({
+    where: {
+      mensalidadeId: params.mensalidadeId,
+      mensalidade: { alunoId: params.alunoId, reativacaoMatricula: true },
+      asaasPaymentId: { not: null },
+    },
+    orderBy: { geracao: "desc" },
+    select: { asaasPaymentId: true },
+  })
+  if (!cobranca?.asaasPaymentId) {
+    return { ok: false as const, motivo: "A cobrança de reativação ainda não está disponível." }
+  }
+  try {
+    const remota = await obterCobrancaAsaas(cobranca.asaasPaymentId)
+    const evento = eventoPagamentoParaStatusAsaas(remota.status)
+    if (!evento && remota.status === "PENDING") return { ok: true as const, duplicado: false }
+    if (!evento)
+      return { ok: false as const, motivo: "A cobrança requer conciliação com a gestão." }
+    // Valida cliente, referência, valor, meio e vencimento antes de qualquer baixa.
+    return await aplicarWebhookAsaas({
+      id: `consulta-reativacao:${cobranca.asaasPaymentId}:${remota.status}`,
+      event: evento,
+      payment: {
+        id: remota.id,
+        customer: remota.customer,
+        billingType: remota.billingType,
+        externalReference: remota.externalReference,
+        status: remota.status,
+        value: remota.value,
+        dueDate: remota.dueDate,
+        paymentDate: remota.paymentDate,
+        refundedValue: remota.refundedValue,
+        pixAutomaticAuthorizationId: remota.pixAutomaticAuthorizationId,
+        conciliationIdentifier: remota.conciliationIdentifier,
+        split: remota.split,
+      },
+    })
+  } catch (erro) {
+    return { ok: false as const, motivo: mensagemErroAsaasSegura(erro) }
+  }
 }
 
 export async function estornarMensalidadePeloAsaas(
