@@ -621,9 +621,11 @@ async function persistirCobranca(
     })
     const solicitacaoFamilia = await tx.solicitacaoMatricula.findUnique({
       where: { id: anterior.solicitacaoId },
-      select: { matriculaFamiliaId: true },
+      select: { matriculaFamiliaId: true, status: true },
     })
     const pagamentoFamilia = Boolean(solicitacaoFamilia?.matriculaFamiliaId)
+    const pagamentoInicial =
+      anterior.finalidade === "PRIMEIRA_MENSALIDADE" || anterior.finalidade === "AULA_AVULSA"
     if (
       anterior.status === "RECEBIDA" &&
       !recebida &&
@@ -632,19 +634,24 @@ async function persistirCobranca(
       return { cobranca: anterior, erroSplit: null }
     }
     if (
-      pagamentoFamilia &&
+      (pagamentoFamilia || pagamentoInicial) &&
       recebida &&
       (anterior.status === "ESTORNADA" || anterior.estornoParcialPendenteEm)
     ) {
       return { cobranca: anterior, erroSplit: null }
     }
-    if (pagamentoFamilia) {
+    if (pagamentoFamilia || (pagamentoInicial && recebida)) {
       const divergencia = divergenciaWebhook(anterior, remota)
       if (divergencia) throw new Error(divergencia)
       if (remota.customer !== customerId)
         throw new Error("Cliente da cobrança de matrícula divergente.")
       if (recebida && !interpretarDataAsaas(remota.paymentDate))
-        throw new Error("Data do recebimento da matrícula família ausente ou inválida.")
+        throw new Error("Data do recebimento da matrícula ausente ou inválida.")
+    }
+    // O webhook pode ter concluído a matrícula enquanto a consulta remota estava em voo.
+    // A cobrança é relida sob o mesmo lock utilizado pelo processamento do webhook.
+    if (pagamentoInicial && recebida && solicitacaoFamilia?.status === "APROVADA") {
+      return { cobranca: anterior, erroSplit: null }
     }
     const converterComplemento = recebida && anterior.finalidade === "COMPLEMENTO_MENSALIDADE"
     if (converterComplemento) {
@@ -744,7 +751,23 @@ async function persistirCobranca(
         erroSplit: null,
       }
     }
-    const notificacoes = pagamentoFamilia && recebida ? await aprovarMatriculaFamilia(tx, id) : []
+    let notificacoes: NotificacaoMatriculaConcluida[] = []
+    if (recebida && pagamentoInicial) {
+      if (pagamentoFamilia) {
+        notificacoes = (await aprovarMatriculaFamilia(tx, id)) ?? []
+      } else {
+        const aprovacao = await aprovarMatricula({
+          solicitacaoId: anterior.solicitacaoId,
+          autorId: null,
+          agora: recebidaEm,
+          origem: "AUTOMATICA",
+          transacao: tx,
+          enviarPush: false,
+        })
+        if (!aprovacao.ok) throw new Error(aprovacao.motivo)
+        notificacoes = "notificacoes" in aprovacao ? (aprovacao.notificacoes ?? []) : []
+      }
+    }
     if (
       pagamentoFamilia &&
       (remota.status === "REFUNDED" || remota.status === "PARTIALLY_REFUNDED")
@@ -754,7 +777,14 @@ async function persistirCobranca(
         event: remota.status === "REFUNDED" ? "PAYMENT_REFUNDED" : "PAYMENT_PARTIALLY_REFUNDED",
         payment: remota,
       } as WebhookAsaas)
-    return { cobranca: atualizada, erroSplit: null, notificacoes }
+    return {
+      cobranca:
+        recebida && pagamentoInicial
+          ? await tx.cobrancaMatriculaAsaas.findUniqueOrThrow({ where: { id } })
+          : atualizada,
+      erroSplit: null,
+      notificacoes,
+    }
   })
   if ("notificacoes" in persistencia && persistencia.notificacoes?.length)
     await enviarPushParaNotificacoes(persistencia.notificacoes)
@@ -768,10 +798,7 @@ async function gerarCobrancaMatriculaInterna(
 ) {
   const reserva = await reservarCobranca(tokenAcompanhamento, opcoes.familiaId)
   if (!reserva.ok) return reserva
-  if (
-    reserva.cobranca.status === "RECEBIDA" ||
-    (!opcoes.verificar && pixCobrancaMatriculaDisponivel(reserva.cobranca))
-  ) {
+  if (!opcoes.verificar && pixCobrancaMatriculaDisponivel(reserva.cobranca)) {
     return { ok: true as const, cobranca: reserva.cobranca }
   }
   if (reserva.cobranca.status === "CANCELANDO") {
@@ -785,6 +812,7 @@ async function gerarCobrancaMatriculaInterna(
   }
   if (
     opcoes.verificar &&
+    reserva.cobranca.status !== "RECEBIDA" &&
     !reserva.proprietaria &&
     reserva.cobranca.asaasPaymentId &&
     Date.now() - reserva.cobranca.atualizadoEm.getTime() < 3_000
@@ -1732,7 +1760,7 @@ export async function aplicarWebhookPagamentoMatricula(
   const pagamentoRecebido = webhook.event === "PAYMENT_RECEIVED"
   const solicitacaoDoPagamento = await tx.solicitacaoMatricula.findUnique({
     where: { id: cobranca.solicitacaoId },
-    select: { matriculaFamiliaId: true },
+    select: { matriculaFamiliaId: true, status: true },
   })
   if (
     solicitacaoDoPagamento?.matriculaFamiliaId &&
@@ -1795,7 +1823,10 @@ export async function aplicarWebhookPagamentoMatricula(
       taxaAsaas: pagamentoRecebido
         ? (cobranca.taxaAsaas ?? calcularTaxaAsaas(Number(cobranca.valor)))
         : undefined,
-      ativa: pagamentoPriorizado || (!STATUS_SEM_PIX.includes(status) && !outraAtiva),
+      ativa:
+        pagamentoRecebido && solicitacaoDoPagamento?.status === "APROVADA"
+          ? false
+          : pagamentoPriorizado || (!STATUS_SEM_PIX.includes(status) && !outraAtiva),
       statusAsaas: webhook.payment.status ?? null,
       pixCopiaECola: !pagamentoRecebido ? null : undefined,
       qrCodeExpiraEm: !pagamentoRecebido ? null : undefined,
@@ -1813,6 +1844,7 @@ export async function aplicarWebhookPagamentoMatricula(
   })
   if (
     pagamentoRecebido &&
+    solicitacaoDoPagamento?.status !== "APROVADA" &&
     (cobranca.finalidade === "PRIMEIRA_MENSALIDADE" || cobranca.finalidade === "AULA_AVULSA")
   ) {
     const notificacoesFamilia = solicitacaoDoPagamento?.matriculaFamiliaId

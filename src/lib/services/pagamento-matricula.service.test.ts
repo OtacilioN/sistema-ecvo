@@ -1271,6 +1271,206 @@ describe("sincronização e reemissão", () => {
   })
 })
 
+describe("aprovação individual pelo recebimento consultado no Asaas", () => {
+  function prepararConsulta(tipoPagamento = "MENSALISTA", statusLocal = "PENDENTE") {
+    const solicitacaoAtual = { ...solicitacao, tipoPagamento }
+    let cobranca = {
+      ...cobrancaAntiga,
+      status: statusLocal,
+      ativa: statusLocal !== "RECEBIDA",
+      finalidade: tipoPagamento === "AULA_AVULSA" ? "AULA_AVULSA" : "PRIMEIRA_MENSALIDADE",
+      valor: new Prisma.Decimal(tipoPagamento === "AULA_AVULSA" ? 20 : 100),
+      mensalidadeId: null as string | null,
+      estornoParcialPendenteEm: null as Date | null,
+    }
+    const remota = {
+      ...pagamentoRemoto("RECEIVED"),
+      value: Number(cobranca.valor),
+      paymentDate: "2026-08-31 21:10:00",
+    }
+    const notificacoes = [{ id: "notificacao-matricula", usuarioId: "gestor-1" }]
+    mocks.tx.solicitacaoMatricula.findUnique.mockImplementation(({ select }) =>
+      select?.status ? solicitacaoAtual : select ? { id: solicitacao.id } : solicitacaoAtual,
+    )
+    mocks.tx.cobrancaMatriculaAsaas.findFirst.mockImplementation(({ where }) =>
+      where.id ? null : cobranca,
+    )
+    mocks.tx.cobrancaMatriculaAsaas.findUniqueOrThrow.mockImplementation(() => cobranca)
+    mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(({ data }) => {
+      cobranca = { ...cobranca, ...data }
+      return cobranca
+    })
+    mocks.aprovarMatricula.mockImplementation(async () => {
+      solicitacaoAtual.status = "APROVADA"
+      cobranca = {
+        ...cobranca,
+        ativa: false,
+        mensalidadeId: tipoPagamento === "MENSALISTA" ? "mensalidade-1" : null,
+      }
+      return { ok: true, alunoId: "aluno-1", notificacoes }
+    })
+    mocks.obterCobrancaAsaas.mockResolvedValue(remota)
+    return {
+      remota,
+      notificacoes,
+      solicitacaoAtual,
+      atualizarCobranca: (data: Partial<typeof cobranca>) => {
+        cobranca = { ...cobranca, ...data }
+      },
+      obterCobranca: () => cobranca,
+    }
+  }
+
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {})
+  })
+  afterEach(() => {
+    vi.mocked(console.error).mockRestore()
+    mocks.aprovarMatricula.mockReset().mockResolvedValue({ ok: true, alunoId: "aluno-1" })
+  })
+
+  it.each([
+    ["MENSALISTA", "PENDENTE"],
+    ["MENSALISTA", "RECEBIDA"],
+    ["AULA_AVULSA", "PENDENTE"],
+    ["AULA_AVULSA", "RECEBIDA"],
+  ])("conclui %s com cobrança local %s e devolve o vínculo financeiro", async (tipo, status) => {
+    const { notificacoes } = prepararConsulta(tipo, status)
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, {
+      verificar: true,
+    })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      cobranca: {
+        status: "RECEBIDA",
+        ativa: false,
+        mensalidadeId: tipo === "MENSALISTA" ? "mensalidade-1" : null,
+      },
+    })
+    expect(mocks.obterCobrancaAsaas).toHaveBeenCalledWith("pay-1")
+    expect(mocks.aprovarMatricula).toHaveBeenCalledExactlyOnceWith({
+      solicitacaoId: solicitacao.id,
+      autorId: null,
+      agora: new Date("2026-09-01T00:10:00.000Z"),
+      origem: "AUTOMATICA",
+      transacao: mocks.tx,
+      enviarPush: false,
+    })
+    expect(mocks.enviarPushParaNotificacoes).toHaveBeenCalledExactlyOnceWith(notificacoes)
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+
+    // Uma repetição após o commit não cria aluno nem cobrança financeira novamente.
+    await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, { verificar: true })
+    expect(mocks.aprovarMatricula).toHaveBeenCalledTimes(1)
+    expect(mocks.enviarPushParaNotificacoes).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    { id: "pay-outro" },
+    { customer: "cus-outro" },
+    { value: 90 },
+    { externalReference: "matricula:outra" },
+    { billingType: "BOLETO" },
+    { dueDate: "2026-08-30" },
+    { paymentDate: undefined },
+    { paymentDate: "data-invalida" },
+  ])("rejeita recebimento divergente antes de aprovar: %j", async (divergencia) => {
+    const { remota } = prepararConsulta("MENSALISTA", "RECEBIDA")
+    mocks.obterCobrancaAsaas.mockResolvedValue({ ...remota, ...divergencia })
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, {
+      verificar: true,
+    })
+
+    expect(resultado.ok).toBe(false)
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.aprovarMatricula).not.toHaveBeenCalled()
+    expect(mocks.enviarPushParaNotificacoes).not.toHaveBeenCalled()
+    expect(mocks.db.cobrancaMatriculaAsaas.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "cobranca-1", status: { notIn: ["RECEBIDA", "ESTORNADA"] } },
+      }),
+    )
+  })
+
+  it("aguarda RECEIVED quando a consulta informa apenas CONFIRMED", async () => {
+    const { remota } = prepararConsulta()
+    mocks.obterCobrancaAsaas.mockResolvedValue({ ...remota, status: "CONFIRMED" })
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, {
+      verificar: true,
+    })
+    expect(resultado).toMatchObject({ ok: true, cobranca: { status: "PENDENTE" } })
+    expect(mocks.aprovarMatricula).not.toHaveBeenCalled()
+  })
+
+  it("não envia notificações quando a aprovação falha na transação", async () => {
+    prepararConsulta()
+    mocks.aprovarMatricula.mockResolvedValueOnce({ ok: false, motivo: "Dados inconsistentes." })
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, {
+      verificar: true,
+    })
+    expect(resultado).toEqual({ ok: false, motivo: "Dados inconsistentes." })
+    expect(mocks.enviarPushParaNotificacoes).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { status: "ESTORNADA", ativa: false },
+    { status: "ERRO", estornoParcialPendenteEm: new Date(), ativa: false },
+  ])("preserva estorno recebido durante a consulta: %j", async (estado) => {
+    const { remota, atualizarCobranca } = prepararConsulta()
+    mocks.obterCobrancaAsaas.mockImplementation(async () => {
+      atualizarCobranca(estado)
+      return remota
+    })
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, {
+      verificar: true,
+    })
+    expect(resultado).toMatchObject({ ok: true, cobranca: estado })
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.aprovarMatricula).not.toHaveBeenCalled()
+  })
+
+  it("preserva aprovação pelo webhook que terminou durante a consulta", async () => {
+    const { remota, atualizarCobranca, solicitacaoAtual } = prepararConsulta()
+    mocks.obterCobrancaAsaas.mockImplementation(async () => {
+      solicitacaoAtual.status = "APROVADA"
+      atualizarCobranca({
+        status: "RECEBIDA",
+        mensalidadeId: "mensalidade-concorrente",
+        ativa: false,
+      })
+      return remota
+    })
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, {
+      verificar: true,
+    })
+    expect(resultado).toMatchObject({
+      ok: true,
+      cobranca: { mensalidadeId: "mensalidade-concorrente", ativa: false },
+    })
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.aprovarMatricula).not.toHaveBeenCalled()
+  })
+
+  it("consome webhook posterior à consulta da aula avulsa sem repetir aluno ou notificação", async () => {
+    const { remota, obterCobranca } = prepararConsulta("AULA_AVULSA")
+    await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, { verificar: true })
+    const resultado = await aplicarWebhookPagamentoMatricula(
+      mocks.tx as never,
+      obterCobranca() as never,
+      {
+        id: "evento-replay",
+        event: "PAYMENT_RECEIVED",
+        payment: remota,
+      },
+    )
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.aprovarMatricula).toHaveBeenCalledTimes(1)
+    expect(mocks.enviarPushParaNotificacoes).toHaveBeenCalledTimes(1)
+    expect(obterCobranca()).toMatchObject({ status: "RECEBIDA", ativa: false })
+  })
+})
+
 describe("conversão do complemento confirmado por consulta ao Asaas", () => {
   function prepararConsulta(statusLocal = "PENDENTE") {
     vi.setSystemTime(new Date("2026-09-13T12:00:00.000Z"))

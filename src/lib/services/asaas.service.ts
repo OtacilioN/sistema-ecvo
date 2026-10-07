@@ -3034,8 +3034,10 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
               select: { id: true },
             })
           : null
+        // As intenções ECVO reservam uma referência antes da criação remota.
+        // O mesmo cliente também pode ter cobranças criadas manualmente no Asaas;
+        // reconhecer o cliente, sozinho, não identifica uma intenção do sistema.
         if (
-          clienteLocal ||
           referenciaPagamentoEcvo(webhook.payment.externalReference) ||
           webhook.payment.pixAutomaticAuthorizationId
         ) {
@@ -3046,6 +3048,26 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
             motivo: "A cobrança ainda não foi vinculada à intenção local.",
           }
         }
+        await registrarLog(
+          {
+            autorId: null,
+            acao: "PAGAMENTO",
+            entidade: "EventoWebhookAsaas",
+            entidadeId: webhook.id,
+            valorNovo: {
+              asaasPaymentId: webhook.payment.id,
+              asaasCustomerId: webhook.payment.customer ?? null,
+              clienteAsaasId: clienteLocal?.id ?? null,
+              externalReference: webhook.payment.externalReference ?? null,
+              evento: webhook.event,
+              statusAsaas: webhook.payment.status ?? null,
+              resultado: "COBRANCA_NAO_GERENCIADA",
+            },
+            justificativa:
+              "Cobrança sem vínculo ou referência ECVO; evento consumido sem baixa financeira local.",
+          },
+          tx,
+        )
       }
     }
 

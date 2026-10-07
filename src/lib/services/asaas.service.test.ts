@@ -920,9 +920,18 @@ describe("processarWebhookAsaas", () => {
     expect(mocks.tx.eventoWebhookAsaas.createMany).not.toHaveBeenCalled()
   })
 
-  it("não consome pagamento de cliente ECVO recebido antes da intenção local", async () => {
+  it.each([
+    "mensalidade:mensalidade-1",
+    "matricula:solicitacao-1",
+    "pixauto:contrato-1:1",
+    "pixauto-fallback:contrato-1:2:1",
+  ])("não consome pagamento com referência ECVO %s antes da intenção local", async (referencia) => {
     mocks.tx.cobrancaAsaas.findFirst.mockResolvedValue(null)
     mocks.tx.clienteAsaas.findUnique.mockResolvedValue({ id: "cliente-local" })
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      externalReference: referencia,
+    })
 
     const resultado = await processarWebhookAsaas({
       id: "evt_pagamento_corrida",
@@ -939,6 +948,80 @@ describe("processarWebhookAsaas", () => {
       where: { asaasEventId: "evt_pagamento_corrida" },
     })
     expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+  })
+
+  it("mantém reentrega de PIX Automático sem vínculo mesmo sem referência ECVO", async () => {
+    mocks.tx.cobrancaAsaas.findFirst.mockResolvedValue(null)
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      externalReference: null,
+      pixAutomaticAuthorizationId: "auth-1",
+    })
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_pagamento_pixauto_corrida",
+      event: "PAYMENT_RECEIVED",
+      payment: { id: "pay_1" },
+    })
+
+    expect(resultado).toMatchObject({
+      ok: false,
+      motivo: "A cobrança ainda não foi vinculada à intenção local.",
+    })
+    expect(mocks.tx.eventoWebhookAsaas.delete).toHaveBeenCalledWith({
+      where: { asaasEventId: "evt_pagamento_pixauto_corrida" },
+    })
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { clienteLocal: { id: "cliente-local" }, externalReference: null },
+    { clienteLocal: null, externalReference: null },
+    { clienteLocal: { id: "cliente-local" }, externalReference: "cobranca-manual-1" },
+  ])("consome e audita cobrança não gerenciada sem baixar mensalidade ($externalReference)", async ({
+    clienteLocal,
+    externalReference,
+  }) => {
+    mocks.tx.cobrancaAsaas.findFirst.mockResolvedValue(null)
+    mocks.tx.clienteAsaas.findUnique.mockResolvedValue(clienteLocal)
+    mocks.obterCobrancaAsaas.mockResolvedValue({
+      ...pagamentoRemoto(),
+      id: "pay_manual",
+      externalReference,
+    })
+
+    const webhook = {
+      id: "evt_pagamento_manual",
+      event: "PAYMENT_RECEIVED" as const,
+      // A consulta remota prevalece sobre uma referência enviada no evento.
+      payment: { id: "pay_manual", externalReference: "mensalidade:mensalidade-1" },
+    }
+    const resultado = await processarWebhookAsaas(webhook)
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.eventoWebhookAsaas.delete).not.toHaveBeenCalled()
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entidade: "EventoWebhookAsaas",
+        entidadeId: webhook.id,
+        valorNovo: expect.objectContaining({
+          asaasPaymentId: "pay_manual",
+          clienteAsaasId: clienteLocal?.id ?? null,
+          externalReference,
+          resultado: "COBRANCA_NAO_GERENCIADA",
+        }),
+      }),
+      mocks.tx,
+    )
+    expect(mocks.tx.cobrancaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaMatriculaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+    expect(mocks.tx.notificacao.create).not.toHaveBeenCalled()
+    expect(mocks.tx.notificacao.createMany).not.toHaveBeenCalled()
+
+    mocks.tx.eventoWebhookAsaas.createMany.mockResolvedValue({ count: 0 })
+    expect(await processarWebhookAsaas(webhook)).toEqual({ ok: true, duplicado: true })
+    expect(mocks.registrarLog).toHaveBeenCalledTimes(1)
   })
 
   it("mantém inativa uma tentativa antiga recebida depois da tentativa que já quitou", async () => {
