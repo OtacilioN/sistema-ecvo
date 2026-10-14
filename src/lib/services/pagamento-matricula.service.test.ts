@@ -308,6 +308,59 @@ function configurarComplemento() {
   }))
 }
 
+function configurarComplementoComSplitPreparado() {
+  configurarComplemento()
+  const cobranca = {
+    id: "cobranca-complemento-1",
+    solicitacaoId: "solicitacao-1",
+    finalidade: "COMPLEMENTO_MENSALIDADE",
+    status: "ERRO",
+    ativa: false,
+    asaasPaymentId: null,
+    repasseSnapshot: [{ modalidadeId: "kickboxing", professorId: "vinicius", valorBase: 100 }],
+    valor: new Prisma.Decimal(80),
+    vencimentoAsaas: new Date("2026-09-06T15:00:00.000Z"),
+    externalReference: "matricula:solicitacao-1:complemento:2",
+    atualizadoEm: new Date("2026-08-31T00:00:00.000Z"),
+  }
+  const split = {
+    id: "split-local-1",
+    walletIdSnapshot: "wallet-vinicius",
+    valorFixoSnapshot: new Prisma.Decimal(60),
+    externalReference: `${cobranca.externalReference}:split:1`,
+    status: "PREPARADO",
+    asaasSplitId: null,
+    statusAsaas: null,
+    motivo: null,
+  }
+  mocks.tx.cobrancaMatriculaAsaas.findFirst.mockResolvedValue(cobranca)
+  mocks.tx.cobrancaMatriculaAsaas.findUnique.mockImplementation(() => cobranca)
+  mocks.tx.cobrancaMatriculaAsaas.findUniqueOrThrow.mockImplementation(() => cobranca)
+  mocks.tx.cobrancaMatriculaAsaas.update.mockImplementation(({ data }) => {
+    Object.assign(cobranca, data)
+    return { ...cobranca }
+  })
+  mocks.db.cobrancaMatriculaAsaas.updateMany.mockImplementation(({ data }) => {
+    Object.assign(cobranca, data)
+    return { count: 1 }
+  })
+  mocks.tx.splitPagamentoAsaas.findMany.mockImplementation(() => [split])
+  mocks.db.splitPagamentoAsaas.findMany.mockImplementation(() => [split])
+  mocks.tx.splitPagamentoAsaas.updateMany.mockImplementation(({ data }) => {
+    Object.assign(split, data)
+    return { count: 1 }
+  })
+  return { cobranca, split }
+}
+
+function erroSplitRecusado() {
+  return Object.assign(new Error("recusado"), {
+    name: "ErroApiAsaas",
+    status: 400,
+    codes: ["invalid_action"],
+  })
+}
+
 describe("sincronização e reemissão", () => {
   it("gera a primeira mensalidade com o valor vigente do plano vinculado", async () => {
     const solicitacaoPlanoAtualizado = {
@@ -633,6 +686,132 @@ describe("sincronização e reemissão", () => {
       where: { id: "split-local-1" },
       data: expect.objectContaining({ asaasSplitId: "split-remoto-1", status: "PENDENTE" }),
     })
+  })
+
+  it("emite complemento sem split após invalid_action e registra repasse manual", async () => {
+    const { split } = configurarComplementoComSplitPreparado()
+    mocks.criarCobrancaAsaas.mockRejectedValueOnce(erroSplitRecusado())
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      cobranca: {
+        status: "PENDENTE",
+        asaasPaymentId: "pay-complemento-1",
+        pixCopiaECola: "pix-complemento",
+      },
+    })
+    expect(mocks.listarCobrancasAsaas).toHaveBeenCalledTimes(2)
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledTimes(2)
+    expect(mocks.criarCobrancaAsaas.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ value: 80, split: [expect.objectContaining({ fixedValue: 60 })] }),
+    )
+    expect(mocks.criarCobrancaAsaas.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        value: 80,
+        externalReference: "matricula:solicitacao-1:complemento:2",
+      }),
+    )
+    expect(mocks.criarCobrancaAsaas.mock.calls[1]?.[0]).not.toHaveProperty("split")
+    expect(split).toMatchObject({ status: "RECUSADO", asaasSplitId: null, statusAsaas: null })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entidade: "CobrancaMatriculaAsaas",
+        entidadeId: "cobranca-complemento-1",
+        valorNovo: expect.objectContaining({
+          splitAutomatico: "RECUSADO",
+          repasse: "CONCILIACAO_MANUAL",
+        }),
+      }),
+      mocks.tx,
+    )
+  })
+
+  it("reconcilia complemento remoto após recusa sem criar uma segunda cobrança", async () => {
+    configurarComplementoComSplitPreparado()
+    const remota = {
+      ...pagamentoRemoto(),
+      id: "pay-complemento-reconciliado",
+      value: 80,
+      externalReference: "matricula:solicitacao-1:complemento:2",
+      split: [
+        {
+          id: "split-remoto-1",
+          walletId: "wallet-vinicius",
+          fixedValue: 60,
+          externalReference: "matricula:solicitacao-1:complemento:2:split:1",
+          status: "PENDING",
+        },
+      ],
+    }
+    mocks.listarCobrancasAsaas
+      .mockResolvedValueOnce({ data: [], totalCount: 0, hasMore: false })
+      .mockResolvedValueOnce({ data: [remota], totalCount: 1, hasMore: false })
+    mocks.criarCobrancaAsaas.mockRejectedValueOnce(erroSplitRecusado())
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      cobranca: { asaasPaymentId: "pay-complemento-reconciliado", status: "PENDENTE" },
+    })
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledTimes(1)
+    expect(mocks.listarCobrancasAsaas).toHaveBeenCalledTimes(2)
+    expect(mocks.tx.splitPagamentoAsaas.updateMany).not.toHaveBeenCalled()
+    expect(mocks.tx.splitPagamentoAsaas.update).toHaveBeenCalledWith({
+      where: { id: "split-local-1" },
+      data: expect.objectContaining({ status: "PENDENTE", asaasSplitId: "split-remoto-1" }),
+    })
+  })
+
+  it("retoma complemento sem reenviar split recusado quando a contingência falhou", async () => {
+    const { split } = configurarComplementoComSplitPreparado()
+    mocks.criarCobrancaAsaas
+      .mockRejectedValueOnce(erroSplitRecusado())
+      .mockRejectedValueOnce(new Error("Asaas indisponível"))
+
+    const primeira = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+    expect(primeira.ok).toBe(false)
+    expect(split.status).toBe("RECUSADO")
+
+    const segunda = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(segunda).toMatchObject({ ok: true, cobranca: { status: "PENDENTE" } })
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledTimes(3)
+    expect(mocks.criarCobrancaAsaas.mock.calls[2]?.[0].split).toBeUndefined()
+    expect(mocks.tx.splitPagamentoAsaas.create).not.toHaveBeenCalled()
+    expect(mocks.tx.splitPagamentoAsaas.updateMany).toHaveBeenCalledTimes(1)
+    expect(mocks.registrarLog.mock.calls.filter(([log]) => log.valorNovo?.repasse)).toHaveLength(1)
+  })
+
+  it.each([
+    { status: 400, codes: ["invalid_value"] },
+    { status: 500, codes: ["invalid_action"] },
+  ])("não remove split do complemento para erro Asaas $status/$codes", async (erro) => {
+    const { split } = configurarComplementoComSplitPreparado()
+    mocks.criarCobrancaAsaas.mockRejectedValueOnce(
+      Object.assign(new Error("outro erro"), { name: "ErroApiAsaas", ...erro }),
+    )
+
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", {
+      agora: new Date("2026-09-01T12:00:00.000Z"),
+    })
+
+    expect(resultado.ok).toBe(false)
+    expect(mocks.criarCobrancaAsaas).toHaveBeenCalledTimes(1)
+    expect(mocks.listarCobrancasAsaas).toHaveBeenCalledTimes(1)
+    expect(mocks.tx.splitPagamentoAsaas.updateMany).not.toHaveBeenCalled()
+    expect(split.status).toBe("PREPARADO")
+    expect(mocks.obterQrCodePixAsaas).not.toHaveBeenCalled()
   })
 
   it.each([

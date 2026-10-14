@@ -1090,16 +1090,23 @@ export async function gerarCobrancaComplementoAulaAvulsaAsaas(
       cpf: reserva.acesso.aluno.cpf!,
       telefone: reserva.acesso.aluno.telefone,
     })
+    const splitsEnviaveis = splits.filter(
+      (split) => split.motivo !== MOTIVO_CONTINGENCIA_SPLIT_ASAAS,
+    )
     const remota = reserva.cobranca.asaasPaymentId
       ? await obterCobrancaAsaas(reserva.cobranca.asaasPaymentId)
-      : await criarOuRecuperarCobranca({
-          customerId: cliente.id,
-          externalReference: reserva.cobranca.externalReference,
-          valor: VALOR_COMPLEMENTO_AULA_AVULSA,
-          vencimento: reserva.cobranca.vencimentoAsaas,
-          descricao: "Complemento da mensalidade ECVO",
-          split: payloadSplitAsaas(splits),
-        })
+      : await criarCobrancaComContingenciaSplit(
+          {
+            customerId: cliente.id,
+            externalReference: reserva.cobranca.externalReference,
+            valor: VALOR_COMPLEMENTO_AULA_AVULSA,
+            vencimento: reserva.cobranca.vencimentoAsaas,
+            descricao: "Complemento da mensalidade ECVO",
+            split: payloadSplitAsaas(splitsEnviaveis),
+          },
+          reserva.cobranca.id,
+          splitsEnviaveis.map((split) => split.id),
+        )
     const cobranca = await persistirCobranca(reserva.cobranca.id, cliente.id, remota)
     return { ok: true as const, cobranca }
   } catch (erro) {
