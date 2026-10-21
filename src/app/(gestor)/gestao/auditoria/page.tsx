@@ -37,8 +37,14 @@ function detalheMensalidadeDoJson(valor: unknown) {
 }
 
 export default async function Page() {
-  await exigirGestao()
+  const usuario = await exigirGestao()
   const logs = await db.logAuditoria.findMany({
+    where:
+      usuario.papel === "GESTOR"
+        ? undefined
+        : {
+            entidade: { notIn: ["EstornoPontualFredAsaas", "EvidenciasEstornoFredAsaas"] },
+          },
     orderBy: { criadoEm: "desc" },
     take: 100,
     include: { autor: { select: { nome: true, papel: true, email: true } } },
