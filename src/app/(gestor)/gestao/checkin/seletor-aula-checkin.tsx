@@ -1,8 +1,11 @@
 "use client"
 
 import { CalendarClock } from "lucide-react"
+import Form from "next/form"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
@@ -24,14 +27,51 @@ const rotuloEstado: Record<OpcaoAulaCheckin["estado"], string> = {
 export function SeletorAulaCheckin({
   aulas,
   aulaSelecionadaId,
+  dataSelecionada,
+  dataHoje,
+  dataOntem,
 }: {
   aulas: OpcaoAulaCheckin[]
   aulaSelecionadaId: string | null
+  dataSelecionada: string
+  dataHoje: string
+  dataOntem: string
 }) {
   const router = useRouter()
 
   return (
     <div className="grid gap-3">
+      <Form action="/gestao/checkin" className="grid gap-2" scroll={false}>
+        <label className="text-xs font-semibold uppercase text-muted-foreground" htmlFor="data">
+          Data da aula
+        </label>
+        <div className="flex gap-2">
+          <Input
+            key={dataSelecionada}
+            id="data"
+            name="data"
+            type="date"
+            defaultValue={dataSelecionada}
+            required
+            className="h-11 min-w-0 flex-1 bg-white"
+          />
+          <Button type="submit" className="h-11">
+            Consultar
+          </Button>
+        </div>
+      </Form>
+      <div className="flex gap-2">
+        <Button asChild size="sm" variant={dataSelecionada === dataHoje ? "default" : "outline"}>
+          <Link href={`/gestao/checkin?data=${dataHoje}`} scroll={false}>
+            Hoje
+          </Link>
+        </Button>
+        <Button asChild size="sm" variant={dataSelecionada === dataOntem ? "default" : "outline"}>
+          <Link href={`/gestao/checkin?data=${dataOntem}`} scroll={false}>
+            Ontem
+          </Link>
+        </Button>
+      </div>
       <label className="text-xs font-semibold uppercase text-muted-foreground" htmlFor="aulaId">
         Aula visualizada
       </label>
@@ -40,13 +80,18 @@ export function SeletorAulaCheckin({
         value={aulaSelecionadaId ?? ""}
         onChange={(event) => {
           const aulaId = event.target.value
-          if (aulaId) router.push(`/gestao/checkin?aulaId=${encodeURIComponent(aulaId)}`)
+          if (aulaId) {
+            router.push(
+              `/gestao/checkin?data=${dataSelecionada}&aulaId=${encodeURIComponent(aulaId)}`,
+              { scroll: false },
+            )
+          }
         }}
         className="h-11 bg-white font-medium"
         disabled={aulas.length === 0}
       >
         {aulas.length === 0 ? (
-          <option value="">Nenhuma aula hoje</option>
+          <option value="">Nenhuma aula nesta data</option>
         ) : (
           aulas.map((aula) => (
             <option key={aula.id} value={aula.id}>
@@ -63,7 +108,8 @@ export function SeletorAulaCheckin({
             return (
               <Link
                 key={aula.id}
-                href={`/gestao/checkin?aulaId=${encodeURIComponent(aula.id)}`}
+                href={`/gestao/checkin?data=${dataSelecionada}&aulaId=${encodeURIComponent(aula.id)}`}
+                scroll={false}
                 className={cn(
                   "flex min-w-56 shrink-0 items-center gap-3 rounded-md border bg-white px-3 py-2 text-left shadow-sm transition-colors hover:border-foreground/30",
                   selecionada && "border-foreground bg-foreground text-background",

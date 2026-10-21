@@ -11,6 +11,7 @@ import {
   UsersRound,
 } from "lucide-react"
 import Link from "next/link"
+import { z } from "zod"
 import { AcoesCardAlunoCheckin } from "@/components/checkin/acoes-card-aluno"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,10 +26,13 @@ import { db } from "@/lib/db"
 import { carregarMonitoramentoAula } from "@/lib/services/aula-monitoramento.service"
 import { cn } from "@/lib/utils"
 import {
+  fimExclusivoDoDiaAcademia,
   formatarDataExtenso,
   formatarDataHora,
+  formatarDataInput,
   formatarHora,
   formatarMinutos,
+  inicioDoDiaAcademia,
   paraFusoAcademia,
   TIMEZONE,
 } from "@/lib/utils/datas"
@@ -36,7 +40,7 @@ import { type OpcaoAulaCheckin, SeletorAulaCheckin } from "./seletor-aula-checki
 
 export const dynamic = "force-dynamic"
 
-type SearchParams = Promise<{ aulaId?: string | string[] }>
+type SearchParams = Promise<{ aulaId?: string | string[]; data?: string | string[] }>
 
 type AulaDoDia = {
   id: string
@@ -322,13 +326,16 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
   const agora = new Date()
   const hojeAcademia = paraFusoAcademia(agora)
   const chaveHoje = format(hojeAcademia, "yyyy-MM-dd")
-  const chaveAmanha = format(addDays(hojeAcademia, 1), "yyyy-MM-dd")
-  const inicioHoje = fromZonedTime(`${chaveHoje}T00:00:00`, TIMEZONE)
-  const inicioAmanha = fromZonedTime(`${chaveAmanha}T00:00:00`, TIMEZONE)
+  const chaveOntem = format(addDays(hojeAcademia, -1), "yyyy-MM-dd")
+  const dataValidada = z.iso.date().safeParse(parametroUnico(params.data))
+  const dataSelecionada = dataValidada.success ? dataValidada.data : chaveHoje
+  const diaSelecionado = fromZonedTime(`${dataSelecionada}T12:00:00`, TIMEZONE)
+  const inicioDia = inicioDoDiaAcademia(diaSelecionado)
+  const fimDia = fimExclusivoDoDiaAcademia(diaSelecionado)
 
   const aulas = await db.aula.findMany({
     where: {
-      inicio: { gte: inicioHoje, lt: inicioAmanha },
+      inicio: { gte: inicioDia, lt: fimDia },
       turma: { ativa: true, modalidade: { ativa: true } },
     },
     orderBy: { inicio: "asc" },
@@ -393,7 +400,7 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
     <div className="space-y-6">
       <CabecalhoPagina
         titulo="Check-in"
-        descricao="Painel visual das aulas do dia, com presença, agendamento, inadimplência e ausências."
+        descricao="Consulte as aulas por data, com presença, agendamento, inadimplência e ausências."
       >
         <Button asChild variant="outline">
           <Link href="/gestao/checkin/qrcode">
@@ -426,14 +433,21 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
             </>
           ) : (
             <>
-              <h2 className="text-2xl font-black tracking-tight">Nenhuma aula hoje</h2>
+              <h2 className="text-2xl font-black tracking-tight">Nenhuma aula nesta data</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Gere ou cadastre aulas para acompanhar os check-ins neste painel.
+                {formatarDataExtenso(diaSelecionado)} · Selecione outra data para consultar os
+                check-ins.
               </p>
             </>
           )}
         </div>
-        <SeletorAulaCheckin aulas={opcoesAulas} aulaSelecionadaId={aulaSelecionada?.id ?? null} />
+        <SeletorAulaCheckin
+          aulas={opcoesAulas}
+          aulaSelecionadaId={aulaSelecionada?.id ?? null}
+          dataSelecionada={formatarDataInput(diaSelecionado)}
+          dataHoje={chaveHoje}
+          dataOntem={chaveOntem}
+        />
       </section>
 
       {aulaSelecionada && (
