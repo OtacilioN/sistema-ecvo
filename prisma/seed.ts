@@ -155,6 +155,7 @@ async function main() {
       id: "plano-mensal-demo",
       nome: "Mensal Ilimitado",
       valor: 199.9,
+      valorBase: 199.9,
       periodicidade: "MENSAL",
     },
   })

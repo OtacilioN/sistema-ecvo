@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+# Arquivos locais de recuperação do Git não participam do build ou lint.
+/.git-recovery-cloud-*/
 
 # debug
 npm-debug.log*

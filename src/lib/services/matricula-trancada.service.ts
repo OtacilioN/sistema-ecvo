@@ -170,6 +170,8 @@ export async function prepararMensalidadeReativacao(params: {
             planoId: plano.id,
             competencia,
             valor: plano.valor,
+            valorBase: plano.valorBase ?? plano.valor,
+            valorComDesconto: plano.valor,
             vencimento: vencimentoDaCompetencia(
               competencia,
               Number(formatarDataInput(agora).slice(-2)),
@@ -189,6 +191,8 @@ export async function prepararMensalidadeReativacao(params: {
           reativacaoMatricula: true,
           competencia,
           valor: Number(mensalidade.valor),
+          valorBase: Number(mensalidade.valorBase ?? mensalidade.valor),
+          valorComDesconto: Number(mensalidade.valorComDesconto ?? mensalidade.valor),
           planoId: plano.id,
         },
         justificativa:

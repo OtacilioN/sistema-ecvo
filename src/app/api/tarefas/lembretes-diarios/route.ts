@@ -1,6 +1,7 @@
 import {
   gerarLembretesFinanceiros,
   gerarMensalidadesRecorrentes,
+  sincronizarValoresAdimplencia,
 } from "@/lib/services/financeiro.service"
 import { trancarAvulsosExpirados } from "@/lib/services/matricula-trancada.service"
 import {
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
 
   const avulsos = await trancarAvulsosExpirados()
   const mensalidades = await gerarMensalidadesRecorrentes()
+  const precosAdimplencia = await sincronizarValoresAdimplencia()
   const [financeiro, aniversarios, aluguel, expurgoNotificacoes] = await Promise.all([
     gerarLembretesFinanceiros(),
     gerarLembretesAniversario(),
@@ -37,6 +39,7 @@ export async function GET(request: Request) {
     ok: true,
     avulsos,
     mensalidades,
+    precosAdimplencia,
     financeiro,
     aniversarios,
     aluguel,

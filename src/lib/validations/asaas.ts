@@ -5,7 +5,19 @@ const referenciaPorId = z.union([identificador, z.object({ id: identificador }).
 
 export const tipoCobrancaPixSchema = z.object({
   alunoId: z.string().min(1, "Selecione o aluno"),
-  tipoCobrancaPix: z.enum(["MENSAL", "AUTOMATICO_SEMESTRAL"]),
+  tipoCobrancaPix: z.enum(["MENSAL", "AUTOMATICO_TRIMESTRAL", "AUTOMATICO_SEMESTRAL"]),
+})
+
+export const ativarPixAutomaticoAlunoSchema = z.object({
+  totalCiclos: z.preprocess(
+    // Formulários antigos, já abertos no navegador, continuam solicitando seis meses.
+    (valor) => (valor === null || valor === undefined ? 6 : valor),
+    z
+      .union([z.literal(3), z.literal(6), z.literal("3"), z.literal("6")], {
+        error: "Escolha 3 ou 6 meses para o Pix recorrente.",
+      })
+      .transform((valor) => Number(valor) as 3 | 6),
+  ),
 })
 
 export const gerarCobrancaPixSchema = z.object({

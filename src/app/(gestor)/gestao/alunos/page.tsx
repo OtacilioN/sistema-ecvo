@@ -1,6 +1,7 @@
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
+import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { listarAlunos } from "@/lib/services/aluno.service"
 import { listarModalidades } from "@/lib/services/modalidade.service"
 import { chaveCompetencia, formatarDataInput } from "@/lib/utils/datas"
@@ -74,7 +75,7 @@ export default async function AlunosPage() {
             ? {
                 id: a.mensalidades[0].id,
                 competencia: a.mensalidades[0].competencia,
-                valor: Number(a.mensalidades[0].valor),
+                valor: resumoAdimplencia(a.mensalidades[0]).valorAtual,
                 status: a.mensalidades[0].status,
                 pagoEm: a.mensalidades[0].pagoEm,
                 formaPagamento: a.mensalidades[0].formaPagamento,

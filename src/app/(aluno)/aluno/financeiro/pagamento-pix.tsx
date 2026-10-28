@@ -2,7 +2,7 @@
 
 import { Check, Copy, QrCode, Repeat2, XCircle } from "lucide-react"
 import Image from "next/image"
-import { useActionState, useState } from "react"
+import { useActionState, useId, useState } from "react"
 import {
   acaoAtivarPixAutomaticoAluno,
   acaoCancelarPixAutomaticoAluno,
@@ -12,6 +12,69 @@ import {
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Button } from "@/components/ui/button"
 import { DialogoConfirmacao } from "@/components/ui/dialogo-confirmacao"
+import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
+
+function FormularioPixRecorrente({
+  acao,
+  disabled,
+  totalCiclosInicial = 3,
+  rotuloAcao = "Programar PIX recorrente",
+}: {
+  acao: (formData: FormData) => void
+  disabled?: boolean
+  totalCiclosInicial?: 3 | 6
+  rotuloAcao?: string
+}) {
+  const id = useId()
+  return (
+    <form action={acao} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <div className="space-y-1.5">
+        <Label htmlFor={id}>Programar por</Label>
+        <Select
+          id={id}
+          name="totalCiclos"
+          defaultValue={String(totalCiclosInicial)}
+          disabled={disabled}
+        >
+          <option value="3">3 meses</option>
+          <option value="6">6 meses</option>
+        </Select>
+      </div>
+      <BotaoEnviar className="w-full sm:w-auto" variant="outline" disabled={disabled}>
+        <Repeat2 className="size-4" /> {rotuloAcao}
+      </BotaoEnviar>
+    </form>
+  )
+}
+
+export function ProgramarPixRecorrente({
+  totalCiclosInicial = 3,
+  rotuloAcao,
+}: {
+  totalCiclosInicial?: 3 | 6
+  rotuloAcao?: string
+}) {
+  const [estado, acao, pendente] = useActionState<EstadoFinanceiro, FormData>(
+    acaoAtivarPixAutomaticoAluno,
+    undefined,
+  )
+  return (
+    <div className="space-y-3">
+      {estado?.erro && (
+        <p className="text-sm text-destructive" role="alert">
+          {estado.erro}
+        </p>
+      )}
+      <FormularioPixRecorrente
+        acao={acao}
+        disabled={pendente}
+        totalCiclosInicial={totalCiclosInicial}
+        rotuloAcao={rotuloAcao}
+      />
+    </div>
+  )
+}
 
 export function PagamentoPix({
   mensalidadeId,
@@ -60,11 +123,10 @@ export function PagamentoPix({
             </form>
           )}
           {permitirPixRecorrente && (
-            <form action={acaoRecorrente}>
-              <BotaoEnviar className="w-full sm:w-auto" variant="outline" disabled={mensalPendente}>
-                <Repeat2 className="size-4" /> Cadastrar pix recorrente
-              </BotaoEnviar>
-            </form>
+            <FormularioPixRecorrente
+              acao={acaoRecorrente}
+              disabled={mensalPendente || recorrentePendente}
+            />
           )}
         </div>
       </div>

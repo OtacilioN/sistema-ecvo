@@ -88,6 +88,7 @@ enum StatusMensalidade {
 enum TipoCobrancaPix {
   MENSAL
   AUTOMATICO_SEMESTRAL
+  AUTOMATICO_TRIMESTRAL
 }
 
 enum TipoPagadorAsaas {
@@ -712,6 +713,7 @@ model Plano {
   id                             String                 @id @default(cuid())
   nome                           String
   valor                          Decimal                @db.Decimal(10, 2)
+  valorBase                      Decimal                @db.Decimal(10, 2)
   periodicidade                  Periodicidade          @default(MENSAL)
   limiteAulas                    Int? // null = ilimitado
   ativo                          Boolean                @default(true)
@@ -902,6 +904,8 @@ model Mensalidade {
   planoId                 String?
   competencia             String // "2026-06"
   valor                   Decimal                 @db.Decimal(10, 2)
+  valorBase               Decimal?                @db.Decimal(10, 2)
+  valorComDesconto        Decimal?                @db.Decimal(10, 2)
   vencimento              DateTime
   status                  StatusMensalidade       @default(EM_ABERTO)
   pagoEm                  DateTime?
@@ -1169,14 +1173,15 @@ model LogAuditoria {
 }
 
 model Notificacao {
-  id        String          @id @default(cuid())
-  usuario   Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
-  usuarioId String
-  tipo      TipoNotificacao
-  titulo    String
-  mensagem  String
-  lida      Boolean         @default(false)
-  criadoEm  DateTime        @default(now())
+  id                String          @id @default(cuid())
+  usuario           Usuario         @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  usuarioId         String
+  tipo              TipoNotificacao
+  titulo            String
+  mensagem          String
+  chaveDeduplicacao String?         @unique
+  lida              Boolean         @default(false)
+  criadoEm          DateTime        @default(now())
 
   @@index([usuarioId, lida])
 }

@@ -22,6 +22,7 @@ import {
 } from "@/lib/services/financeiro.service"
 import { gerarCobrancaComplementoAulaAvulsaAsaas } from "@/lib/services/pagamento-matricula.service"
 import {
+  ativarPixAutomaticoAlunoSchema,
   cancelarCobrancaAsaasSchema,
   gerarCobrancaPixSchema,
   tipoCobrancaPixSchema,
@@ -51,6 +52,7 @@ export async function acaoCriarPlano(
   const parsed = planoSchema.safeParse({
     nome: formData.get("nome"),
     valor: formData.get("valor"),
+    valorBase: formData.get("valorBase"),
     periodicidade: formData.get("periodicidade"),
     limiteAulas: formData.get("limiteAulas") || undefined,
     quantidadeModalidadesMatricula: formData.get("quantidadeModalidadesMatricula"),
@@ -74,6 +76,7 @@ export async function acaoAtualizarPlano(
     planoId: formData.get("planoId"),
     nome: formData.get("nome"),
     valor: formData.get("valor"),
+    valorBase: formData.get("valorBase"),
     periodicidade: formData.get("periodicidade"),
     limiteAulas: formData.get("limiteAulas") || undefined,
     quantidadeModalidadesMatricula: formData.get("quantidadeModalidadesMatricula"),
@@ -295,12 +298,17 @@ export async function acaoVerificarComplementoAulaAvulsa(
 
 export async function acaoAtivarPixAutomaticoAluno(
   _: EstadoFinanceiro,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<EstadoFinanceiro> {
   const { alunoId, usuario } = await exigirAluno()
+  const parsed = ativarPixAutomaticoAlunoSchema.safeParse({
+    totalCiclos: formData.get("totalCiclos"),
+  })
+  if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
   const resultado = await configurarTipoCobrancaPix({
     alunoId,
-    tipoCobrancaPix: "AUTOMATICO_SEMESTRAL",
+    tipoCobrancaPix:
+      parsed.data.totalCiclos === 3 ? "AUTOMATICO_TRIMESTRAL" : "AUTOMATICO_SEMESTRAL",
     autorId: usuario.id,
   })
   revalidatePath("/aluno/financeiro")

@@ -1,5 +1,45 @@
 import { describe, expect, it } from "vitest"
-import { idAutorizacaoDoWebhook, idPagamentoInstrucaoDoWebhook, webhookAsaasSchema } from "./asaas"
+import {
+  ativarPixAutomaticoAlunoSchema,
+  idAutorizacaoDoWebhook,
+  idPagamentoInstrucaoDoWebhook,
+  tipoCobrancaPixSchema,
+  webhookAsaasSchema,
+} from "./asaas"
+
+describe("prazo do Pix recorrente", () => {
+  it.each([3, 6, "3", "6"])("aceita a duração %s", (totalCiclos) => {
+    expect(ativarPixAutomaticoAlunoSchema.parse({ totalCiclos }).totalCiclos).toBe(
+      Number(totalCiclos),
+    )
+  })
+
+  it.each([
+    "",
+    0,
+    1,
+    4,
+    12,
+    3.5,
+    "trimestre",
+    [3],
+  ])("rejeita duração inválida %j", (totalCiclos) => {
+    expect(ativarPixAutomaticoAlunoSchema.safeParse({ totalCiclos }).success).toBe(false)
+  })
+
+  it("preserva os seis meses solicitados por formulários antigos sem o campo", () => {
+    expect(ativarPixAutomaticoAlunoSchema.parse({}).totalCiclos).toBe(6)
+    expect(ativarPixAutomaticoAlunoSchema.parse({ totalCiclos: null }).totalCiclos).toBe(6)
+  })
+
+  it("permite a configuração trimestral também pela gestão", () => {
+    expect(
+      tipoCobrancaPixSchema.parse({ alunoId: "aluno-1", tipoCobrancaPix: "AUTOMATICO_TRIMESTRAL" }),
+    ).toMatchObject({
+      tipoCobrancaPix: "AUTOMATICO_TRIMESTRAL",
+    })
+  })
+})
 
 describe("webhook Asaas", () => {
   it("aceita ownerId nulo conforme o payload oficial de cobrança", () => {

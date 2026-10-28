@@ -1,3 +1,4 @@
+import { renderToStaticMarkup } from "react-dom/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({ obter: vi.fn() }))
@@ -38,7 +39,7 @@ describe("pagamento público da família", () => {
         id: `pessoa-${indice}`,
         nome: `Pessoa ${indice}`,
         status: "APROVADA",
-        plano: { nome: "Valor unitario plano familia", valor: 90 },
+        plano: { nome: "Valor unitario plano familia", valor: 90, valorBase: 100 },
         cobrancasAsaas:
           indice === 1
             ? [{ statusAsaas, status, valor: 180, pixCopiaECola: null, qrCodeExpiraEm: null }]
@@ -54,5 +55,42 @@ describe("pagamento público da família", () => {
       )
       expect(resultado).not.toContain("Atualizar cobrança PIX")
     }
+  })
+
+  it.each([
+    { pessoas: 2, total: "180,00", base: "200,00" },
+    { pessoas: 3, total: "270,00", base: "300,00" },
+    { pessoas: 4, total: "360,00", base: "400,00" },
+  ])("informa o bônus sobre o total de $pessoas pessoas", async (caso) => {
+    mocks.obter.mockResolvedValue({
+      id: "familia",
+      titularSolicitacaoId: "pessoa-1",
+      pessoas: Array.from({ length: caso.pessoas }, (_, indice) => ({
+        id: `pessoa-${indice + 1}`,
+        nome: `Pessoa ${indice + 1}`,
+        status: "APROVADA",
+        plano: { nome: "Plano família", valor: 90, valorBase: 100 },
+        cobrancasAsaas:
+          indice === 0
+            ? [
+                {
+                  statusAsaas: "RECEIVED",
+                  status: "RECEBIDA",
+                  valor: 90 * caso.pessoas,
+                  pixCopiaECola: null,
+                  qrCodeExpiraEm: null,
+                },
+              ]
+            : [],
+      })),
+    })
+
+    const html = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ token: "token-familia" }) }),
+    )
+
+    expect(html).toContain(caso.total)
+    expect(html).toContain("Total mensal com bônus de adimplência. A partir do 5º dia de atraso:")
+    expect(html).toContain(`${caso.base}/mês`)
   })
 })

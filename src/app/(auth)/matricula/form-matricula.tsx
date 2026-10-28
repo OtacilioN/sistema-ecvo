@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { useActionState, useMemo, useState } from "react"
 import { acaoSolicitarMatricula } from "@/app/actions/matriculas"
+import { AvisoBonusAdimplencia } from "@/components/aviso-bonus-adimplencia"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,6 +29,7 @@ type PlanoMensalista = {
   id: string
   nome: string
   valor: number
+  valorBase: number
   quantidadeModalidades: number
 }
 
@@ -40,7 +42,7 @@ export function FormMatricula({
   tipoPagamento,
 }: {
   modalidades: Modalidade[]
-  planoPadrao: { nome: string; valor: number } | null
+  planoPadrao: { nome: string; valor: number; valorBase: number } | null
   planosMensalista: PlanoMensalista[]
   tipoPagamento: TipoPagamentoMatriculaPublica
 }) {
@@ -233,6 +235,11 @@ export function FormMatricula({
                   de R$ 80,00.
                 </p>
               )}
+              <AvisoBonusAdimplencia
+                valorComBonus={planoPagamento.valor}
+                valorBase={planoPagamento.valorBase}
+                className="mt-2"
+              />
             </div>
           </Secao>
         )}

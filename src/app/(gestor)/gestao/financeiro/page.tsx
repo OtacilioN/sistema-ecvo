@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/select"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
+import { DIAS_CARENCIA_ADIMPLENCIA, resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
 import { formatarData, obterIntervaloMes } from "@/lib/utils/datas"
@@ -25,6 +26,7 @@ type MensalidadeVisivel = {
   id: string
   competencia: string
   valorNumero: number
+  adimplencia: ReturnType<typeof resumoAdimplencia>
   vencimento: Date
   pagoEm: Date | null
   status: StatusMensalidade
@@ -101,7 +103,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const busca = (valorUnico(params.busca) ?? "").trim().slice(0, 100)
   const termoBusca = normalizarBusca(busca)
   const podeEditar = usuario.papel === "GESTOR"
-  const { inicioMes, inicioProximoMes } = obterIntervaloMes(new Date())
+  const agora = new Date()
+  const { inicioMes, inicioProximoMes } = obterIntervaloMes(agora)
   const [planos, alunos, mensalidadesEncontradas, pagamentos, recebidasNoMes] = await Promise.all([
     db.plano.findMany({
       orderBy: { criadoEm: "desc" },
@@ -166,13 +169,15 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     }),
   ])
 
-  const mensalidadesComStatus: MensalidadeVisivel[] = mensalidadesEncontradas.map(
-    (mensalidade) => ({
+  const mensalidadesComStatus: MensalidadeVisivel[] = mensalidadesEncontradas.map((mensalidade) => {
+    const adimplencia = resumoAdimplencia(mensalidade, agora)
+    return {
       ...mensalidade,
-      valorNumero: Number(mensalidade.valor),
-      statusEfetivo: statusMensalidadeEfetivo(mensalidade),
-    }),
-  )
+      adimplencia,
+      valorNumero: adimplencia.valorAtual,
+      statusEfetivo: statusMensalidadeEfetivo(mensalidade, agora),
+    }
+  })
   const mensalidadesFiltradas = mensalidadesComStatus.filter((mensalidade) => {
     const correspondeABusca =
       !termoBusca ||
@@ -204,6 +209,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       (mensalidade) => mensalidade.statusEfetivo === "EM_ABERTO",
     ),
   }
+  const descontosEmRisco = resumo.vencidas.filter(
+    (mensalidade) => mensalidade.adimplencia.temDesconto && mensalidade.adimplencia.descontoAtivo,
+  ).length
+  const descontosPerdidos = resumo.vencidas.filter(
+    (mensalidade) => mensalidade.adimplencia.temDesconto && !mensalidade.adimplencia.descontoAtivo,
+  ).length
 
   const alunosOpcao = alunos.map((aluno) => ({
     id: aluno.id,
@@ -223,6 +234,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     id: plano.id,
     nome: plano.nome,
     valor: Number(plano.valor),
+    valorBase: Number(plano.valorBase),
     periodicidade: plano.periodicidade,
     limiteAulas: plano.limiteAulas,
     quantidadeModalidadesMatricula: plano.quantidadeModalidadesMatricula,
@@ -241,6 +253,30 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         </Button>
         {podeEditar && <AcoesFinanceiro alunos={alunosOpcao} />}
       </CabecalhoPagina>
+
+      <section
+        aria-labelledby="regra-desconto-adimplencia"
+        className="rounded-xl border-2 border-amber-500 bg-amber-50 p-5 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100"
+      >
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="mt-0.5 size-6 shrink-0" aria-hidden="true" />
+          <div className="space-y-2">
+            <h2 id="regra-desconto-adimplencia" className="text-lg font-bold">
+              Desconto de adimplência: atenção ao prazo
+            </h2>
+            <p className="text-sm">
+              Cada plano possui um valor base e um valor com desconto. O desconto vale até o fim do{" "}
+              {DIAS_CARENCIA_ADIMPLENCIA}º dia de atraso; a partir do{" "}
+              {DIAS_CARENCIA_ADIMPLENCIA + 1}º dia, a mensalidade passa ao valor base. Os alunos
+              recebem avisos diários enquanto ainda podem manter o desconto.
+            </p>
+            <p className="text-sm font-semibold">
+              {descontosEmRisco} mensalidade(s) com desconto em risco · {descontosPerdidos}{" "}
+              mensalidade(s) já sem desconto
+            </p>
+          </div>
+        </div>
+      </section>
 
       <section aria-label="Resumo financeiro" className="grid gap-4 md:grid-cols-3">
         <IndicadorFinanceiro
@@ -397,6 +433,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                           id: plano.id,
                           nome: plano.nome,
                           valor: Number(plano.valor),
+                          valorBase: Number(plano.valorBase),
                           periodicidade: plano.periodicidade,
                           limiteAulas: plano.limiteAulas,
                           quantidadeModalidadesMatricula: plano.quantidadeModalidadesMatricula,
@@ -410,7 +447,8 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
                   </div>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {formatarBRL(Number(plano.valor))} · {plano._count.alunos} aluno(s)
+                  Com desconto: {formatarBRL(Number(plano.valor))} · Valor base:{" "}
+                  {formatarBRL(Number(plano.valorBase))} · {plano._count.alunos} aluno(s)
                 </p>
               </div>
             ))}
@@ -579,6 +617,15 @@ function ListaMensalidades({
                     </td>
                     <td className="p-4 tabular-nums" data-label="Valor">
                       {formatarBRL(mensalidade.valorNumero)}
+                      {!quitada &&
+                        mensalidade.statusEfetivo !== "CANCELADA" &&
+                        mensalidade.adimplencia.temDesconto && (
+                          <p className="mt-1 max-w-56 text-xs text-muted-foreground">
+                            {mensalidade.adimplencia.descontoAtivo
+                              ? `Com desconto até ${formatarData(mensalidade.adimplencia.ultimoDiaComDesconto)}. Depois: ${formatarBRL(mensalidade.adimplencia.valorBase)}.`
+                              : `Sem desconto desde ${formatarData(mensalidade.adimplencia.perdeDescontoEm)}.`}
+                          </p>
+                        )}
                     </td>
                     <td className="p-4" data-label="Cobrança">
                       <SituacaoCobranca

@@ -19,6 +19,7 @@ import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
+import { DIAS_CARENCIA_ADIMPLENCIA } from "@/lib/financeiro/adimplencia"
 import { formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
@@ -51,6 +52,7 @@ export type PlanoEdicao = {
   id: string
   nome: string
   valor: number
+  valorBase: number
   periodicidade: PeriodicidadePlano
   limiteAulas: number | null
   quantidadeModalidadesMatricula: number | null
@@ -82,7 +84,27 @@ export function FormPlano({ aoConcluir }: { aoConcluir?: () => void }) {
   return (
     <form ref={ref} action={acao} className="grid gap-4 sm:grid-cols-2">
       <CampoTexto id="nome" rotulo="Nome" required />
-      <CampoTexto id="valor" rotulo="Valor" type="number" min="0" step="0.01" required />
+      <CampoTexto
+        id="valorBase"
+        rotulo="Valor base (sem desconto)"
+        type="number"
+        min="0.01"
+        step="0.01"
+        required
+      />
+      <CampoTexto
+        id="valor"
+        rotulo="Valor com desconto de adimplência"
+        type="number"
+        min="0.01"
+        step="0.01"
+        required
+      />
+      <p className="text-xs text-muted-foreground sm:col-span-2">
+        O desconto é mantido até o fim do {DIAS_CARENCIA_ADIMPLENCIA}º dia de atraso. A partir do{" "}
+        {DIAS_CARENCIA_ADIMPLENCIA + 1}º dia, será cobrado o valor base. Para um plano sem desconto,
+        informe os mesmos valores.
+      </p>
       <div className="space-y-1.5">
         <Label htmlFor="periodicidade">Periodicidade</Label>
         <Select id="periodicidade" name="periodicidade" defaultValue="MENSAL">
@@ -132,15 +154,30 @@ export function FormEditarPlano({
       <input type="hidden" name="planoId" value={plano.id} />
       <CampoTexto id="nome-plano" nome="nome" rotulo="Nome" defaultValue={plano.nome} required />
       <CampoTexto
+        id="valor-base-plano"
+        nome="valorBase"
+        rotulo="Valor base (sem desconto)"
+        type="number"
+        min="0.01"
+        step="0.01"
+        defaultValue={plano.valorBase}
+        required
+      />
+      <CampoTexto
         id="valor-plano"
         nome="valor"
-        rotulo="Valor"
+        rotulo="Valor com desconto de adimplência"
         type="number"
-        min="0"
+        min="0.01"
         step="0.01"
         defaultValue={plano.valor}
         required
       />
+      <p className="text-xs text-muted-foreground sm:col-span-2">
+        O desconto é mantido até o fim do {DIAS_CARENCIA_ADIMPLENCIA}º dia de atraso. A partir do{" "}
+        {DIAS_CARENCIA_ADIMPLENCIA + 1}º dia, será cobrado o valor base. Para um plano sem desconto,
+        informe os mesmos valores.
+      </p>
       <div className="space-y-1.5">
         <Label htmlFor="periodicidade-plano">Periodicidade</Label>
         <Select id="periodicidade-plano" name="periodicidade" defaultValue={plano.periodicidade}>
@@ -387,12 +424,14 @@ export function FormTipoCobrancaPix({
         <Label htmlFor="tipoCobrancaPix">Tipo de cobrança</Label>
         <Select id="tipoCobrancaPix" name="tipoCobrancaPix" defaultValue="MENSAL">
           <option value="MENSAL">PIX mensal — um QR Code por mensalidade</option>
+          <option value="AUTOMATICO_TRIMESTRAL">PIX Automático — três mensalidades mensais</option>
           <option value="AUTOMATICO_SEMESTRAL">PIX Automático — seis mensalidades mensais</option>
         </Select>
       </div>
       <div className="rounded-md border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-        No PIX Automático, o primeiro QR Code paga a mensalidade 1 de 6 e autoriza os cinco débitos
-        mensais seguintes. O aluno precisa concluir essa autorização no aplicativo do banco.
+        No PIX Automático, escolha uma programação de 3 ou 6 mensalidades. O primeiro QR Code paga a
+        mensalidade inicial e autoriza os débitos mensais restantes. O aluno precisa concluir essa
+        autorização no aplicativo do banco e manter saldo para pagar no prazo.
       </div>
       <Erro estado={estado} />
       <div className="flex justify-end">

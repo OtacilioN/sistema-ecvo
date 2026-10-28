@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { planoExclusaoSchema, planoSchema } from "./financeiro"
+import { planoEdicaoSchema, planoExclusaoSchema, planoSchema } from "./financeiro"
 
 describe("planoSchema", () => {
   const planoBase = {
     nome: "Plano mensal",
     valor: "187.53",
+    valorBase: "207.53",
     periodicidade: "MENSAL",
     limiteAulas: null,
     padrao: false,
@@ -27,6 +28,33 @@ describe("planoSchema", () => {
     expect(
       planoSchema.safeParse({ ...planoBase, quantidadeModalidadesMatricula: "4" }).success,
     ).toBe(false)
+  })
+
+  it("aceita preços iguais para um plano sem desconto", () => {
+    expect(planoSchema.parse({ ...planoBase, valorBase: planoBase.valor }).valorBase).toBe(187.53)
+  })
+
+  it.each([
+    undefined,
+    null,
+    "",
+    "0",
+    "-1",
+    "187.52",
+  ])("rejeita valor base ausente, não positivo ou menor que o valor com desconto: %s", (valorBase) => {
+    expect(planoSchema.safeParse({ ...planoBase, valorBase }).success).toBe(false)
+  })
+
+  it("também impede editar um plano com desconto maior que o valor base", () => {
+    const resultado = planoEdicaoSchema.safeParse({
+      ...planoBase,
+      planoId: "plano-1",
+      ativo: "true",
+      valorBase: "180",
+    })
+
+    expect(resultado.success).toBe(false)
+    if (!resultado.success) expect(resultado.error.issues[0]?.path).toEqual(["valorBase"])
   })
 })
 

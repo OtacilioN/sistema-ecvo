@@ -3,6 +3,7 @@
 import { CalendarDays, LockKeyhole, MapPin, Users } from "lucide-react"
 import { useActionState, useState } from "react"
 import { acaoSolicitarMatriculaFamilia } from "@/app/actions/matriculas"
+import { AvisoBonusAdimplencia } from "@/components/aviso-bonus-adimplencia"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,7 +23,7 @@ export function FormMatriculaFamilia({
   plano,
 }: {
   modalidades: Modalidades
-  plano: { id: string; nome: string; valor: number }
+  plano: { id: string; nome: string; valor: number; valorBase: number }
 }) {
   const [estado, acao, enviando] = useActionState(acaoSolicitarMatriculaFamilia, undefined)
   const [quantidadePessoas, setQuantidadePessoas] = useState(2)
@@ -142,6 +143,12 @@ export function FormMatriculaFamilia({
               {formatarBRL(total)}
               <span className="text-sm font-normal text-muted-foreground"> / mês</span>
             </p>
+            <AvisoBonusAdimplencia
+              valorComBonus={total}
+              valorBase={plano.valorBase * quantidadePessoas}
+              totalFamilia
+              className="mt-2"
+            />
             <p className="mt-3 text-xs text-muted-foreground">
               Você pagará um único PIX de {formatarBRL(total)} para a primeira mensalidade de todas
               as pessoas.

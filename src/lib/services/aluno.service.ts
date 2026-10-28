@@ -3,10 +3,12 @@ import type { Plataforma, Prisma, StatusAluno, TipoAluno } from "@prisma/client"
 import type { ObservacaoTecnicaHistorico } from "@/lib/aula-monitoramento"
 import { gerarHashSenha } from "@/lib/auth/senha"
 import { db } from "@/lib/db"
+import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import {
   atualizarVencimentosMensalidadesAluno,
   registrarMensalidadeInicialPaga,
+  vencimentoDaCompetencia,
 } from "@/lib/services/financeiro.service"
 import {
   MOTIVO_VINCULO_PLANO_FAMILIA,
@@ -56,6 +58,9 @@ export function listarAlunos(opts?: {
               id: true,
               competencia: true,
               valor: true,
+              valorBase: true,
+              valorComDesconto: true,
+              vencimento: true,
               status: true,
               pagoEm: true,
               formaPagamento: true,
@@ -170,29 +175,94 @@ export async function migrarMensalidadesAbertasParaPlanoAluno(
     alunoId: string
     planoAnteriorId: string | null
     planoNovoId: string | null
-    planoNovoValor?: Prisma.MensalidadeUncheckedUpdateManyInput["valor"]
+    planoNovoValor?: Prisma.Decimal | number
+    planoNovoValorBase?: Prisma.Decimal | number
+    diaVencimentoNovo?: number
+    agora?: Date
+    autorId?: string
   },
 ) {
   if (params.planoAnteriorId === params.planoNovoId) return 0
 
-  const data: Prisma.MensalidadeUncheckedUpdateManyInput = {
-    planoId: params.planoNovoId,
+  if (params.planoNovoId && params.planoNovoValor === undefined) {
+    throw new Error("Informe os preços do novo plano para migrar as mensalidades.")
   }
-  if (params.planoNovoId && params.planoNovoValor !== undefined) {
-    data.valor = params.planoNovoValor
+  const elegiveis = {
+    alunoId: params.alunoId,
+    status: "EM_ABERTO" as const,
+    contratoPixAutomaticoId: null,
+    cobrancasAsaas: { none: { ativa: true } },
   }
-
-  const resultado = await cliente.mensalidade.updateMany({
-    where: {
-      alunoId: params.alunoId,
-      status: "EM_ABERTO",
-      contratoPixAutomaticoId: null,
-      cobrancasAsaas: { none: { ativa: true } },
+  const mensalidades = await cliente.mensalidade.findMany({
+    where: elegiveis,
+    select: {
+      id: true,
+      planoId: true,
+      competencia: true,
+      valor: true,
+      valorBase: true,
+      valorComDesconto: true,
+      vencimento: true,
+      atualizadoEm: true,
     },
-    data,
   })
+  const agora = params.agora ?? new Date()
+  let migradas = 0
+  for (const mensalidade of mensalidades) {
+    const data: Prisma.MensalidadeUncheckedUpdateManyInput = {
+      planoId: params.planoNovoId,
+      valorBase: null,
+      valorComDesconto: null,
+    }
+    if (params.planoNovoId && params.planoNovoValor !== undefined) {
+      const valorComDesconto = params.planoNovoValor
+      const valorBase = params.planoNovoValorBase ?? valorComDesconto
+      const vencimento = params.diaVencimentoNovo
+        ? vencimentoDaCompetencia(mensalidade.competencia, params.diaVencimentoNovo)
+        : mensalidade.vencimento
+      data.valorBase = valorBase
+      data.valorComDesconto = valorComDesconto
+      data.valor = resumoAdimplencia(
+        { status: "EM_ABERTO", vencimento, valor: valorComDesconto, valorBase, valorComDesconto },
+        agora,
+      ).valorAtual
+    }
+    const resultado = await cliente.mensalidade.updateMany({
+      where: { ...elegiveis, id: mensalidade.id, atualizadoEm: mensalidade.atualizadoEm },
+      data,
+    })
+    if (resultado.count === 0) continue
+    migradas += resultado.count
+    if (params.autorId) {
+      await registrarLog(
+        {
+          autorId: params.autorId,
+          acao: "PAGAMENTO",
+          entidade: "Mensalidade",
+          entidadeId: mensalidade.id,
+          valorAntigo: {
+            planoId: mensalidade.planoId,
+            valor: Number(mensalidade.valor),
+            valorBase: mensalidade.valorBase == null ? null : Number(mensalidade.valorBase),
+            valorComDesconto:
+              mensalidade.valorComDesconto == null ? null : Number(mensalidade.valorComDesconto),
+          },
+          valorNovo: {
+            planoId: params.planoNovoId,
+            valor: Number(data.valor ?? mensalidade.valor),
+            valorBase: params.planoNovoId
+              ? Number(params.planoNovoValorBase ?? params.planoNovoValor)
+              : null,
+            valorComDesconto: params.planoNovoId ? Number(params.planoNovoValor) : null,
+          },
+          justificativa: "Migração da mensalidade em aberto para o novo vínculo de plano.",
+        },
+        cliente,
+      )
+    }
+  }
 
-  return resultado.count
+  return migradas
 }
 
 export async function criarAluno(
@@ -450,7 +520,7 @@ export async function atualizarAluno(
       include: {
         usuario: { select: { nome: true, email: true, fotoUrl: true } },
         modalidades: { select: { id: true, nome: true } },
-        plano: { select: { nome: true, valor: true } },
+        plano: { select: { nome: true, valor: true, valorBase: true } },
         responsavel: true,
       },
     })
@@ -461,6 +531,9 @@ export async function atualizarAluno(
         planoAnteriorId: atual.planoId,
         planoNovoId: params.planoId,
         planoNovoValor: aluno.plano?.valor,
+        planoNovoValorBase: aluno.plano?.valorBase,
+        diaVencimentoNovo: params.diaVencimento,
+        autorId: params.autorId,
       })
     }
 

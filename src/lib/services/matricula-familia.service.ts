@@ -10,7 +10,7 @@ class ErroMatriculaFamilia extends Error {}
 export function obterPlanoFamilia(cliente: Prisma.TransactionClient = db) {
   return cliente.plano.findFirst({
     where: { familia: true, ativo: true, periodicidade: "MENSAL" },
-    select: { id: true, nome: true, valor: true, periodicidade: true },
+    select: { id: true, nome: true, valor: true, valorBase: true, periodicidade: true },
   })
 }
 
@@ -163,7 +163,7 @@ export function obterMatriculaFamiliaPublica(token: string) {
           nome: true,
           tokenAcompanhamento: true,
           status: true,
-          plano: { select: { id: true, nome: true, valor: true } },
+          plano: { select: { id: true, nome: true, valor: true, valorBase: true } },
           modalidadePrincipal: { select: { id: true, nome: true } },
           cobrancasAsaas: {
             orderBy: [{ ativa: "desc" }, { geracao: "desc" }],

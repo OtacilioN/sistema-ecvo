@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirProfessor } from "@/lib/auth/dal"
+import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import {
   listarMensalidadesAcompanhamentoProfessor,
   statusMensalidadeEfetivo,
@@ -28,11 +29,15 @@ export default async function ProfessorFinanceiroPage() {
   const mensalidades = await listarMensalidadesAcompanhamentoProfessor(professorId, undefined, {
     agora: hoje,
   })
-  const mensalidadesComStatus = mensalidades.map((mensalidade) => ({
-    ...mensalidade,
-    statusEfetivo: statusMensalidadeEfetivo(mensalidade, hoje),
-    valorNumero: Number(mensalidade.valor),
-  }))
+  const mensalidadesComStatus = mensalidades.map((mensalidade) => {
+    const adimplencia = resumoAdimplencia(mensalidade, hoje)
+    return {
+      ...mensalidade,
+      adimplencia,
+      statusEfetivo: statusMensalidadeEfetivo(mensalidade, hoje),
+      valorNumero: adimplencia.valorAtual,
+    }
+  })
   const vencidas = mensalidadesComStatus.filter(
     (mensalidade) => mensalidade.statusEfetivo === "VENCIDA",
   )
@@ -118,6 +123,13 @@ export default async function ProfessorFinanceiroPage() {
                       </td>
                       <td className="p-4 tabular-nums" data-label="Valor">
                         {formatarBRL(mensalidade.valorNumero)}
+                        {mensalidade.adimplencia.temDesconto && (
+                          <p className="mt-1 max-w-56 text-xs text-muted-foreground">
+                            {mensalidade.adimplencia.descontoAtivo
+                              ? `Com desconto até ${formatarData(mensalidade.adimplencia.ultimoDiaComDesconto)}. Depois: ${formatarBRL(mensalidade.adimplencia.valorBase)}.`
+                              : `Sem desconto desde ${formatarData(mensalidade.adimplencia.perdeDescontoEm)}.`}
+                          </p>
+                        )}
                       </td>
                       <td className="p-4" data-label="Status">
                         <Badge

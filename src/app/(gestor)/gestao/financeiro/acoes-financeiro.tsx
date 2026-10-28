@@ -60,7 +60,7 @@ export function AcoesFinanceiro({ alunos }: { alunos: AlunoOpcao[] }) {
         aoFechar={fechar}
         variante="centro"
         titulo="Configurar cobrança PIX"
-        descricao="PIX mensal ou PIX Automático por seis mensalidades."
+        descricao="PIX mensal ou PIX Automático por 3 ou 6 mensalidades."
       >
         <FormTipoCobrancaPix alunos={alunos} aoConcluir={fechar} />
       </Dialog>

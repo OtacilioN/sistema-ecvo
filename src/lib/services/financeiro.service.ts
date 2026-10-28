@@ -10,7 +10,9 @@ import {
 } from "@prisma/client"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
+import { DIAS_CARENCIA_ADIMPLENCIA, resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { CUSTOS_FIXOS_PADRAO, totalizarCustosFixos } from "@/lib/financeiro/custos-fixos"
+import { gerarAvisosDiariosAdimplencia } from "@/lib/services/adimplencia.service"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
 import {
@@ -151,6 +153,60 @@ export function mensalistaAdimplente(
   })
 }
 
+/** Sincroniza o preço devido sob a mesma trava utilizada na cobrança e na baixa. */
+export async function sincronizarValorMensalidadeAdimplencia(
+  tx: Prisma.TransactionClient,
+  mensalidadeId: string,
+  agora = new Date(),
+  autorId: string | null = null,
+) {
+  await bloquearMensalidadeFinanceira(tx, mensalidadeId)
+  const mensalidade = await tx.mensalidade.findUnique({ where: { id: mensalidadeId } })
+  if (!mensalidade) return null
+  const resumo = resumoAdimplencia(mensalidade, agora)
+  if (resumo.valorAtual === Number(mensalidade.valor)) return mensalidade
+
+  const atualizada = await tx.mensalidade.update({
+    where: { id: mensalidadeId },
+    data: { valor: resumo.valorAtual },
+  })
+  await registrarLog(
+    {
+      autorId,
+      acao: "PAGAMENTO",
+      entidade: "Mensalidade",
+      entidadeId: mensalidadeId,
+      valorAntigo: { valor: Number(mensalidade.valor) },
+      valorNovo: {
+        valor: resumo.valorAtual,
+        valorBase: resumo.valorBase,
+        valorComDesconto: resumo.valorComDesconto,
+        descontoAtivo: resumo.descontoAtivo,
+      },
+      justificativa: `Aplicação da carência de ${DIAS_CARENCIA_ADIMPLENCIA} dias do desconto de adimplência.`,
+    },
+    tx,
+  )
+  return atualizada
+}
+
+export async function sincronizarValoresAdimplencia(agora = new Date()) {
+  const candidatas = await db.mensalidade.findMany({
+    where: {
+      status: { in: ["EM_ABERTO", "VENCIDA"] },
+      valorBase: { not: null },
+      valorComDesconto: { not: null },
+    },
+  })
+  let atualizadas = 0
+  for (const mensalidade of candidatas) {
+    if (resumoAdimplencia(mensalidade, agora).valorAtual === Number(mensalidade.valor)) continue
+    await db.$transaction((tx) => sincronizarValorMensalidadeAdimplencia(tx, mensalidade.id, agora))
+    atualizadas++
+  }
+  return { ok: true as const, atualizadas }
+}
+
 export async function sincronizarStatusFinanceiroAluno(
   cliente: Cliente,
   alunoId: string,
@@ -228,17 +284,27 @@ export async function atualizarVencimentosMensalidadesAluno(
       id: true,
       competencia: true,
       status: true,
+      valor: true,
+      valorBase: true,
+      valorComDesconto: true,
     },
   })
   const inicioHoje = inicioDoDia(params.hoje ?? new Date())
 
   for (const mensalidade of mensalidades) {
     const vencimento = vencimentoDaCompetencia(mensalidade.competencia, params.diaVencimentoNovo)
+    const status = statusMensalidadeAposNovoVencimento(mensalidade.status, vencimento, inicioHoje)
     await cliente.mensalidade.update({
       where: { id: mensalidade.id },
       data: {
         vencimento,
-        status: statusMensalidadeAposNovoVencimento(mensalidade.status, vencimento, inicioHoje),
+        status,
+        ...(mensalidade.valorBase != null && mensalidade.valorComDesconto != null
+          ? {
+              valor: resumoAdimplencia({ ...mensalidade, vencimento, status }, params.hoje)
+                .valorAtual,
+            }
+          : {}),
       },
     })
   }
@@ -791,12 +857,25 @@ function conteudosFinanceirosLegados(params: {
 export async function criarPlano(params: {
   nome: string
   valor: number
+  valorBase?: number
   periodicidade: Periodicidade
   limiteAulas?: number | null
   quantidadeModalidadesMatricula: number | null
   padrao: boolean
   autorId: string
 }) {
+  if (
+    !Number.isFinite(params.valor) ||
+    params.valor < 0 ||
+    !Number.isFinite(params.valorBase ?? params.valor) ||
+    (params.valorBase ?? params.valor) < params.valor
+  ) {
+    return {
+      ok: false as const,
+      motivo: "O valor base deve ser maior ou igual ao valor com desconto.",
+    }
+  }
+
   if (params.padrao && params.periodicidade !== "MENSAL") {
     return { ok: false as const, motivo: "O plano padrão precisa ter periodicidade mensal." }
   }
@@ -839,6 +918,7 @@ export async function criarPlano(params: {
       data: {
         nome: params.nome,
         valor: params.valor,
+        valorBase: params.valorBase ?? params.valor,
         periodicidade: params.periodicidade,
         limiteAulas: params.limiteAulas ?? null,
         quantidadeModalidadesMatricula: params.quantidadeModalidadesMatricula,
@@ -866,6 +946,7 @@ export async function atualizarPlano(params: {
   planoId: string
   nome: string
   valor: number
+  valorBase?: number
   periodicidade: Periodicidade
   limiteAulas?: number | null
   quantidadeModalidadesMatricula: number | null
@@ -873,12 +954,25 @@ export async function atualizarPlano(params: {
   padrao: boolean
   autorId: string
 }) {
+  if (
+    !Number.isFinite(params.valor) ||
+    params.valor < 0 ||
+    !Number.isFinite(params.valorBase ?? params.valor) ||
+    (params.valorBase ?? params.valor) < params.valor
+  ) {
+    return {
+      ok: false as const,
+      motivo: "O valor base deve ser maior ou igual ao valor com desconto.",
+    }
+  }
+
   const anterior = await db.plano.findUnique({
     where: { id: params.planoId },
     select: {
       id: true,
       nome: true,
       valor: true,
+      valorBase: true,
       periodicidade: true,
       limiteAulas: true,
       quantidadeModalidadesMatricula: true,
@@ -949,6 +1043,7 @@ export async function atualizarPlano(params: {
       data: {
         nome: params.nome,
         valor: params.valor,
+        valorBase: params.valorBase ?? params.valor,
         periodicidade: params.periodicidade,
         limiteAulas: params.limiteAulas ?? null,
         quantidadeModalidadesMatricula: params.quantidadeModalidadesMatricula,
@@ -986,6 +1081,7 @@ export async function excluirPlano(params: {
       id: true,
       nome: true,
       valor: true,
+      valorBase: true,
       periodicidade: true,
       limiteAulas: true,
       quantidadeModalidadesMatricula: true,
@@ -1247,7 +1343,15 @@ export async function obterOuCriarMensalidadeNaTransacao(
       alunoId: aluno.id,
       planoId: plano.id,
       competencia: params.competencia,
-      valor: plano.valor,
+      valor: resumoAdimplencia({
+        status: "EM_ABERTO",
+        vencimento: vencimentoDaCompetencia(params.competencia, aluno.diaVencimento),
+        valor: plano.valor,
+        valorBase: plano.valorBase ?? plano.valor,
+        valorComDesconto: plano.valor,
+      }).valorAtual,
+      valorBase: plano.valorBase ?? plano.valor,
+      valorComDesconto: plano.valor,
       vencimento: vencimentoDaCompetencia(params.competencia, aluno.diaVencimento),
       repasseSnapshot: repasseSnapshot as unknown as Prisma.InputJsonValue,
     },
@@ -1380,6 +1484,10 @@ async function baixarMensalidadeNaTransacao(
     },
     data: {
       status: "PAGA",
+      valor:
+        params.formaPagamento === "PIX_ASAAS" && params.pagoEm
+          ? mensalidade.valor
+          : resumoAdimplencia(mensalidade, params.pagoEm ?? params.agora ?? new Date()).valorAtual,
       pagoEm: params.pagoEm ?? new Date(),
       formaPagamento: params.formaPagamento ?? null,
       cobrancaQuitacaoAsaasId: null,
@@ -1577,6 +1685,10 @@ export async function atualizarStatusMensalidade(params: {
       },
       data: {
         status: params.status,
+        valor: resumoAdimplencia({
+          ...mensalidade,
+          status: params.status === "PAGA" ? mensalidade.status : params.status,
+        }).valorAtual,
         pagoEm: params.status === "PAGA" ? (mensalidade.pagoEm ?? new Date()) : null,
         formaPagamento:
           params.status === "PAGA" ? (params.formaPagamento ?? mensalidade.formaPagamento) : null,
@@ -1713,6 +1825,7 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
   const amanha = intervaloDoDia(new Date(hoje.getTime() + 24 * 60 * 60 * 1000))
   const emCincoDias = intervaloDoDia(new Date(hoje.getTime() + 5 * 24 * 60 * 60 * 1000))
   const vencidas = await vencerMensalidadesAtrasadas(cliente, { agora })
+  const avisosAdimplencia = await gerarAvisosDiariosAdimplencia(cliente, { agora })
   const professoresNotificados = new Set<string>()
 
   const [gestores, vencemAmanha, vencemEmCincoDias, inadimplentes] = await Promise.all([
@@ -1834,7 +1947,12 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
     lembretesCriados,
     lembretesPagamentoCriados,
     inadimplenciasCriadas,
-    totalCriado: lembretesCriados + lembretesPagamentoCriados + inadimplenciasCriadas,
+    avisosAdimplenciaCriados: avisosAdimplencia.total,
+    totalCriado:
+      lembretesCriados +
+      lembretesPagamentoCriados +
+      inadimplenciasCriadas +
+      avisosAdimplencia.total,
   }
 }
 
@@ -2104,6 +2222,7 @@ function formatarBRL(valor: number): string {
 function serializarPlano(plano: {
   nome: string
   valor: Prisma.Decimal | number
+  valorBase?: Prisma.Decimal | number
   periodicidade: Periodicidade
   limiteAulas: number | null
   quantidadeModalidadesMatricula: number | null
@@ -2113,6 +2232,7 @@ function serializarPlano(plano: {
   return {
     nome: plano.nome,
     valor: Number(plano.valor),
+    valorBase: Number(plano.valorBase ?? plano.valor),
     periodicidade: plano.periodicidade,
     limiteAulas: plano.limiteAulas,
     quantidadeModalidadesMatricula: plano.quantidadeModalidadesMatricula,

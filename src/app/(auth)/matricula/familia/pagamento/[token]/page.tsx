@@ -6,6 +6,7 @@ import {
   acaoGerarPagamentoMatriculaFamilia,
   acaoReemitirPagamentoMatriculaFamilia,
 } from "@/app/actions/matriculas"
+import { AvisoBonusAdimplencia } from "@/components/aviso-bonus-adimplencia"
 import { Marca } from "@/components/marca"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Card, CardContent } from "@/components/ui/card"
@@ -68,6 +69,14 @@ export default async function PagamentoMatriculaFamiliaPage({
               {titular.plano.nome} · {familia.pessoas.length} pessoas × {formatarBRL(unitario)}
             </p>
             <p className="mt-2 text-3xl font-bold tabular-nums">{formatarBRL(total)}</p>
+            <AvisoBonusAdimplencia
+              valorComBonus={total}
+              valorBase={
+                Number(titular.plano.valorBase ?? titular.plano.valor) * familia.pessoas.length
+              }
+              totalFamilia
+              className="mt-2"
+            />
             <p className="mt-2 text-xs text-muted-foreground">
               Um único PIX para todas as pessoas da matrícula.
             </p>

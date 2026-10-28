@@ -1,5 +1,19 @@
 const COMPETENCIA_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/
 
+export type TotalCiclosPixAutomatico = 3 | 6
+
+export function totalCiclosPixAutomatico(tipo: string): TotalCiclosPixAutomatico {
+  if (tipo === "AUTOMATICO_TRIMESTRAL") return 3
+  if (tipo === "AUTOMATICO_SEMESTRAL") return 6
+  throw new Error("Modalidade de Pix Automático inválida.")
+}
+
+export function tipoPixAutomaticoDoContrato(totalCiclos: number) {
+  if (totalCiclos === 3) return "AUTOMATICO_TRIMESTRAL" as const
+  if (totalCiclos === 6) return "AUTOMATICO_SEMESTRAL" as const
+  throw new Error("O Pix Automático permite somente 3 ou 6 mensalidades.")
+}
+
 export function somarMesesCompetencia(competencia: string, meses: number): string {
   const match = COMPETENCIA_PATTERN.exec(competencia)
   if (!match) throw new Error("Competência inválida.")
@@ -11,7 +25,17 @@ export function somarMesesCompetencia(competencia: string, meses: number): strin
 }
 
 export function competenciasDoSemestre(competenciaInicial: string): string[] {
-  return Array.from({ length: 6 }, (_, indice) => somarMesesCompetencia(competenciaInicial, indice))
+  return competenciasDoCicloPixAutomatico(competenciaInicial, 6)
+}
+
+export function competenciasDoCicloPixAutomatico(
+  competenciaInicial: string,
+  totalCiclos: number,
+): string[] {
+  tipoPixAutomaticoDoContrato(totalCiclos)
+  return Array.from({ length: totalCiclos }, (_, indice) =>
+    somarMesesCompetencia(competenciaInicial, indice),
+  )
 }
 
 /**

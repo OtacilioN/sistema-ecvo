@@ -94,6 +94,7 @@ export async function criarNotificacao(
     tipo: TipoNotificacao
     titulo: string
     mensagem: string
+    chaveDeduplicacao?: string
   },
   opcoes?: { enviarPush?: boolean },
 ) {
@@ -105,6 +106,7 @@ export async function criarNotificacao(
       tipo: params.tipo,
       titulo: params.titulo,
       mensagem: params.mensagem,
+      ...(params.chaveDeduplicacao ? { chaveDeduplicacao: params.chaveDeduplicacao } : {}),
     },
   })
 

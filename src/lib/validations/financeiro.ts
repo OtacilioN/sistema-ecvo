@@ -14,19 +14,31 @@ const quantidadeModalidadesMatriculaSchema = z.preprocess(
   z.coerce.number().int().min(1).max(3).nullable(),
 )
 
-export const planoSchema = z.object({
+const planoCamposSchema = z.object({
   nome: z.string().trim().min(2, "Informe o nome do plano"),
   valor: z.coerce.number().positive("Informe o valor"),
+  valorBase: z.coerce.number().positive("Informe o valor base"),
   periodicidade: z.enum(["MENSAL", "TRIMESTRAL", "SEMESTRAL", "ANUAL"]),
   limiteAulas: z.coerce.number().int().positive().optional().nullable(),
   quantidadeModalidadesMatricula: quantidadeModalidadesMatriculaSchema,
   padrao: z.preprocess((valor) => valor === "on" || valor === true, z.boolean()),
 })
 
-export const planoEdicaoSchema = planoSchema.extend({
-  planoId: z.string().min(1, "Selecione o plano"),
-  ativo: z.enum(["true", "false"]).transform((v) => v === "true"),
-})
+const precosPlanoValidos = (plano: { valor: number; valorBase: number }) =>
+  plano.valorBase >= plano.valor
+const erroPrecosPlano = {
+  message: "O valor base deve ser maior ou igual ao valor com desconto.",
+  path: ["valorBase"],
+}
+
+export const planoSchema = planoCamposSchema.refine(precosPlanoValidos, erroPrecosPlano)
+
+export const planoEdicaoSchema = planoCamposSchema
+  .extend({
+    planoId: z.string().min(1, "Selecione o plano"),
+    ativo: z.enum(["true", "false"]).transform((v) => v === "true"),
+  })
+  .refine(precosPlanoValidos, erroPrecosPlano)
 
 export const planoExclusaoSchema = z
   .object({

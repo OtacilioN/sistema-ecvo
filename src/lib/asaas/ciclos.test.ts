@@ -1,11 +1,29 @@
 import { describe, expect, it } from "vitest"
 import {
+  competenciasDoCicloPixAutomatico,
   competenciasDoSemestre,
   estaNaJanelaDeCriacaoPixAutomatico,
   somarMesesCompetencia,
+  tipoPixAutomaticoDoContrato,
+  totalCiclosPixAutomatico,
 } from "./ciclos"
 
 describe("ciclos de cobrança Asaas", () => {
+  it("gera três competências e termina no mês correto na virada do ano", () => {
+    expect(competenciasDoCicloPixAutomatico("2026-12", 3)).toEqual([
+      "2026-12",
+      "2027-01",
+      "2027-02",
+    ])
+    expect(totalCiclosPixAutomatico("AUTOMATICO_TRIMESTRAL")).toBe(3)
+    expect(totalCiclosPixAutomatico("AUTOMATICO_SEMESTRAL")).toBe(6)
+    expect(tipoPixAutomaticoDoContrato(3)).toBe("AUTOMATICO_TRIMESTRAL")
+    expect(tipoPixAutomaticoDoContrato(6)).toBe("AUTOMATICO_SEMESTRAL")
+  })
+
+  it.each([0, 1, 2, 4, 5, 7, 12])("recusa %i ciclos fora das opções contratáveis", (total) => {
+    expect(() => competenciasDoCicloPixAutomatico("2026-10", total)).toThrow()
+  })
   it("gera exatamente seis competências, inclusive na virada do ano", () => {
     expect(competenciasDoSemestre("2026-10")).toEqual([
       "2026-10",

@@ -163,16 +163,29 @@ export default async function MatriculaPage({
         ) : tipoPagamento === "FAMILIA" && planoFamilia ? (
           <FormMatriculaFamilia
             modalidades={modalidades}
-            plano={{ ...planoFamilia, valor: Number(planoFamilia.valor) }}
+            plano={{
+              ...planoFamilia,
+              valor: Number(planoFamilia.valor),
+              valorBase: Number(planoFamilia.valorBase ?? planoFamilia.valor),
+            }}
           />
         ) : formularioDisponivel ? (
           <FormMatricula
             modalidades={modalidades}
             tipoPagamento={tipoPagamento}
-            planoPadrao={planoPadrao ? { ...planoPadrao, valor: Number(planoPadrao.valor) } : null}
+            planoPadrao={
+              planoPadrao
+                ? {
+                    ...planoPadrao,
+                    valor: Number(planoPadrao.valor),
+                    valorBase: Number(planoPadrao.valorBase ?? planoPadrao.valor),
+                  }
+                : null
+            }
             planosMensalista={planosMensalista.map((plano) => ({
               ...plano,
               valor: Number(plano.valor),
+              valorBase: Number(plano.valorBase ?? plano.valor),
               quantidadeModalidades: plano.quantidadeModalidadesMatricula!,
             }))}
           />

@@ -6,6 +6,7 @@ import {
   acaoGerarPagamentoMatricula,
   acaoReemitirPagamentoMatricula,
 } from "@/app/actions/matriculas"
+import { AvisoBonusAdimplencia } from "@/components/aviso-bonus-adimplencia"
 import { Marca } from "@/components/marca"
 import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Card, CardContent } from "@/components/ui/card"
@@ -67,6 +68,13 @@ export default async function PagamentoMatriculaPage({
                 : solicitacao.plano.nome}{" "}
               · {formatarBRL(Number(cobranca?.valor ?? solicitacao.plano.valor))}
             </p>
+            {!aulaAvulsa && (
+              <AvisoBonusAdimplencia
+                valorComBonus={Number(cobranca?.valor ?? solicitacao.plano.valor)}
+                valorBase={Number(solicitacao.plano.valorBase ?? solicitacao.plano.valor)}
+                className="mt-2"
+              />
+            )}
           </div>
 
           {pagamentoConfirmado ? (

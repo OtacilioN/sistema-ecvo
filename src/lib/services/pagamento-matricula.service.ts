@@ -131,7 +131,7 @@ function motivoStatusRemoto(status: CobrancaRemotaAsaas["status"]) {
 export function obterPlanoPadraoMatricula() {
   return db.plano.findFirst({
     where: { padrao: true, ativo: true, periodicidade: "MENSAL" },
-    select: { id: true, nome: true, valor: true, periodicidade: true },
+    select: { id: true, nome: true, valor: true, valorBase: true, periodicidade: true },
   })
 }
 
@@ -148,6 +148,7 @@ export function obterPlanosMatriculaMensalista() {
       id: true,
       nome: true,
       valor: true,
+      valorBase: true,
       periodicidade: true,
       quantidadeModalidadesMatricula: true,
     },
@@ -171,7 +172,7 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
           turma: { select: { nome: true, local: true, modalidade: { select: { nome: true } } } },
         },
       },
-      plano: { select: { nome: true, valor: true, periodicidade: true } },
+      plano: { select: { nome: true, valor: true, valorBase: true, periodicidade: true } },
       cobrancasAsaas: {
         orderBy: [{ ativa: "desc" }, { geracao: "desc" }],
         take: 1,

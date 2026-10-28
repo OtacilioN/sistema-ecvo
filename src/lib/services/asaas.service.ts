@@ -9,9 +9,12 @@ import {
   type TipoCobrancaPix,
 } from "@prisma/client"
 import {
-  competenciasDoSemestre,
+  competenciasDoCicloPixAutomatico,
   estaNaJanelaDeCriacaoPixAutomatico,
   somarMesesCompetencia,
+  type TotalCiclosPixAutomatico,
+  tipoPixAutomaticoDoContrato,
+  totalCiclosPixAutomatico,
 } from "@/lib/asaas/ciclos"
 import {
   type AutorizacaoPixAutomaticoAsaas,
@@ -37,12 +40,14 @@ import {
 } from "@/lib/asaas/estado"
 import { mensagemErroAsaasSegura } from "@/lib/asaas/seguranca"
 import { db } from "@/lib/db"
+import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { calcularTaxaAsaas } from "@/lib/financeiro/taxa-asaas"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { aplicarStatusContaAsaasDoWebhook } from "@/lib/services/conta-asaas-professor.service"
 import {
   gerarMensalidade,
   sincronizarStatusFinanceiroAluno,
+  sincronizarValorMensalidadeAdimplencia,
   statusMensalidadeEfetivo,
 } from "@/lib/services/financeiro.service"
 import { efetivarReativacaoMatricula } from "@/lib/services/matricula-trancada.service"
@@ -63,7 +68,6 @@ import {
   type WebhookAsaas,
 } from "@/lib/validations/asaas"
 
-const TOTAL_CICLOS_PIX_AUTOMATICO = 6
 const EXPIRACAO_QR_AUTORIZACAO_SEGUNDOS = 86_400
 const TEMPO_RESERVA_OPERACAO_MS = 2 * 60 * 1_000
 const STATUS_MENSALIDADE_COBRAVEL = ["EM_ABERTO", "VENCIDA"] as const
@@ -122,6 +126,25 @@ async function bloquearMensalidades(tx: Prisma.TransactionClient, ids: string[])
       [...ids].sort(),
     )}) ORDER BY "id" FOR UPDATE`,
   )
+}
+
+async function voltarAlunoParaPixMensalAposContrato(
+  tx: Prisma.TransactionClient,
+  contrato: { id: string; alunoId: string },
+) {
+  // Um evento atrasado do contrato anterior não pode alterar o modo de um novo contrato.
+  await tx.aluno.updateMany({
+    where: {
+      id: contrato.alunoId,
+      contratosPixAutomatico: {
+        none: {
+          id: { not: contrato.id },
+          status: { in: ["CRIANDO", "PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO", "ERRO"] },
+        },
+      },
+    },
+    data: { tipoCobrancaPix: "MENSAL" },
+  })
 }
 
 function referenciaCliente(alunoId: string) {
@@ -280,15 +303,17 @@ type DadosIntencaoCobranca = {
   externalReference: string
   vencimentoAsaas: Date
   permitirNovaTentativaTerminal?: boolean
+  agora?: Date
 }
 
 async function reservarIntencaoCobranca(dados: DadosIntencaoCobranca) {
   return db.$transaction(async (tx) => {
     await bloquearMensalidades(tx, [dados.mensalidadeId])
-    const mensalidade = await tx.mensalidade.findUnique({
-      where: { id: dados.mensalidadeId },
-      select: { status: true, valor: true, repasseSnapshot: true },
-    })
+    const mensalidade = await sincronizarValorMensalidadeAdimplencia(
+      tx,
+      dados.mensalidadeId,
+      dados.agora,
+    )
     if (!mensalidade || !STATUS_MENSALIDADE_COBRAVEL.includes(mensalidade.status as never)) {
       return { ok: false as const, motivo: "Esta mensalidade não aceita uma nova cobrança." }
     }
@@ -330,6 +355,16 @@ async function reservarIntencaoCobranca(dados: DadosIntencaoCobranca) {
           (existente.tipo === "PIX_MENSAL" && existente.status === "RECUSADA"))
       if (!podeGerarNovamente) {
         if (existente.asaasPaymentId) {
+          if (
+            Math.abs(
+              Number(existente.valorCobrado ?? mensalidade.valor) - Number(mensalidade.valor),
+            ) > 0.001
+          ) {
+            return {
+              ok: false as const,
+              motivo: "O valor da cobrança mudou. Atualize o Pix antes de pagar.",
+            }
+          }
           return { ok: true as const, proprietaria: false as const, intencao: existente }
         }
         if (existente.status !== "ERRO" && reservaAindaEmAndamento(existente.atualizadoEm)) {
@@ -747,12 +782,83 @@ async function persistirCobrancaRemota(
   return cobranca
 }
 
+async function cancelarCobrancaComValorAntigo(
+  mensalidade: Pick<
+    Mensalidade,
+    "valor" | "valorBase" | "valorComDesconto" | "vencimento" | "status"
+  >,
+  cobranca: { id: string; valorCobrado: Prisma.Decimal | null; ativa: boolean },
+  autorId: string | null,
+  agora = new Date(),
+) {
+  if (mensalidade.valorBase == null || mensalidade.valorComDesconto == null) {
+    return { ok: true as const, cancelada: false }
+  }
+  const resumo = resumoAdimplencia(mensalidade, agora)
+  const valorCobrado = Number(cobranca.valorCobrado ?? mensalidade.valor)
+  if (
+    !cobranca.ativa ||
+    !resumo.temDesconto ||
+    Math.abs(valorCobrado - resumo.valorAtual) <= 0.001
+  ) {
+    return { ok: true as const, cancelada: false }
+  }
+  const cancelamento = await cancelarCobrancaAsaasOperacional(
+    { cobrancaId: cobranca.id, autorId },
+    {
+      permitirVinculadaAoPixAutomatico: true,
+      justificativa: "Cobrança substituída após a perda do desconto de adimplência.",
+    },
+  )
+  if (!cancelamento.ok) return cancelamento
+  return { ok: true as const, cancelada: true }
+}
+
+/** Invalida o Pix antigo no provedor antes de permitir outra cobrança pelo preço vigente. */
+export async function sincronizarCobrancasDescontoAdimplencia(agora = new Date()) {
+  const cobrancas = await db.cobrancaAsaas.findMany({
+    where: {
+      ativa: true,
+      tipo: { not: "PIX_AUTOMATICO_INICIAL" },
+      mensalidade: {
+        status: { in: ["EM_ABERTO", "VENCIDA"] },
+        valorBase: { not: null },
+        valorComDesconto: { not: null },
+      },
+    },
+    include: { mensalidade: true },
+  })
+  let canceladas = 0
+  const falhas: Array<{ cobrancaId: string; motivo: string }> = []
+  for (const cobranca of cobrancas) {
+    try {
+      const resultado = await cancelarCobrancaComValorAntigo(
+        cobranca.mensalidade,
+        cobranca,
+        null,
+        agora,
+      )
+      if (!resultado.ok) {
+        falhas.push({ cobrancaId: cobranca.id, motivo: resultado.motivo })
+        continue
+      }
+      await db.$transaction((tx) =>
+        sincronizarValorMensalidadeAdimplencia(tx, cobranca.mensalidadeId, agora),
+      )
+      if (resultado.cancelada) canceladas++
+    } catch (erro) {
+      falhas.push({ cobrancaId: cobranca.id, motivo: mensagemErroAsaasSegura(erro) })
+    }
+  }
+  return { ok: falhas.length === 0, analisadas: cobrancas.length, canceladas, falhas }
+}
+
 export async function gerarCobrancaPixMensal(params: {
   alunoId: string
   mensalidadeId: string
-  autorId: string
+  autorId: string | null
 }) {
-  const mensalidade = await db.mensalidade.findFirst({
+  const consulta = {
     where: {
       id: params.mensalidadeId,
       alunoId: params.alunoId,
@@ -760,16 +866,42 @@ export async function gerarCobrancaPixMensal(params: {
     include: {
       aluno: { select: { tipoCobrancaPix: true } },
       cobrancasAsaas: { orderBy: { geracao: "desc" }, take: 1 },
-      contratoPixAutomatico: { select: { status: true } },
+      contratoPixAutomatico: { select: { status: true, totalCiclos: true } },
     },
-  })
+  } satisfies Prisma.MensalidadeFindFirstArgs
+  let mensalidade = await db.mensalidade.findFirst(consulta)
   if (!mensalidade) return { ok: false as const, motivo: "Mensalidade não encontrada." }
-  const cobrancaAtual = mensalidade.cobrancasAsaas[0] ?? null
   if (["PAGA", "ISENTA", "CANCELADA"].includes(mensalidade.status)) {
     return { ok: false as const, motivo: "Esta mensalidade não aceita uma nova cobrança." }
   }
+  if (
+    mensalidade.contratoPixAutomatico &&
+    mensalidade.numeroCicloPix &&
+    mensalidade.numeroCicloPix > mensalidade.contratoPixAutomatico.totalCiclos
+  ) {
+    return {
+      ok: false as const,
+      motivo: "Mensalidade fora do prazo contratado para o Pix Automático.",
+    }
+  }
+  let cobrancaAtual = mensalidade.cobrancasAsaas[0] ?? null
+  if (cobrancaAtual && cobrancaAtual.tipo !== "PIX_AUTOMATICO_INICIAL") {
+    const atualizacao = await cancelarCobrancaComValorAntigo(
+      mensalidade,
+      cobrancaAtual,
+      params.autorId,
+    )
+    if (!atualizacao.ok) return atualizacao
+    if (atualizacao.cancelada) {
+      mensalidade = await db.mensalidade.findFirst(consulta)
+      if (!mensalidade || !STATUS_MENSALIDADE_COBRAVEL.includes(mensalidade.status as never)) {
+        return { ok: false as const, motivo: "Esta mensalidade não aceita uma nova cobrança." }
+      }
+      cobrancaAtual = mensalidade.cobrancasAsaas[0] ?? null
+    }
+  }
   const fallbackAutomatico = Boolean(
-    mensalidade.aluno.tipoCobrancaPix === "AUTOMATICO_SEMESTRAL" &&
+    mensalidade.aluno.tipoCobrancaPix !== "MENSAL" &&
       ["PIX_AUTOMATICO_RECORRENTE", "PIX_AUTOMATICO_FALLBACK"].includes(
         cobrancaAtual?.tipo ?? "",
       ) &&
@@ -784,7 +916,8 @@ export async function gerarCobrancaPixMensal(params: {
   ) {
     return { ok: false as const, motivo: "Esta mensalidade pertence ao PIX Automático." }
   }
-  if (fallbackAutomatico && cobrancaAtual?.asaasPaymentId) {
+  const criarFallback = fallbackAutomatico && cobrancaAtual?.ativa === false
+  if (fallbackAutomatico && !criarFallback && cobrancaAtual?.asaasPaymentId) {
     try {
       if (qrCodeAindaValido({ ...cobrancaAtual, status: undefined })) {
         return { ok: true as const, cobranca: cobrancaAtual }
@@ -806,7 +939,7 @@ export async function gerarCobrancaPixMensal(params: {
     ["CONCLUIDO", "CANCELADO", "RECUSADO", "EXPIRADO", "ERRO"].includes(
       mensalidade.contratoPixAutomatico.status,
     )
-  if (mensalidade.contratoPixAutomaticoId && !contratoTerminal) {
+  if (mensalidade.contratoPixAutomaticoId && !contratoTerminal && !criarFallback) {
     return { ok: false as const, motivo: "Mensalidade vinculada ao PIX Automático." }
   }
 
@@ -815,13 +948,21 @@ export async function gerarCobrancaPixMensal(params: {
 
   const externalReference = referenciaMensalidade(mensalidade.id)
   const vencimentoAsaas = vencimentoAceitoPeloAsaas(mensalidade.vencimento)
-  const reserva = await reservarIntencaoCobranca({
-    mensalidadeId: mensalidade.id,
-    tipo: "PIX_MENSAL",
-    externalReference,
-    vencimentoAsaas,
-    permitirNovaTentativaTerminal: true,
-  })
+  const reserva =
+    criarFallback && mensalidade.contratoPixAutomaticoId && mensalidade.numeroCicloPix
+      ? await reservarFallbackAutomatico({
+          mensalidadeId: mensalidade.id,
+          contratoId: mensalidade.contratoPixAutomaticoId,
+          numeroCiclo: mensalidade.numeroCicloPix,
+          vencimentoAsaas,
+        })
+      : await reservarIntencaoCobranca({
+          mensalidadeId: mensalidade.id,
+          tipo: "PIX_MENSAL",
+          externalReference,
+          vencimentoAsaas,
+          permitirNovaTentativaTerminal: true,
+        })
   if (!reserva.ok) return reserva
   const intencao = reserva.intencao
 
@@ -888,7 +1029,7 @@ export async function gerarCobrancaPixMensal(params: {
           autorId: params.autorId,
           customerId: cliente.customerId,
           externalReference: intencao.externalReference,
-          value: Number(mensalidade.valor),
+          value: Number(intencao.valorCobrado ?? mensalidade.valor),
           dueDate: intencao.vencimentoAsaas ?? vencimentoAsaas,
           description: descricaoMensalidade(mensalidade.competencia),
           split: payloadSplitAsaas(splitsEnviaveis),
@@ -920,7 +1061,12 @@ async function competenciaInicialDisponivel(alunoId: string) {
     : atual
 }
 
-async function prepararContratoPixAutomatico(params: { alunoId: string; autorId: string }) {
+async function prepararContratoPixAutomatico(params: {
+  alunoId: string
+  autorId: string
+  tipoCobrancaPix: TipoCobrancaPix
+}) {
+  const totalCiclos = totalCiclosPixAutomatico(params.tipoCobrancaPix)
   const aluno = await db.aluno.findUnique({
     where: { id: params.alunoId },
     include: { plano: true },
@@ -929,7 +1075,13 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
     return { ok: false as const, motivo: "Vincule um plano mensal ao aluno antes de habilitar." }
   }
   if (aluno.plano.periodicidade !== "MENSAL") {
-    return { ok: false as const, motivo: "O PIX Automático semestral exige um plano mensal." }
+    return { ok: false as const, motivo: "O Pix Automático exige um plano mensal." }
+  }
+  if (Number(aluno.plano.valor) <= 0) {
+    return {
+      ok: false as const,
+      motivo: "O Pix Automático exige um plano com valor maior que zero.",
+    }
   }
   const contratoAberto = await db.contratoPixAutomatico.findFirst({
     where: {
@@ -962,7 +1114,7 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
   }
 
   const competenciaInicial = await competenciaInicialDisponivel(aluno.id)
-  const competencias = competenciasDoSemestre(competenciaInicial)
+  const competencias = competenciasDoCicloPixAutomatico(competenciaInicial, totalCiclos)
   const mensalidades: Mensalidade[] = []
   for (const competencia of competencias) {
     const resultado = await gerarMensalidade({
@@ -974,16 +1126,28 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
     if (["PAGA", "ISENTA", "CANCELADA"].includes(resultado.mensalidade.status)) {
       return {
         ok: false as const,
-        motivo: `A competência ${competencia} já está finalizada e não pode compor o semestre.`,
+        motivo: `A competência ${competencia} já está finalizada e não pode compor o ciclo automático.`,
       }
     }
     mensalidades.push(resultado.mensalidade)
+  }
+  const inicial = mensalidades[0]
+  const valorInicial =
+    inicial.valorBase != null && inicial.valorComDesconto != null
+      ? resumoAdimplencia(inicial).valorAtual
+      : Number(inicial.valor)
+  if (valorInicial !== Number(aluno.plano.valor)) {
+    return {
+      ok: false as const,
+      motivo: "Regularize a mensalidade pelo valor vigente antes de habilitar o Pix Automático.",
+    }
   }
 
   const contratoRetomavel = await db.contratoPixAutomatico.findFirst({
     where: {
       alunoId: aluno.id,
       status: "ERRO",
+      totalCiclos,
       mensalidades: {
         some: { id: mensalidades[0].id },
         every: { id: { in: mensalidades.map((mensalidade) => mensalidade.id) } },
@@ -991,6 +1155,29 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
     },
     orderBy: { atualizadoEm: "desc" },
   })
+  const contratosAnteriores = [
+    ...new Set(
+      mensalidades
+        .map((m) => m.contratoPixAutomaticoId)
+        .filter((id): id is string => Boolean(id && id !== contratoRetomavel?.id)),
+    ),
+  ]
+  if (contratosAnteriores.length > 0) {
+    const pendentes = await db.contratoPixAutomatico.findMany({
+      where: {
+        id: { in: contratosAnteriores },
+        status: { notIn: ["CANCELADO", "RECUSADO", "EXPIRADO", "CONCLUIDO"] },
+      },
+      select: { id: true },
+    })
+    if (pendentes.length > 0) {
+      return {
+        ok: false as const,
+        motivo:
+          "Cancele ou concilie o Pix Automático anterior antes de alterar o prazo contratado.",
+      }
+    }
+  }
   const cobrancaExistente = await db.cobrancaAsaas.findFirst({
     where: {
       mensalidadeId: { in: mensalidades.map((mensalidade) => mensalidade.id) },
@@ -1012,12 +1199,12 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
   ) {
     return {
       ok: false as const,
-      motivo: "Uma das mensalidades do semestre já possui cobrança emitida no Asaas.",
+      motivo: "Uma das mensalidades do ciclo já possui cobrança emitida no Asaas.",
     }
   }
 
   const inicio = new Date()
-  const fim = new Date(mensalidades[5].vencimento)
+  const fim = new Date(mensalidades[totalCiclos - 1].vencimento)
   fim.setUTCDate(fim.getUTCDate() + 1)
 
   try {
@@ -1026,7 +1213,11 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
       await bloquearMensalidades(tx, mensalidadeIds)
       const mensalidadesAtuais = await tx.mensalidade.findMany({
         where: { id: { in: mensalidadeIds } },
-        select: { id: true, status: true },
+        select: {
+          id: true,
+          status: true,
+          contratoPixAutomatico: { select: { id: true, status: true } },
+        },
       })
       if (
         mensalidadesAtuais.length !== mensalidadeIds.length ||
@@ -1035,7 +1226,21 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
         )
       ) {
         throw new ErroEscolhaPagamento(
-          "Uma das mensalidades do semestre não aceita uma nova cobrança.",
+          "Uma das mensalidades do ciclo não aceita uma nova cobrança.",
+        )
+      }
+      if (
+        mensalidadesAtuais.some(
+          (m) =>
+            m.contratoPixAutomatico &&
+            m.contratoPixAutomatico.id !== contratoRetomavel?.id &&
+            !["CANCELADO", "RECUSADO", "EXPIRADO", "CONCLUIDO"].includes(
+              m.contratoPixAutomatico.status,
+            ),
+        )
+      ) {
+        throw new ErroEscolhaPagamento(
+          "Cancele ou concilie o Pix Automático anterior antes de alterar o prazo contratado.",
         )
       }
       const cobrancaAtiva = await tx.cobrancaAsaas.findFirst({
@@ -1057,6 +1262,7 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
             id: contratoRetomavel.id,
             status: "ERRO",
             atualizadoEm: contratoRetomavel.atualizadoEm,
+            totalCiclos,
           },
           data: {
             asaasAuthorizationId: null,
@@ -1065,6 +1271,7 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
             inicio,
             fim,
             valor: aluno.plano!.valor,
+            totalCiclos,
             pixCopiaECola: null,
             qrCodeExpiraEm: null,
             ultimoErro: null,
@@ -1085,6 +1292,7 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
             inicio,
             fim,
             valor: aluno.plano!.valor,
+            totalCiclos,
           },
         })
       }
@@ -1108,6 +1316,7 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
               status: "CRIANDO",
               ultimoErro: null,
               vencimentoAsaas: primeira.vencimento,
+              valorCobrado: primeira.valor,
             },
           })
         : await tx.cobrancaAsaas.create({
@@ -1117,6 +1326,7 @@ async function prepararContratoPixAutomatico(params: { alunoId: string; autorId:
               tipo: "PIX_AUTOMATICO_INICIAL",
               externalReference: referenciaCiclo(salvo.id, 1),
               vencimentoAsaas: primeira.vencimento,
+              valorCobrado: primeira.valor,
               geracao: (ultimaCobranca?.geracao ?? 0) + 1,
             },
           })
@@ -1146,6 +1356,7 @@ async function criarOuRecuperarAutorizacao(params: {
   inicio: Date
   fim: Date
   valor: number
+  totalCiclos: TotalCiclosPixAutomatico
 }) {
   const contractId = `ecvo-${params.contratoId}`.slice(0, 35)
   const encontradas = await listarAutorizacoesPixAutomaticoAsaas({
@@ -1153,7 +1364,20 @@ async function criarOuRecuperarAutorizacao(params: {
     limit: 100,
   })
   const existente = encontradas.data.find((item) => item.contractId === contractId)
-  if (existente) return existente
+  if (existente) {
+    if (
+      existente.customerId !== params.customerId ||
+      existente.frequency !== "MONTHLY" ||
+      existente.paymentCreationMode !== "MANUAL" ||
+      existente.retryPolicy !== "NOT_ALLOWED" ||
+      Number(existente.value) !== params.valor ||
+      existente.startDate !== dataAsaas(params.inicio) ||
+      existente.finishDate !== dataAsaas(params.fim)
+    ) {
+      throw new Error("A autorização Asaas existente diverge do prazo ou valor do contrato.")
+    }
+    return existente
+  }
 
   return criarAutorizacaoPixAutomaticoAsaas({
     frequency: "MONTHLY",
@@ -1161,7 +1385,7 @@ async function criarOuRecuperarAutorizacao(params: {
     startDate: dataAsaas(params.inicio),
     finishDate: dataAsaas(params.fim),
     value: params.valor,
-    description: "Semestralidade ECVO",
+    description: `Mensalidades ECVO por ${params.totalCiclos} meses`,
     customerId: params.customerId,
     paymentCreationMode: "MANUAL",
     retryPolicy: "NOT_ALLOWED",
@@ -1169,7 +1393,7 @@ async function criarOuRecuperarAutorizacao(params: {
       ...(process.env.ASAAS_PIX_KEY ? { pixKey: process.env.ASAAS_PIX_KEY } : {}),
       expirationSeconds: EXPIRACAO_QR_AUTORIZACAO_SEGUNDOS,
       originalValue: params.valor,
-      description: "Mensalidade 1 de 6",
+      description: `Mensalidade 1 de ${params.totalCiclos}`,
     },
   })
 }
@@ -1235,6 +1459,7 @@ export async function configurarTipoCobrancaPix(params: {
       inicio: preparado.contrato.inicio,
       fim: preparado.contrato.fim,
       valor: Number(preparado.contrato.valor),
+      totalCiclos: totalCiclosPixAutomatico(params.tipoCobrancaPix),
     })
     const primeira = preparado.mensalidades[0]
     const resultado = await db.$transaction(async (tx) => {
@@ -1265,7 +1490,7 @@ export async function configurarTipoCobrancaPix(params: {
       })
       await tx.aluno.update({
         where: { id: params.alunoId },
-        data: { tipoCobrancaPix: "AUTOMATICO_SEMESTRAL" },
+        data: { tipoCobrancaPix: tipoPixAutomaticoDoContrato(contrato.totalCiclos) },
       })
       await registrarLog(
         {
@@ -1275,8 +1500,8 @@ export async function configurarTipoCobrancaPix(params: {
           entidadeId: contrato.id,
           valorNovo: {
             alunoId: params.alunoId,
-            tipoCobrancaPix: "AUTOMATICO_SEMESTRAL",
-            totalCiclos: TOTAL_CICLOS_PIX_AUTOMATICO,
+            tipoCobrancaPix: tipoPixAutomaticoDoContrato(contrato.totalCiclos),
+            totalCiclos: contrato.totalCiclos,
             valorMensal: Number(contrato.valor),
             inicio: contrato.inicio.toISOString(),
             fim: contrato.fim.toISOString(),
@@ -1356,13 +1581,15 @@ async function reservarFallbackAutomatico(params: {
   contratoId: string
   numeroCiclo: number
   vencimentoAsaas: Date
+  agora?: Date
 }) {
   return db.$transaction(async (tx) => {
     await bloquearMensalidades(tx, [params.mensalidadeId])
-    const mensalidade = await tx.mensalidade.findUnique({
-      where: { id: params.mensalidadeId },
-      select: { status: true, valor: true, repasseSnapshot: true },
-    })
+    const mensalidade = await sincronizarValorMensalidadeAdimplencia(
+      tx,
+      params.mensalidadeId,
+      params.agora,
+    )
     if (!mensalidade || !STATUS_MENSALIDADE_COBRAVEL.includes(mensalidade.status as never)) {
       return { ok: false as const, motivo: "Esta mensalidade não aceita uma nova cobrança." }
     }
@@ -1374,6 +1601,15 @@ async function reservarFallbackAutomatico(params: {
     })
     if (ultima?.ativa && ultima.tipo === "PIX_AUTOMATICO_FALLBACK") {
       if (ultima.asaasPaymentId) {
+        if (
+          Math.abs(Number(ultima.valorCobrado ?? mensalidade.valor) - Number(mensalidade.valor)) >
+          0.001
+        ) {
+          return {
+            ok: false as const,
+            motivo: "O valor da cobrança mudou. Atualize o Pix antes de pagar.",
+          }
+        }
         return { ok: true as const, proprietaria: false as const, intencao: ultima }
       }
       if (ultima.status !== "ERRO" && reservaAindaEmAndamento(ultima.atualizadoEm)) {
@@ -1462,9 +1698,13 @@ async function notificarFallbackAutomatico(mensalidadeId: string) {
 export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()) {
   const mensalidades = await db.mensalidade.findMany({
     where: {
-      numeroCicloPix: { gte: 2, lte: TOTAL_CICLOS_PIX_AUTOMATICO },
+      numeroCicloPix: { gte: 2, lte: 6 },
       vencimento: { lte: new Date(hoje.getTime() + 14 * 86_400_000) },
-      contratoPixAutomatico: { status: "ATIVO", asaasAuthorizationId: { not: null } },
+      contratoPixAutomatico: {
+        status: "ATIVO",
+        asaasAuthorizationId: { not: null },
+        totalCiclos: { in: [3, 6] },
+      },
       status: { in: ["EM_ABERTO", "VENCIDA"] },
     },
     include: {
@@ -1485,6 +1725,14 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
       falhas.push({
         mensalidadeId: mensalidade.id,
         motivo: "Ciclo automático sem contrato, cliente ou autorização materializados.",
+      })
+      continue
+    }
+    const totalCiclos = contrato.totalCiclos
+    if (![3, 6].includes(totalCiclos) || numero < 2 || numero > totalCiclos) {
+      falhas.push({
+        mensalidadeId: mensalidade.id,
+        motivo: "Número da mensalidade fora do prazo contratado para o Pix Automático.",
       })
       continue
     }
@@ -1528,12 +1776,14 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
             tipo: "PIX_AUTOMATICO_RECORRENTE",
             externalReference: referenciaCiclo(contrato.id, numero),
             vencimentoAsaas: mensalidade.vencimento,
+            agora: hoje,
           })
         : await reservarFallbackAutomatico({
             mensalidadeId: mensalidade.id,
             contratoId: contrato.id,
             numeroCiclo: numero,
             vencimentoAsaas: vencimentoFallback,
+            agora: hoje,
           })
       if (!reserva.ok) {
         falhas.push({ mensalidadeId: mensalidade.id, motivo: reserva.motivo })
@@ -1559,11 +1809,11 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
         autorId: null,
         customerId,
         externalReference: intencao.externalReference,
-        value: Number(mensalidade.valor),
+        value: Number(intencao.valorCobrado ?? mensalidade.valor),
         dueDate: intencao.vencimentoAsaas ?? mensalidade.vencimento,
         description: dentroDaJanela
-          ? `Mensalidade ${numero} de ${TOTAL_CICLOS_PIX_AUTOMATICO}`
-          : `Mensalidade ${numero} de ${TOTAL_CICLOS_PIX_AUTOMATICO} — contingência`,
+          ? `Mensalidade ${numero} de ${totalCiclos}`
+          : `Mensalidade ${numero} de ${totalCiclos} — contingência`,
         pixAutomaticAuthorizationId: dentroDaJanela ? authorizationId : undefined,
         split: payloadSplitAsaas(splitsEnviaveis),
       })
@@ -1840,6 +2090,55 @@ async function baixarMensalidadePeloAsaas(
     : webhook.dateCreated
       ? "webhook.dateCreated"
       : "instante_processamento"
+  const adimplenciaNoPagamento =
+    mensalidade.valorBase != null && mensalidade.valorComDesconto != null
+      ? resumoAdimplencia(mensalidade, dataRecebimento)
+      : null
+  const valorRecebido = webhook.payment?.value ?? Number(cobranca.valorCobrado ?? mensalidade.valor)
+  if (
+    adimplenciaNoPagamento?.temDesconto &&
+    Math.abs(valorRecebido - adimplenciaNoPagamento.valorAtual) > 0.001
+  ) {
+    const motivo =
+      "Pagamento recebido com valor diferente do devido na data do pagamento; conciliação manual necessária."
+    await tx.cobrancaAsaas.update({
+      where: { id: cobranca.id },
+      data: { ultimoErro: motivo, pixCopiaECola: null, qrCodeExpiraEm: null },
+    })
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaAsaas",
+        entidadeId: cobranca.id,
+        valorNovo: {
+          valorRecebido,
+          valorDevido: adimplenciaNoPagamento.valorAtual,
+          pagoEm: dataRecebimento.toISOString(),
+          evento: webhook.id,
+          motivo,
+        },
+        justificativa:
+          "Recebimento preservado sem quitar a mensalidade nem emitir outra cobrança integral.",
+      },
+      tx,
+    )
+    const gestores = await tx.usuario.findMany({
+      where: { papel: "GESTOR", ativo: true },
+      select: { id: true },
+    })
+    if (gestores.length > 0) {
+      await tx.notificacao.createMany({
+        data: gestores.map((gestor) => ({
+          usuarioId: gestor.id,
+          tipo: "FINANCEIRO" as const,
+          titulo: "Pagamento com valor divergente",
+          mensagem: `${mensalidade.competencia}: pagamento recebido após mudança do desconto. Concilie os valores antes de cobrar novamente.`,
+        })),
+      })
+    }
+    return
+  }
   const alterada = await tx.mensalidade.updateMany({
     where: { id: mensalidade.id, status: { in: ["EM_ABERTO", "VENCIDA"] } },
     data: {
@@ -1847,6 +2146,7 @@ async function baixarMensalidadePeloAsaas(
       pagoEm: dataRecebimento,
       formaPagamento: "PIX_ASAAS",
       cobrancaQuitacaoAsaasId: cobranca.id,
+      ...(adimplenciaNoPagamento?.temDesconto ? { valor: valorRecebido } : {}),
     },
   })
   if (alterada.count === 0) return
@@ -1857,13 +2157,14 @@ async function baixarMensalidadePeloAsaas(
       acao: "PAGAMENTO",
       entidade: "Mensalidade",
       entidadeId: mensalidade.id,
-      valorAntigo: { status: mensalidade.status },
+      valorAntigo: { status: mensalidade.status, valor: Number(mensalidade.valor) },
       valorNovo: {
         status: "PAGA",
         formaPagamento: "PIX_ASAAS",
         pagoEm: dataRecebimento.toISOString(),
         origemData,
         evento: webhook.id,
+        valor: valorRecebido,
       },
     },
     tx,
@@ -2167,9 +2468,9 @@ async function cancelarContratoPorEstornoInicial(
       ultimoErro: "Pagamento inicial estornado; autorização recorrente encerrada.",
     },
   })
-  await tx.aluno.update({
-    where: { id: contrato.alunoId },
-    data: { tipoCobrancaPix: "MENSAL" },
+  await voltarAlunoParaPixMensalAposContrato(tx, {
+    id: cobranca.contratoPixAutomaticoId,
+    alunoId: contrato.alunoId,
   })
   await tx.cobrancaAsaas.updateMany({
     where: {
@@ -2392,7 +2693,10 @@ async function obterCobrancaRemotaParaCancelamento(cobranca: CobrancaOperacional
   return encontradas.data[0] ?? null
 }
 
-async function cancelarCobrancaRemotaPendente(cobranca: CobrancaOperacional, autorId: string) {
+async function cancelarCobrancaRemotaPendente(
+  cobranca: CobrancaOperacional,
+  autorId: string | null,
+) {
   const remota = await obterCobrancaRemotaParaCancelamento(cobranca)
   if (!remota) return { estado: "AUSENTE" as const }
 
@@ -2433,9 +2737,9 @@ async function cancelarCobrancaRemotaPendente(cobranca: CobrancaOperacional, aut
 async function cancelarCobrancaAsaasOperacional(
   params: {
     cobrancaId: string
-    autorId: string
+    autorId: string | null
   },
-  opcoes: { permitirVinculadaAoPixAutomatico: boolean },
+  opcoes: { permitirVinculadaAoPixAutomatico: boolean; justificativa?: string },
 ) {
   const cobranca = await db.cobrancaAsaas.findUnique({
     where: { id: params.cobrancaId },
@@ -2506,7 +2810,8 @@ async function cancelarCobrancaAsaasOperacional(
           entidadeId: atual.id,
           valorAntigo: { status: cobranca.status, ativa: true },
           valorNovo: { status: "CANCELADA", ativa: false },
-          justificativa: "Cobrança cancelada antes de uma alteração financeira manual.",
+          justificativa:
+            opcoes.justificativa ?? "Cobrança cancelada antes de uma alteração financeira manual.",
         },
         tx,
       )
@@ -2652,10 +2957,7 @@ export async function cancelarPixAutomatico(params: { alunoId: string; autorId: 
           tx,
         )
       }
-      await tx.aluno.update({
-        where: { id: params.alunoId },
-        data: { tipoCobrancaPix: "MENSAL" },
-      })
+      await voltarAlunoParaPixMensalAposContrato(tx, { id: contrato.id, alunoId: params.alunoId })
       return { ok: true as const }
     })
   } catch (erro) {
@@ -3200,14 +3502,11 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
           if (statusAplicado === "ATIVO") {
             await tx.aluno.update({
               where: { id: contrato.alunoId },
-              data: { tipoCobrancaPix: "AUTOMATICO_SEMESTRAL" },
+              data: { tipoCobrancaPix: tipoPixAutomaticoDoContrato(contrato.totalCiclos) },
             })
           }
           if (["CANCELADO", "RECUSADO", "EXPIRADO"].includes(statusAplicado)) {
-            await tx.aluno.update({
-              where: { id: contrato.alunoId },
-              data: { tipoCobrancaPix: "MENSAL" },
-            })
+            await voltarAlunoParaPixMensalAposContrato(tx, contrato)
             if (cobrancaInicial && cobrancaInicial.status !== "RECEBIDA") {
               const statusInicial = statusAplicado === "RECUSADO" ? "RECUSADA" : "CANCELADA"
               await tx.cobrancaAsaas.update({
@@ -3254,37 +3553,44 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
     }
 
     if (contratoIdAfetado) {
+      const anterior = await tx.contratoPixAutomatico.findUniqueOrThrow({
+        where: { id: contratoIdAfetado },
+        select: { status: true, totalCiclos: true },
+      })
+      tipoPixAutomaticoDoContrato(anterior.totalCiclos)
       const competenciasRecebidas = await tx.cobrancaAsaas.groupBy({
         by: ["mensalidadeId"],
-        where: { contratoPixAutomaticoId: contratoIdAfetado, status: "RECEBIDA" },
+        where: {
+          contratoPixAutomaticoId: contratoIdAfetado,
+          status: "RECEBIDA",
+          mensalidade: {
+            status: "PAGA",
+            contratoPixAutomaticoId: contratoIdAfetado,
+            numeroCicloPix: { gte: 1, lte: anterior.totalCiclos },
+          },
+        },
       })
-      if (competenciasRecebidas.length === TOTAL_CICLOS_PIX_AUTOMATICO) {
-        const anterior = await tx.contratoPixAutomatico.findUniqueOrThrow({
-          where: { id: contratoIdAfetado },
-          select: { status: true },
-        })
+      if (
+        competenciasRecebidas.length === anterior.totalCiclos &&
+        anterior.status !== "CONCLUIDO"
+      ) {
         const contrato = await tx.contratoPixAutomatico.update({
           where: { id: contratoIdAfetado },
           data: { status: "CONCLUIDO" },
         })
-        await tx.aluno.update({
-          where: { id: contrato.alunoId },
-          data: { tipoCobrancaPix: "MENSAL" },
-        })
-        if (anterior.status !== "CONCLUIDO") {
-          await registrarLog(
-            {
-              autorId: null,
-              acao: "PAGAMENTO",
-              entidade: "ContratoPixAutomatico",
-              entidadeId: contrato.id,
-              valorAntigo: { status: anterior.status },
-              valorNovo: { status: "CONCLUIDO", evento: webhook.event },
-              justificativa: "Seis ciclos recebidos pelo Asaas.",
-            },
-            tx,
-          )
-        }
+        await voltarAlunoParaPixMensalAposContrato(tx, contrato)
+        await registrarLog(
+          {
+            autorId: null,
+            acao: "PAGAMENTO",
+            entidade: "ContratoPixAutomatico",
+            entidadeId: contrato.id,
+            valorAntigo: { status: anterior.status },
+            valorNovo: { status: "CONCLUIDO", evento: webhook.event },
+            justificativa: `${anterior.totalCiclos} mensalidades recebidas e quitadas pelo Asaas.`,
+          },
+          tx,
+        )
       } else if (
         webhook.event === "PAYMENT_REFUNDED" ||
         webhook.event === "PAYMENT_PARTIALLY_REFUNDED"
