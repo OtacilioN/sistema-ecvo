@@ -11,11 +11,11 @@ const mensalidade = {
 
 describe("desconto de adimplência", () => {
   it.each([
-    ["2026-10-10T23:59:59-03:00", 100, 0],
-    ["2026-10-11T00:00:00-03:00", 100, 1],
-    ["2026-10-14T23:59:59.999-03:00", 100, 4],
+    ["2026-10-10T23:59:59.999-03:00", 100, 0],
+    ["2026-10-11T00:00:00-03:00", 120, 1],
+    ["2026-10-11T23:59:59.999-03:00", 120, 1],
+    ["2026-10-14T23:59:59.999-03:00", 120, 4],
     ["2026-10-15T00:00:00-03:00", 120, 5],
-    ["2026-10-15T23:59:59.999-03:00", 120, 5],
   ])("calcula o preço em %s", (data, valor, diasAtraso) => {
     expect(resumoAdimplencia(mensalidade, new Date(data))).toMatchObject({
       valorAtual: valor,
@@ -30,18 +30,22 @@ describe("desconto de adimplência", () => {
     [90, 100], // plano família unitário: duas pessoas somam 180/200
   ])("preserva os preços %i/%i", (valorComDesconto, valorBase) => {
     const m = { ...mensalidade, valor: valorComDesconto, valorComDesconto, valorBase }
-    expect(resumoAdimplencia(m, new Date("2026-10-14T12:00:00Z")).valorAtual).toBe(valorComDesconto)
-    expect(resumoAdimplencia(m, new Date("2026-10-15T12:00:00Z")).valorAtual).toBe(valorBase)
+    expect(resumoAdimplencia(m, new Date("2026-10-10T12:00:00Z")).valorAtual).toBe(valorComDesconto)
+    expect(resumoAdimplencia(m, new Date("2026-10-11T12:00:00Z")).valorAtual).toBe(valorBase)
   })
 
-  it("respeita virada de mês e ano", () => {
+  it.each([
+    ["2026-10-31", "2026-11-01"],
+    ["2026-12-31", "2027-01-01"],
+    ["2028-02-29", "2028-03-01"],
+  ])("respeita a virada do vencimento %s para %s", (vencimento, diaSeguinte) => {
     const resumo = resumoAdimplencia(
-      { ...mensalidade, vencimento: new Date("2026-12-30T12:00:00Z") },
-      new Date("2027-01-04T03:00:00Z"),
+      { ...mensalidade, vencimento: new Date(`${vencimento}T12:00:00Z`) },
+      new Date(`${diaSeguinte}T03:00:00Z`),
     )
-    expect(resumo.perdeDescontoEm.toISOString()).toBe("2027-01-04T03:00:00.000Z")
+    expect(resumo.perdeDescontoEm.toISOString()).toBe(`${diaSeguinte}T03:00:00.000Z`)
     expect(resumo.valorAtual).toBe(120)
-    expect(resumo.diasAtraso).toBe(5)
+    expect(resumo.diasAtraso).toBe(1)
   })
 
   it.each(["PAGA", "CANCELADA", "ISENTA"] as const)("preserva valor histórico de %s", (status) => {

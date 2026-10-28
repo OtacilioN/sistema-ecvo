@@ -100,7 +100,7 @@ beforeEach(() => {
 })
 
 describe("gerarAvisosDiariosAdimplencia", () => {
-  it("cria o aviso e envia push no primeiro dia de atraso com os dois preços e prazo", async () => {
+  it("avisa a perda do desconto e envia push já no primeiro dia de atraso", async () => {
     const { executar, persistidas } = prepararCliente()
 
     expect(await executar("2026-10-11T12:00:00Z")).toEqual({ ok: true, total: 1 })
@@ -110,46 +110,47 @@ describe("gerarAvisosDiariosAdimplencia", () => {
       expect.objectContaining({
         usuarioId: "aluno-1",
         tipo: "FINANCEIRO",
-        titulo: "Seu desconto de adimplência está em risco",
+        titulo: "Desconto de adimplência encerrado",
         chaveDeduplicacao: "adimplencia:mensalidade-1:aluno-1:2026-10-11",
       }),
     )
     expect(notificacao.mensagem).toContain("outubro de 2026")
-    expect(notificacao.mensagem.replaceAll("\u00a0", " ")).toContain("Pague R$ 100,00")
-    expect(notificacao.mensagem).toContain("até 14/10/2026")
+    expect(notificacao.mensagem.replaceAll("\u00a0", " ")).toContain("pagar R$ 100,00")
+    expect(notificacao.mensagem).toContain("venceu em 10/10/2026")
     expect(notificacao.mensagem.replaceAll("\u00a0", " ")).toContain(
-      "A partir de 15/10/2026, o valor será R$ 120,00",
+      "o valor para pagamento agora é R$ 120,00",
     )
+    expect(notificacao.mensagem).not.toContain("0 dias")
     expect(enviarPushParaNotificacao).toHaveBeenCalledWith(notificacao)
   })
 
-  it("mantém o aviso no quarto dia e informa o encerramento no quinto", async () => {
+  it("não avisa antes da meia-noite da academia e informa o encerramento no dia seguinte", async () => {
     const { executar, persistidas } = prepararCliente()
 
-    expect(await executar("2026-10-15T02:59:59Z")).toEqual({ ok: true, total: 1 })
-    expect(await executar("2026-10-15T03:00:00Z")).toEqual({ ok: true, total: 1 })
+    expect(await executar("2026-10-11T02:59:59.999Z")).toEqual({ ok: true, total: 0 })
+    expect(await executar("2026-10-11T03:00:00Z")).toEqual({ ok: true, total: 1 })
 
     const notificacoes = [...persistidas.values()]
-    expect(notificacoes[0].titulo).toBe("Seu desconto de adimplência está em risco")
-    expect(notificacoes[1].titulo).toBe("Desconto de adimplência encerrado")
-    expect(notificacoes[1].mensagem.replaceAll("\u00a0", " ")).toContain(
+    expect(notificacoes).toHaveLength(1)
+    expect(notificacoes[0].titulo).toBe("Desconto de adimplência encerrado")
+    expect(notificacoes[0].mensagem.replaceAll("\u00a0", " ")).toContain(
       "o valor para pagamento agora é R$ 120,00",
     )
-    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(2)
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(1)
   })
 
   it.each([
     "2026-10-10T15:00:00Z",
     "2026-10-11T02:59:59Z",
-    "2026-10-16T03:00:00Z",
-  ])("não envia no vencimento nem repete o encerramento após o quinto dia (%s)", async (data) => {
+    "2026-10-12T03:00:00Z",
+  ])("não envia no vencimento nem repete o encerramento após o primeiro dia de atraso (%s)", async (data) => {
     const { executar, persistidas } = prepararCliente()
     expect(await executar(data)).toEqual({ ok: true, total: 0 })
     expect(persistidas.size).toBe(0)
     expect(enviarPushParaNotificacao).not.toHaveBeenCalled()
   })
 
-  it("deduplica execuções concorrentes e permite novo aviso no dia seguinte da academia", async () => {
+  it("deduplica execuções concorrentes e não repete o encerramento em outro dia", async () => {
     const { executar, persistidas } = prepararCliente()
 
     const resultados = await Promise.all([
@@ -158,9 +159,9 @@ describe("gerarAvisosDiariosAdimplencia", () => {
       executar("2026-10-12T02:59:59Z"),
     ])
     expect(resultados.reduce((soma, resultado) => soma + resultado.total, 0)).toBe(1)
-    expect(await executar("2026-10-12T03:00:00Z")).toEqual({ ok: true, total: 1 })
-    expect(persistidas.size).toBe(2)
-    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(2)
+    expect(await executar("2026-10-12T03:00:00Z")).toEqual({ ok: true, total: 0 })
+    expect(persistidas.size).toBe(1)
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(1)
   })
 
   it("mantém avisos separados para mensalidades e destinatários diferentes", async () => {

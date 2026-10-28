@@ -63,7 +63,9 @@ describe("aviso compacto de bônus na matrícula", () => {
     const preco = html.match(/data-testid="plano-matricula"[\s\S]*?<\/div>/)?.[0] ?? ""
 
     expect(preco).toContain("100,00")
-    expect(preco).toContain("Mensalidade com bônus de adimplência. A partir do 5º dia de atraso:")
+    expect(preco).toContain(
+      "Mensalidade com bônus de adimplência até o vencimento. A partir do dia seguinte ao vencimento:",
+    )
     expect(preco).toContain("120,00/mês")
     expect(preco).toContain("text-xs leading-relaxed text-muted-foreground")
   })
@@ -114,7 +116,9 @@ describe("aviso compacto de bônus na matrícula", () => {
     const preco = html.match(/data-testid="plano-matricula-familia"[\s\S]*?<\/div>/)?.[0] ?? ""
 
     expect(preco).toContain(caso.total)
-    expect(preco).toContain("Total mensal com bônus de adimplência. A partir do 5º dia de atraso:")
+    expect(preco).toContain(
+      "Total mensal com bônus de adimplência até o vencimento. A partir do dia seguinte ao vencimento:",
+    )
     expect(preco).toContain(`${caso.base}/mês`)
   })
 })

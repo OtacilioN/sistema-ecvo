@@ -14,7 +14,7 @@ function ehDuplicacao(erro: unknown): boolean {
   return typeof erro === "object" && erro !== null && "code" in erro && erro.code === "P2002"
 }
 
-/** Avisa diariamente durante a carência e confirma a perda no primeiro dia sem desconto. */
+/** Confirma a perda do desconto no primeiro dia após o prazo de pagamento. */
 export async function gerarAvisosDiariosAdimplencia(
   cliente: Cliente = db,
   params?: { agora?: Date },
@@ -67,7 +67,7 @@ export async function gerarAvisosDiariosAdimplencia(
       : "Desconto de adimplência encerrado"
     const mensagem = resumo.descontoAtivo
       ? `Sua mensalidade de ${competencia} está atrasada. Pague ${valorComDesconto} até ${formatarData(resumo.ultimoDiaComDesconto)} para manter o desconto de adimplência. A partir de ${formatarData(resumo.perdeDescontoEm)}, o valor será ${valorBase}.`
-      : `Sua mensalidade de ${competencia} ultrapassou os ${DIAS_CARENCIA_ADIMPLENCIA} dias de tolerância. O prazo para pagar ${valorComDesconto} com desconto de adimplência terminou e o valor para pagamento agora é ${valorBase}. Acesse o financeiro para regularizar.`
+      : `Sua mensalidade de ${competencia} venceu em ${formatarData(mensalidade.vencimento)}. O prazo para pagar ${valorComDesconto} com desconto de adimplência terminou e o valor para pagamento agora é ${valorBase}. Acesse o financeiro para regularizar.`
 
     try {
       const criada = await criarNotificacao(cliente, {

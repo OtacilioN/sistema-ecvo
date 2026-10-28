@@ -10,7 +10,7 @@ import {
 } from "@prisma/client"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
-import { DIAS_CARENCIA_ADIMPLENCIA, resumoAdimplencia } from "@/lib/financeiro/adimplencia"
+import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { CUSTOS_FIXOS_PADRAO, totalizarCustosFixos } from "@/lib/financeiro/custos-fixos"
 import { gerarAvisosDiariosAdimplencia } from "@/lib/services/adimplencia.service"
 import { registrarLog } from "@/lib/services/auditoria.service"
@@ -183,7 +183,7 @@ export async function sincronizarValorMensalidadeAdimplencia(
         valorComDesconto: resumo.valorComDesconto,
         descontoAtivo: resumo.descontoAtivo,
       },
-      justificativa: `Aplicação da carência de ${DIAS_CARENCIA_ADIMPLENCIA} dias do desconto de adimplência.`,
+      justificativa: "Aplicação do bônus de adimplência, válido até o vencimento da mensalidade.",
     },
     tx,
   )

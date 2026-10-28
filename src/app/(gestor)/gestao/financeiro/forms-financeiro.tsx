@@ -19,7 +19,6 @@ import { BotaoEnviar } from "@/components/ui/botao-enviar"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
-import { DIAS_CARENCIA_ADIMPLENCIA } from "@/lib/financeiro/adimplencia"
 import { formatarData } from "@/lib/utils/datas"
 import { formatarBRL } from "@/lib/utils/formato"
 
@@ -101,9 +100,8 @@ export function FormPlano({ aoConcluir }: { aoConcluir?: () => void }) {
         required
       />
       <p className="text-xs text-muted-foreground sm:col-span-2">
-        O desconto é mantido até o fim do {DIAS_CARENCIA_ADIMPLENCIA}º dia de atraso. A partir do{" "}
-        {DIAS_CARENCIA_ADIMPLENCIA + 1}º dia, será cobrado o valor base. Para um plano sem desconto,
-        informe os mesmos valores.
+        O desconto vale até o vencimento. A partir do dia seguinte ao vencimento, será cobrado o
+        valor base. Para um plano sem desconto, informe os mesmos valores.
       </p>
       <div className="space-y-1.5">
         <Label htmlFor="periodicidade">Periodicidade</Label>
@@ -174,9 +172,8 @@ export function FormEditarPlano({
         required
       />
       <p className="text-xs text-muted-foreground sm:col-span-2">
-        O desconto é mantido até o fim do {DIAS_CARENCIA_ADIMPLENCIA}º dia de atraso. A partir do{" "}
-        {DIAS_CARENCIA_ADIMPLENCIA + 1}º dia, será cobrado o valor base. Para um plano sem desconto,
-        informe os mesmos valores.
+        O desconto vale até o vencimento. A partir do dia seguinte ao vencimento, será cobrado o
+        valor base. Para um plano sem desconto, informe os mesmos valores.
       </p>
       <div className="space-y-1.5">
         <Label htmlFor="periodicidade-plano">Periodicidade</Label>

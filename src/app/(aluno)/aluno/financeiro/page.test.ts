@@ -230,36 +230,39 @@ describe("programação de PIX recorrente no financeiro do aluno", () => {
 afterEach(() => vi.useRealTimers())
 
 describe("aviso de desconto no financeiro do aluno", () => {
-  it("avisa o risco desde o primeiro dia de atraso e informa prazo e dois preços", async () => {
+  it("informa o desconto até o vencimento e o valor a partir do dia seguinte", async () => {
+    vi.setSystemTime(new Date("2026-11-10T12:00:00Z"))
+
     const { aviso, valorMensalidade } = await renderizar()
 
-    expect(aviso).toContain("Seu desconto de adimplência está em risco")
-    expect(aviso).toContain("fim do 4º dia de atraso")
-    expect(aviso).toContain("A partir do 5º dia")
-    expect(aviso).toContain("14/11/2026")
-    expect(aviso).toContain("15/11/2026")
+    expect(aviso).toContain("Mantenha seu desconto de adimplência")
+    expect(aviso).toContain("O desconto vale até o vencimento.")
+    expect(aviso).toContain("A partir do dia seguinte ao vencimento")
+    expect(aviso).not.toContain("0º dia")
+    expect(aviso).not.toContain("0 dias")
     expect(aviso).toContain("100,00")
     expect(aviso).toContain("120,00")
     expect(valorMensalidade).toContain("100,00")
   })
 
-  it("mantém desconto e QR de R$ 100 até o último instante do quarto dia", async () => {
-    vi.setSystemTime(new Date("2026-11-15T02:59:59.999Z"))
+  it("mantém desconto e QR de R$ 100 até o último instante do vencimento", async () => {
+    vi.setSystemTime(new Date("2026-11-11T02:59:59.999Z"))
 
     const { html, aviso, valorMensalidade } = await renderizar()
 
-    expect(aviso).toContain("Seu desconto de adimplência está em risco")
+    expect(aviso).toContain("Mantenha seu desconto de adimplência")
     expect(valorMensalidade).toContain("100,00")
     expect(html).toContain('data-pix="PIX-100"')
     expect(mocks.qrCode).toHaveBeenCalledWith("PIX-100", { margin: 1 })
   })
 
-  it("no quinto dia exibe R$ 120 e oculta o QR emitido pelo preço antigo", async () => {
-    vi.setSystemTime(new Date("2026-11-15T03:00:00.000Z"))
+  it("no dia seguinte ao vencimento exibe R$ 120 e oculta o QR emitido pelo preço antigo", async () => {
+    vi.setSystemTime(new Date("2026-11-11T03:00:00.000Z"))
 
     const { html, aviso, valorMensalidade } = await renderizar()
 
     expect(aviso).toContain("Desconto de adimplência perdido")
+    expect(aviso).toContain("o prazo terminou em 10/11/2026")
     expect(aviso).toContain("120,00")
     expect(valorMensalidade).toContain("120,00")
     expect(valorMensalidade).toContain("Sem desconto de adimplência")
@@ -268,8 +271,8 @@ describe("aviso de desconto no financeiro do aluno", () => {
     expect(mocks.qrCode).not.toHaveBeenCalled()
   })
 
-  it("exibe o QR substituído pelo valor base após o término da carência", async () => {
-    vi.setSystemTime(new Date("2026-11-15T03:00:00.000Z"))
+  it("exibe o QR substituído pelo valor base no dia seguinte ao vencimento", async () => {
+    vi.setSystemTime(new Date("2026-11-11T03:00:00.000Z"))
     mocks.aluno.mockResolvedValue(alunoFinanceiro({ valorCobrado: 120, valor: 120 }))
 
     const { html } = await renderizar()

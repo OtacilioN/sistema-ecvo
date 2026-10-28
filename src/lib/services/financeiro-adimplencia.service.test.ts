@@ -1,9 +1,11 @@
 import type { StatusMensalidade } from "@prisma/client"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { db } from "@/lib/db"
 import {
   obterOuCriarMensalidadeNaTransacao,
   registrarMensalidadeInicialPaga,
   registrarMensalidadeInicialPagaAsaas,
+  sincronizarValoresAdimplencia,
   sincronizarValorMensalidadeAdimplencia,
 } from "./financeiro.service"
 
@@ -102,7 +104,43 @@ function clienteFinanceiro(params?: {
   return { tx, eventos }
 }
 
-afterEach(() => vi.useRealTimers())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
+
+describe("atualização diária dos valores de adimplência", () => {
+  it("mantém o desconto no vencimento e aplica o valor base no job do dia seguinte, uma única vez", async () => {
+    const { tx } = clienteFinanceiro({ mensalidade: mensalidadeBase() })
+    const candidatas = vi
+      .spyOn(db.mensalidade, "findMany")
+      .mockResolvedValue([mensalidadeBase()] as never)
+    const transacao = vi
+      .spyOn(db, "$transaction")
+      .mockImplementation((async (callback: (cliente: typeof tx) => unknown) =>
+        callback(tx)) as never)
+
+    expect(await sincronizarValoresAdimplencia(new Date("2026-11-11T02:59:59.999Z"))).toEqual({
+      ok: true,
+      atualizadas: 0,
+    })
+    expect(transacao).not.toHaveBeenCalled()
+
+    expect(await sincronizarValoresAdimplencia(new Date("2026-11-11T11:00:00Z"))).toEqual({
+      ok: true,
+      atualizadas: 1,
+    })
+    expect(await tx.mensalidade.findUnique()).toMatchObject({ status: "EM_ABERTO", valor: 120 })
+    candidatas.mockResolvedValue([await tx.mensalidade.findUnique()] as never)
+
+    expect(await sincronizarValoresAdimplencia(new Date("2026-11-11T11:01:00Z"))).toEqual({
+      ok: true,
+      atualizadas: 0,
+    })
+    expect(tx.mensalidade.update).toHaveBeenCalledOnce()
+    expect(tx.logAuditoria.create).toHaveBeenCalledOnce()
+  })
+})
 
 describe("sincronização transacional do desconto de adimplência", () => {
   it("trava, relê e aplica o preço base com auditoria no mesmo cliente", async () => {
@@ -111,7 +149,7 @@ describe("sincronização transacional do desconto de adimplência", () => {
     const resultado = await sincronizarValorMensalidadeAdimplencia(
       tx as never,
       "mensalidade-1",
-      new Date("2026-11-15T03:00:00Z"),
+      new Date("2026-11-11T03:00:00Z"),
       "gestor-1",
     )
 
@@ -133,7 +171,7 @@ describe("sincronização transacional do desconto de adimplência", () => {
     await sincronizarValorMensalidadeAdimplencia(
       tx as never,
       "mensalidade-1",
-      new Date("2026-11-15T03:00:00Z"),
+      new Date("2026-11-11T03:00:00Z"),
     )
 
     expect(tx.mensalidade.update).not.toHaveBeenCalled()
@@ -172,7 +210,7 @@ describe("sincronização transacional do desconto de adimplência", () => {
     expect(tx.mensalidade.update).not.toHaveBeenCalled()
   })
 
-  it("restaura o desconto se um novo vencimento ainda estiver na carência", async () => {
+  it("restaura o desconto se o vencimento for adiado para uma data ainda não vencida", async () => {
     const { tx } = clienteFinanceiro({
       mensalidade: mensalidadeBase({
         valor: 120,
@@ -183,7 +221,7 @@ describe("sincronização transacional do desconto de adimplência", () => {
     const resultado = await sincronizarValorMensalidadeAdimplencia(
       tx as never,
       "mensalidade-1",
-      new Date("2026-11-22T12:00:00Z"),
+      new Date("2026-11-20T12:00:00Z"),
     )
 
     expect(resultado?.valor).toBe(100)
@@ -241,9 +279,9 @@ describe("snapshots e recebimentos de novas mensalidades", () => {
   })
 
   it.each([
-    { pagoEm: "2026-11-14T23:00:00Z", valorPago: 100 },
-    { pagoEm: "2026-11-15T03:00:00Z", valorPago: 120 },
-    { pagoEm: "2026-11-15T23:00:00Z", valorPago: 120 },
+    { pagoEm: "2026-11-11T02:59:59.999Z", valorPago: 100 },
+    { pagoEm: "2026-11-11T03:00:00Z", valorPago: 120 },
+    { pagoEm: "2026-11-11T23:00:00Z", valorPago: 120 },
   ])("baixa manual considera a data real do pagamento: $pagoEm", async (caso) => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-11-20T12:00:00Z"))

@@ -2,7 +2,7 @@ import type { StatusMensalidade } from "@prisma/client"
 import { formatInTimeZone, fromZonedTime } from "date-fns-tz"
 import { TIMEZONE } from "@/lib/utils/datas"
 
-export const DIAS_CARENCIA_ADIMPLENCIA = 4
+export const DIAS_CARENCIA_ADIMPLENCIA = 0
 
 type Valor = number | string | { toString(): string }
 

@@ -34,7 +34,9 @@ describe("aviso de bônus no pagamento individual da matrícula", () => {
     const html = renderToStaticMarkup(await Page({ params: Promise.resolve({ token: "token" }) }))
 
     expect(html).toMatch(/3 modalidades[^<]*270,00/)
-    expect(html).toContain("Mensalidade com bônus de adimplência. A partir do 5º dia de atraso:")
+    expect(html).toContain(
+      "Mensalidade com bônus de adimplência até o vencimento. A partir do dia seguinte ao vencimento:",
+    )
     expect(html).toContain("290,00/mês")
     expect(html).toContain("text-xs leading-relaxed text-muted-foreground")
   })

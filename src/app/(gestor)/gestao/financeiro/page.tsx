@@ -11,7 +11,7 @@ import { Select } from "@/components/ui/select"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
-import { DIAS_CARENCIA_ADIMPLENCIA, resumoAdimplencia } from "@/lib/financeiro/adimplencia"
+import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
 import { formatarData, obterIntervaloMes } from "@/lib/utils/datas"
@@ -265,10 +265,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
               Desconto de adimplência: atenção ao prazo
             </h2>
             <p className="text-sm">
-              Cada plano possui um valor base e um valor com desconto. O desconto vale até o fim do{" "}
-              {DIAS_CARENCIA_ADIMPLENCIA}º dia de atraso; a partir do{" "}
-              {DIAS_CARENCIA_ADIMPLENCIA + 1}º dia, a mensalidade passa ao valor base. Os alunos
-              recebem avisos diários enquanto ainda podem manter o desconto.
+              Cada plano possui um valor base e um valor com desconto. O desconto vale até o
+              vencimento. A partir do dia seguinte ao vencimento, a mensalidade passa ao valor base
+              e os alunos recebem aviso da perda do desconto.
             </p>
             <p className="text-sm font-semibold">
               {descontosEmRisco} mensalidade(s) com desconto em risco · {descontosPerdidos}{" "}

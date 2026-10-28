@@ -90,7 +90,9 @@ describe("pagamento público da família", () => {
     )
 
     expect(html).toContain(caso.total)
-    expect(html).toContain("Total mensal com bônus de adimplência. A partir do 5º dia de atraso:")
+    expect(html).toContain(
+      "Total mensal com bônus de adimplência até o vencimento. A partir do dia seguinte ao vencimento:",
+    )
     expect(html).toContain(`${caso.base}/mês`)
   })
 })

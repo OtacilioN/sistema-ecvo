@@ -216,9 +216,9 @@ describe("sincronizarCobrancasDescontoAdimplencia", () => {
     mocks.excluirCobrancaAsaas.mockResolvedValue({ deleted: true, id: "pay_1" })
   })
 
-  it("mantém o QR e o contrato durante os quatro dias de carência", async () => {
+  it("mantém o QR e o contrato até o fim do dia do vencimento", async () => {
     const resultado = await sincronizarCobrancasDescontoAdimplencia(
-      new Date("2026-09-15T02:59:59.999Z"),
+      new Date("2026-09-11T02:59:59.999Z"),
     )
 
     expect(resultado).toEqual({ ok: true, analisadas: 1, canceladas: 0, falhas: [] })
@@ -229,7 +229,7 @@ describe("sincronizarCobrancasDescontoAdimplencia", () => {
 
   it("confirma a exclusão remota antes de invalidar o QR e permitir o novo valor", async () => {
     const resultado = await sincronizarCobrancasDescontoAdimplencia(
-      new Date("2026-09-15T03:00:00.000Z"),
+      new Date("2026-09-11T03:00:00.000Z"),
     )
 
     expect(resultado).toEqual({ ok: true, analisadas: 1, canceladas: 1, falhas: [] })
@@ -248,7 +248,7 @@ describe("sincronizarCobrancasDescontoAdimplencia", () => {
     mocks.excluirCobrancaAsaas.mockRejectedValueOnce(new Error("Falha temporária remota."))
 
     const resultado = await sincronizarCobrancasDescontoAdimplencia(
-      new Date("2026-09-15T03:00:00.000Z"),
+      new Date("2026-09-11T03:00:00.000Z"),
     )
 
     expect(resultado.ok).toBe(false)
@@ -459,7 +459,7 @@ describe("processarWebhookAsaas", () => {
     })
   })
 
-  it("preserva o desconto pelo dia do pagamento quando o webhook chega após a carência", async () => {
+  it("preserva o desconto do pagamento no vencimento quando o webhook chega depois", async () => {
     mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
       args?.where?.OR ? { ...cobrancaLocal, valorCobrado: 100 } : null,
     )
@@ -477,7 +477,7 @@ describe("processarWebhookAsaas", () => {
     mocks.obterCobrancaAsaas.mockResolvedValue({
       ...pagamentoRemoto(),
       value: 100,
-      paymentDate: "2026-09-14",
+      paymentDate: "2026-09-10",
     })
 
     const resultado = await processarWebhookAsaas({
@@ -493,12 +493,12 @@ describe("processarWebhookAsaas", () => {
       data: expect.objectContaining({
         status: "PAGA",
         valor: 100,
-        pagoEm: new Date("2026-09-14T15:00:00.000Z"),
+        pagoEm: new Date("2026-09-10T15:00:00.000Z"),
       }),
     })
   })
 
-  it("não quita nem cobra outra integral quando um QR antigo recebe 100 após a carência de 120", async () => {
+  it("não quita nem cobra outra integral quando um QR antigo recebe 100 no dia seguinte e deve 120", async () => {
     mocks.tx.cobrancaAsaas.findFirst.mockImplementation((args) =>
       args?.where?.OR ? { ...cobrancaLocal, valorCobrado: 100 } : null,
     )
@@ -516,7 +516,7 @@ describe("processarWebhookAsaas", () => {
     mocks.obterCobrancaAsaas.mockResolvedValue({
       ...pagamentoRemoto(),
       value: 100,
-      paymentDate: "2026-09-15",
+      paymentDate: "2026-09-11",
     })
 
     const resultado = await processarWebhookAsaas({

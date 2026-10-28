@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { situacaoConversaoAulaAvulsa } from "@/lib/aula-avulsa"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
-import { DIAS_CARENCIA_ADIMPLENCIA, resumoAdimplencia } from "@/lib/financeiro/adimplencia"
+import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import {
   obterConversaoAulaAvulsa,
@@ -185,9 +185,8 @@ export default async function Page() {
                     : "Mantenha seu desconto de adimplência"}
               </h2>
               <p className="text-sm">
-                O desconto é mantido até o fim do {DIAS_CARENCIA_ADIMPLENCIA}º dia de atraso. A
-                partir do {DIAS_CARENCIA_ADIMPLENCIA + 1}º dia, a mensalidade passa ao valor base,
-                sem desconto.
+                O desconto vale até o vencimento. A partir do dia seguinte ao vencimento, a
+                mensalidade passa ao valor base, sem desconto.
               </p>
               {descontosEmAtraso.length > 0 ? (
                 <ul className="space-y-3 text-sm">
