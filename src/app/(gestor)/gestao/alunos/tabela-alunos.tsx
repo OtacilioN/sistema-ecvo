@@ -7,6 +7,7 @@ import { CampoBusca } from "@/components/ui/campo-busca"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select } from "@/components/ui/select"
 import { alunoContaOperacionalmente } from "@/lib/alunos/status"
+import { rotuloVencimentoMensalidade } from "@/lib/financeiro/vencimento"
 import { AcoesAluno, type AlunoLinha } from "./acoes-aluno"
 
 type Modalidade = { id: string; nome: string }
@@ -83,7 +84,7 @@ export function TabelaAlunos({
         a.status,
         a.planoNome,
         a.termoResponsabilidadeAceito ? "termo aceito" : "termo pendente",
-        a.planoId ? String(a.diaVencimento) : "",
+        a.planoId ? rotuloVencimentoMensalidade(a.diaVencimento, a.vencimentoMesSeguinte) : "",
         ...a.modalidadeNomes,
       ]
         .join(" ")
@@ -277,7 +278,7 @@ function TabelaGrupoAlunos({
               </td>
               <td className="p-4 tabular-nums" data-label="Venc.">
                 {a.planoId ? (
-                  `Dia ${a.diaVencimento}`
+                  rotuloVencimentoMensalidade(a.diaVencimento, a.vencimentoMesSeguinte)
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>
                 )}

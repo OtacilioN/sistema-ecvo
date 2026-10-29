@@ -135,6 +135,37 @@ describe("migrarMensalidadesAbertasParaPlanoAluno", () => {
     })
   })
 
+  it("preserva o desconto até o vencimento no mês seguinte à competência", async () => {
+    const cliente = clienteMensalidades()
+
+    await migrarMensalidadesAbertasParaPlanoAluno(cliente as never, {
+      ...trocaPlano,
+      agora: new Date("2026-11-20T12:00:00Z"),
+      diaVencimentoNovo: 1,
+      vencimentoMesSeguinteNovo: true,
+    })
+
+    expect(cliente.mensalidade.updateMany).toHaveBeenCalledWith({
+      where: expect.any(Object),
+      data: expect.objectContaining({ valor: 175, valorBase: 200, valorComDesconto: 175 }),
+    })
+  })
+
+  it("mantém o dia 1 no próprio mês para vínculos sem a regra do mês seguinte", async () => {
+    const cliente = clienteMensalidades()
+
+    await migrarMensalidadesAbertasParaPlanoAluno(cliente as never, {
+      ...trocaPlano,
+      agora: new Date("2026-11-20T12:00:00Z"),
+      diaVencimentoNovo: 1,
+    })
+
+    expect(cliente.mensalidade.updateMany).toHaveBeenCalledWith({
+      where: expect.any(Object),
+      data: expect.objectContaining({ valor: 200, valorBase: 200, valorComDesconto: 175 }),
+    })
+  })
+
   it("registra o contrato anterior e os novos preços na mesma transação", async () => {
     const cliente = clienteMensalidades()
 

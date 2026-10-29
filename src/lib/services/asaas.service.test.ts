@@ -153,6 +153,7 @@ const cobrancaLocal = {
 }
 
 beforeEach(() => {
+  mocks.db.cobrancaAsaas.updateMany.mockResolvedValue({ count: 1 })
   mocks.tx.splitPagamentoAsaas.findMany.mockResolvedValue([])
   mocks.tx.contaAsaasProfessor.findMany.mockResolvedValue([])
   mocks.db.splitPagamentoAsaas.findMany.mockResolvedValue([])
@@ -1842,6 +1843,288 @@ describe("processarWebhookAsaas", () => {
 })
 
 describe("reconciliarPendenciasAsaas", () => {
+  it("mantém a revisão diária ampla sem cooldown", async () => {
+    vi.clearAllMocks()
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+
+    await reconciliarPendenciasAsaas()
+
+    expect(mocks.db.cobrancaAsaas.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 100,
+        where: expect.objectContaining({
+          AND: expect.arrayContaining([
+            expect.objectContaining({
+              OR: expect.arrayContaining([
+                { status: { in: ["CRIANDO", "PENDENTE", "CANCELANDO", "VENCIDA", "ERRO"] } },
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    )
+    expect(mocks.db.contratoPixAutomatico.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 100,
+        where: {
+          status: { in: ["PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO", "ERRO"] },
+          asaasAuthorizationId: { not: null },
+        },
+      }),
+    )
+  })
+
+  it("usa cooldown de 15 minutos para exceções e de 6 horas para cobranças normais no mesmo lote", async () => {
+    vi.clearAllMocks()
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    const agora = new Date("2026-10-29T12:00:00Z")
+
+    const resultado = await reconciliarPendenciasAsaas({ somenteRecuperacao: true, agora })
+
+    const consulta = mocks.db.cobrancaAsaas.findMany.mock.calls[0]?.[0]
+    expect(consulta.take).toBe(25)
+    expect(consulta.where.AND[0].OR).toEqual([
+      {
+        status: { in: ["CRIANDO", "CANCELANDO", "ERRO"] },
+        atualizadoEm: { lte: new Date("2026-10-29T11:45:00Z") },
+      },
+      {
+        status: "RECEBIDA",
+        mensalidade: { status: { in: ["EM_ABERTO", "VENCIDA"] } },
+        atualizadoEm: { lte: new Date("2026-10-29T11:45:00Z") },
+      },
+      {
+        status: { in: ["PENDENTE", "VENCIDA"] },
+        ativa: true,
+        asaasPaymentId: { not: null },
+        atualizadoEm: { lte: new Date("2026-10-29T06:00:00Z") },
+      },
+    ])
+    expect(mocks.db.contratoPixAutomatico.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 25,
+        where: {
+          status: { in: ["PENDENTE_AUTORIZACAO", "CANCELANDO", "ERRO"] },
+          asaasAuthorizationId: { not: null },
+          atualizadoEm: { lte: new Date("2026-10-29T11:45:00Z") },
+        },
+      }),
+    )
+    expect(resultado).toMatchObject({
+      ok: true,
+      pagamentosAnalisados: 0,
+      autorizacoesAnalisadas: 0,
+      interrompidaPorTempo: false,
+    })
+    expect(mocks.listarCobrancasAsaas).not.toHaveBeenCalled()
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "PENDENTE",
+    "VENCIDA",
+  ])("revisa a cobrança %s antiga sem criar ou reemitir pagamento e rotaciona só a versão consultada", async (status) => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    const agora = new Date("2026-10-29T12:00:00Z")
+    vi.setSystemTime(agora)
+    const cobranca = {
+      ...cobrancaLocal,
+      ativa: true,
+      status,
+      atualizadoEm: new Date("2026-10-29T04:00:00Z"),
+    }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([cobranca])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockResolvedValue({ data: [] })
+    mocks.tx.cobrancaAsaas.updateMany.mockReset().mockResolvedValue({ count: 1 })
+
+    const resultado = await reconciliarPendenciasAsaas({ somenteRecuperacao: true, agora })
+
+    expect(resultado.pagamentosAnalisados).toBe(1)
+    expect(mocks.listarCobrancasAsaas).toHaveBeenCalledWith({
+      externalReference: cobranca.externalReference,
+      limit: 2,
+    })
+    expect(mocks.db.cobrancaAsaas.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: cobranca.id,
+        status,
+        asaasPaymentId: cobranca.asaasPaymentId,
+        atualizadoEm: cobranca.atualizadoEm,
+      },
+      data: { atualizadoEm: agora },
+    })
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+    expect(mocks.excluirCobrancaAsaas).not.toHaveBeenCalled()
+    expect(mocks.criarAutorizacaoPixAutomaticoAsaas).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "ausente",
+    "erro-remoto",
+  ])("não sobrescreve a cobrança recebida por webhook durante a consulta %s", async (respostaRemota) => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    const agora = new Date("2026-10-29T12:00:00Z")
+    vi.setSystemTime(agora)
+    const snapshot = {
+      ...cobrancaLocal,
+      ativa: true,
+      atualizadoEm: new Date("2026-10-29T04:00:00Z"),
+    }
+    const persistida = { ...snapshot, status: "PENDENTE", ultimoErro: null as string | null }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([snapshot])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockImplementationOnce(async () => {
+      persistida.status = "RECEBIDA"
+      persistida.atualizadoEm = new Date("2026-10-29T12:00:00Z")
+      if (respostaRemota === "erro-remoto") throw new Error("erro na consulta")
+      return { data: [] }
+    })
+    const atualizarSeInalterada = async ({
+      where,
+      data,
+    }: {
+      where: { status: string; atualizadoEm: Date }
+      data: Record<string, unknown>
+    }) => {
+      const corresponde =
+        where.status === persistida.status &&
+        where.atualizadoEm.getTime() === persistida.atualizadoEm.getTime()
+      if (corresponde) Object.assign(persistida, data)
+      return { count: corresponde ? 1 : 0 }
+    }
+    mocks.tx.cobrancaAsaas.updateMany.mockReset().mockImplementation(atualizarSeInalterada)
+    mocks.db.cobrancaAsaas.updateMany.mockReset().mockImplementation(atualizarSeInalterada)
+
+    const resultado = await reconciliarPendenciasAsaas({ somenteRecuperacao: true, agora })
+
+    expect(resultado).toMatchObject({ ok: true, pagamentosAnalisados: 1 })
+    expect(persistida).toMatchObject({
+      status: "RECEBIDA",
+      atualizadoEm: agora,
+      ultimoErro: null,
+    })
+    expect(mocks.db.cobrancaAsaas.update).not.toHaveBeenCalled()
+    expect(mocks.db.cobrancaAsaas.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: snapshot.id,
+        status: snapshot.status,
+        asaasPaymentId: snapshot.asaasPaymentId,
+        atualizadoEm: snapshot.atualizadoEm,
+      },
+      data: { atualizadoEm: agora },
+    })
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+    expect(mocks.excluirCobrancaAsaas).not.toHaveBeenCalled()
+  })
+
+  it("rotaciona a revisão de uma autorização ainda pendente sem sobrescrever alterações concorrentes", async () => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    const agora = new Date("2026-10-29T12:00:00Z")
+    vi.setSystemTime(agora)
+    const contrato = {
+      id: "contrato-1",
+      status: "PENDENTE_AUTORIZACAO",
+      atualizadoEm: new Date("2026-10-29T10:00:00Z"),
+      asaasAuthorizationId: "aut-1",
+      aluno: { clienteAsaas: { asaasCustomerId: "cus_1" } },
+    }
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([contrato])
+    mocks.listarAutorizacoesPixAutomaticoAsaas.mockResolvedValue({ data: [] })
+
+    const resultado = await reconciliarPendenciasAsaas({ somenteRecuperacao: true, agora })
+
+    expect(resultado).toMatchObject({
+      ok: true,
+      autorizacoesAnalisadas: 1,
+      autorizacoesAtualizadas: 0,
+    })
+    expect(mocks.db.contratoPixAutomatico.updateMany).toHaveBeenCalledWith({
+      where: { id: contrato.id, status: contrato.status, atualizadoEm: contrato.atualizadoEm },
+      data: { atualizadoEm: agora },
+    })
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+    expect(mocks.criarAutorizacaoPixAutomaticoAsaas).not.toHaveBeenCalled()
+  })
+
+  it("limita os lotes mesmo quando o chamador pede volume excessivo", async () => {
+    vi.clearAllMocks()
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+
+    await reconciliarPendenciasAsaas({ somenteRecuperacao: true, limite: 10_000 })
+
+    expect(mocks.db.cobrancaAsaas.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 100 }),
+    )
+    expect(mocks.db.contratoPixAutomatico.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 100 }),
+    )
+  })
+
+  it("interrompe entre itens e reserva orçamento para consultar autorizações", async () => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    const agora = new Date("2026-10-29T12:00:00Z")
+    vi.setSystemTime(agora)
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([
+      {
+        ...cobrancaLocal,
+        id: "erro-1",
+        status: "ERRO",
+        atualizadoEm: new Date("2026-10-29T10:00:00Z"),
+      },
+      {
+        ...cobrancaLocal,
+        id: "erro-2",
+        status: "ERRO",
+        atualizadoEm: new Date("2026-10-29T10:00:00Z"),
+      },
+    ])
+    mocks.db.contratoPixAutomatico.findMany.mockResolvedValue([])
+    mocks.listarCobrancasAsaas.mockImplementationOnce(async () => {
+      vi.setSystemTime(new Date(agora.getTime() + 65_000))
+      throw new Error("falha remota")
+    })
+
+    const resultado = await reconciliarPendenciasAsaas({ somenteRecuperacao: true, agora })
+
+    expect(mocks.listarCobrancasAsaas).toHaveBeenCalledOnce()
+    expect(mocks.db.contratoPixAutomatico.findMany).toHaveBeenCalledOnce()
+    expect(resultado).toMatchObject({
+      ok: false,
+      pagamentosAnalisados: 1,
+      interrompidaPorTempo: true,
+    })
+    expect(mocks.criarCobrancaAsaas).not.toHaveBeenCalled()
+  })
+
+  it("não inicia novas consultas remotas quando o orçamento total acaba", async () => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    const agora = new Date("2026-10-29T12:00:00Z")
+    vi.setSystemTime(agora)
+    mocks.db.cobrancaAsaas.findMany.mockResolvedValue([
+      { ...cobrancaLocal, status: "ERRO", atualizadoEm: new Date("2026-10-29T10:00:00Z") },
+    ])
+    mocks.listarCobrancasAsaas.mockImplementationOnce(async () => {
+      vi.setSystemTime(new Date(agora.getTime() + 95_000))
+      throw new Error("falha remota")
+    })
+
+    const resultado = await reconciliarPendenciasAsaas({ somenteRecuperacao: true, agora })
+
+    expect(resultado).toMatchObject({ ok: false, interrompidaPorTempo: true })
+    expect(mocks.db.contratoPixAutomatico.findMany).not.toHaveBeenCalled()
+    expect(mocks.listarAutorizacoesPixAutomaticoAsaas).not.toHaveBeenCalled()
+  })
+
   it("não trata a intenção inicial sem pagamento remoto como uma cobrança convencional", async () => {
     vi.clearAllMocks()
     mocks.db.cobrancaAsaas.findMany.mockResolvedValue([])

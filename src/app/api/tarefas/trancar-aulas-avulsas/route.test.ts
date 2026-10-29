@@ -5,6 +5,14 @@ vi.mock("@/lib/services/matricula-trancada.service", () => ({
   trancarAvulsosExpirados: mocks.trancar,
 }))
 
+vi.mock("@/lib/services/tarefa-agendada.service", () => ({
+  executarTarefaAgendada: vi.fn(async ({ executar }: { executar: () => Promise<unknown> }) => ({
+    status: "CONCLUIDA",
+    resultado: await executar(),
+    execucaoId: "teste",
+  })),
+}))
+
 import { GET } from "./route"
 
 beforeEach(() => {
@@ -33,7 +41,7 @@ describe("tarefa de trancamento de avulsos", () => {
       }),
     )
     expect(resposta.status).toBe(200)
-    expect(await resposta.json()).toEqual({ ok: true, trancados: 3 })
+    expect(await resposta.json()).toEqual({ ok: true, trancados: 3, execucaoId: "teste" })
     expect(mocks.trancar).toHaveBeenCalledOnce()
   })
 })

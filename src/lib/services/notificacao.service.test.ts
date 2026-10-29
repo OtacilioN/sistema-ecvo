@@ -293,58 +293,179 @@ describe("expurgarNotificacoesAntigas", () => {
 })
 
 describe("gerarLembretesTreino", () => {
-  it("cria o lembrete pelo fluxo que tenta enviar push", async () => {
-    const cliente = {
-      configuracaoAcademia: {
-        findUnique: vi.fn(async () => ({ notificarLembreteTreino: true })),
-      },
-      comparecimento: {
-        findMany: vi.fn(async () => [
-          {
-            alunoId: "aluno-1",
-            aluno: { usuarioId: "usuario-aluno" },
-            aula: {
-              inicio: new Date("2026-06-17T17:00:00-03:00"),
-              turma: { nome: "Kickboxing", modalidade: { nome: "Kickboxing" } },
-              checkins: [],
-            },
-          },
-        ]),
-      },
-      notificacao: {
-        findFirst: vi.fn(async () => null),
-        create: vi.fn(async ({ data }: { data: NotificacaoData }) => ({
-          id: "notificacao-treino",
-          lida: false,
-          criadoEm: new Date("2026-06-17T16:00:00-03:00"),
-          ...data,
-        })),
+  const agora = new Date("2026-06-17T16:00:00-03:00")
+  function comparecimento(indice: number, minutos = 60) {
+    return {
+      id: `comparecimento-${String(indice).padStart(4, "0")}`,
+      alunoId: `aluno-${indice}`,
+      aulaId: "aula-treino",
+      aluno: { usuarioId: `usuario-${indice}` },
+      aula: {
+        inicio: new Date(agora.getTime() + minutos * 60_000),
+        turma: { nome: "Kickboxing", modalidade: { nome: "Kickboxing" } },
+        checkins: [] as Array<{ alunoId: string }>,
       },
     }
+  }
 
-    const resultado = await gerarLembretesTreino(
-      cliente as unknown as Parameters<typeof gerarLembretesTreino>[0],
-      {
-        agora: new Date("2026-06-17T16:00:00-03:00"),
+  type RegistroTreino = ReturnType<typeof comparecimento>
+  type ConsultaTreino = {
+    take: number
+    cursor?: { id: string }
+    where: { aula: { inicio: { gt: Date; lt: Date } } }
+  }
+  type NotificacaoTreino = NotificacaoData & { id: string; chaveDeduplicacao: string }
+
+  function prepararCliente(registros = [comparecimento(1)], ativo = true) {
+    const persistidas = new Map<string, NotificacaoTreino>()
+    const cliente = {
+      configuracaoAcademia: {
+        findUnique: vi.fn(async () => ({ notificarLembreteTreino: ativo })),
       },
-    )
+      comparecimento: {
+        findMany: vi.fn(async ({ where, take, cursor }: ConsultaTreino) =>
+          registros
+            .filter(
+              (registro) =>
+                registro.aula.inicio > where.aula.inicio.gt &&
+                registro.aula.inicio < where.aula.inicio.lt &&
+                (!cursor || registro.id > cursor.id),
+            )
+            .slice(0, take),
+        ),
+      },
+      notificacao: {
+        findFirst: vi.fn(async () => null as { id: string } | null),
+        createMany: vi.fn(async ({ data }: { data: NotificacaoTreino[] }) => {
+          let count = 0
+          for (const notificacao of data) {
+            if (persistidas.has(notificacao.chaveDeduplicacao)) continue
+            persistidas.set(notificacao.chaveDeduplicacao, notificacao)
+            count++
+          }
+          return { count }
+        }),
+      },
+    }
+    return {
+      cliente,
+      persistidas,
+      executar: (data = agora) =>
+        gerarLembretesTreino(cliente as unknown as Parameters<typeof gerarLembretesTreino>[0], {
+          agora: data,
+        }),
+    }
+  }
 
-    expect(resultado).toEqual({ ok: true, total: 1 })
-    expect(cliente.notificacao.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        usuarioId: "usuario-aluno",
-        tipo: "LEMBRETE_TREINO",
-        titulo: "Treino em breve",
-        mensagem: "Kickboxing começa em 17/06/2026 às 17:00.",
-      }),
+  it("persiste antes do push com chave única por aluno e aula", async () => {
+    const { cliente, executar } = prepararCliente()
+    expect(await executar()).toEqual({ ok: true, total: 1 })
+    expect(cliente.notificacao.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          id: "lembrete-treino:aula-treino:usuario-1",
+          chaveDeduplicacao: "lembrete-treino:aula-treino:usuario-1",
+          usuarioId: "usuario-1",
+          tipo: "LEMBRETE_TREINO",
+          titulo: "Treino em breve",
+          mensagem: "Kickboxing começa em 17/06/2026 às 17:00.",
+        },
+      ],
+      skipDuplicates: true,
     })
-    expect(enviarPushParaNotificacao).toHaveBeenCalledWith(
+    expect(enviarPushParaNotificacao).toHaveBeenCalledOnce()
+    expect(cliente.notificacao.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(enviarPushParaNotificacao).mock.invocationCallOrder[0],
+    )
+  })
+
+  it("recupera lembretes após execução perdida, sem aulas iniciadas ou muito distantes", async () => {
+    const { cliente, persistidas, executar } = prepararCliente([
+      comparecimento(1, -1),
+      comparecimento(2, 0),
+      comparecimento(3, 1),
+      comparecimento(4, 45),
+      comparecimento(5, 60),
+      comparecimento(6, 74),
+      comparecimento(7, 75),
+      comparecimento(8, 120),
+    ])
+    expect(await executar()).toEqual({ ok: true, total: 4 })
+    expect([...persistidas.values()].map((item) => item.usuarioId)).toEqual([
+      "usuario-3",
+      "usuario-4",
+      "usuario-5",
+      "usuario-6",
+    ])
+    expect(cliente.comparecimento.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "notificacao-treino",
-        usuarioId: "usuario-aluno",
-        tipo: "LEMBRETE_TREINO",
+        where: {
+          status: "CONFIRMADO",
+          aula: {
+            cancelada: false,
+            inicio: {
+              gt: agora,
+              lt: new Date("2026-06-17T17:15:00-03:00"),
+            },
+          },
+        },
       }),
     )
+  })
+
+  it("não duplica notificação nem push em execuções concorrentes e sobrepostas", async () => {
+    const { executar, persistidas } = prepararCliente()
+    const resultados = await Promise.all([executar(), executar()])
+    expect(resultados.reduce((total, resultado) => total + resultado.total, 0)).toBe(1)
+    expect(await executar(new Date(agora.getTime() + 15 * 60_000))).toEqual({ ok: true, total: 0 })
+    expect(persistidas.size).toBe(1)
+    expect(enviarPushParaNotificacao).toHaveBeenCalledOnce()
+  })
+
+  it("pagina mais de 200 comparecimentos sem deixar os últimos sem aviso", async () => {
+    const registros: RegistroTreino[] = Array.from({ length: 405 }, (_, indice) =>
+      comparecimento(indice),
+    )
+    const { cliente, executar, persistidas } = prepararCliente(registros)
+    expect(await executar()).toEqual({ ok: true, total: 405 })
+    expect(persistidas.size).toBe(405)
+    expect(cliente.comparecimento.findMany).toHaveBeenCalledTimes(3)
+    expect(cliente.comparecimento.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        cursor: { id: registros[199].id },
+        skip: 1,
+        orderBy: { id: "asc" },
+      }),
+    )
+    expect(await executar()).toEqual({ ok: true, total: 0 })
+    expect(enviarPushParaNotificacao).toHaveBeenCalledTimes(405)
+  })
+
+  it("preserva deduplicação das notificações legadas sem chave", async () => {
+    const { cliente, executar } = prepararCliente()
+    cliente.notificacao.findFirst.mockResolvedValue({ id: "aviso-legado" })
+    expect(await executar()).toEqual({ ok: true, total: 0 })
+    expect(cliente.notificacao.createMany).not.toHaveBeenCalled()
+    expect(enviarPushParaNotificacao).not.toHaveBeenCalled()
+  })
+
+  it("não envia para quem já fez check-in", async () => {
+    const registro = comparecimento(1)
+    registro.aula.checkins.push({ alunoId: registro.alunoId })
+    const { executar, persistidas } = prepararCliente([registro])
+    expect(await executar()).toEqual({ ok: true, total: 0 })
+    expect(persistidas.size).toBe(0)
+  })
+
+  it("respeita a preferência de notificações e preserva o aviso se o push falha", async () => {
+    const inativo = prepararCliente([], false)
+    expect(await inativo.executar()).toEqual({ ok: true, total: 0 })
+    expect(inativo.cliente.comparecimento.findMany).not.toHaveBeenCalled()
+    vi.mocked(enviarPushParaNotificacao).mockRejectedValueOnce(new Error("push indisponível"))
+    const { executar, persistidas } = prepararCliente()
+    expect(await executar()).toEqual({ ok: true, total: 1 })
+    expect(persistidas.size).toBe(1)
   })
 })
 

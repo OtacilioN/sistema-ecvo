@@ -362,13 +362,23 @@ describe("aprovarMatricula", () => {
     expect(mocks.tx.solicitacaoMatricula.updateMany).not.toHaveBeenCalled()
   })
 
-  it("aprova mensalista com três modalidades e o valor preservado da cobrança", async () => {
+  it.each([
+    { dia: "07", diaVencimento: 7, vencimentoMesSeguinte: false },
+    { dia: "28", diaVencimento: 28, vencimentoMesSeguinte: false },
+    { dia: "29", diaVencimento: 1, vencimentoMesSeguinte: true },
+    { dia: "30", diaVencimento: 1, vencimentoMesSeguinte: true },
+    { dia: "31", diaVencimento: 1, vencimentoMesSeguinte: true },
+  ])("aprova mensalista recebido no dia $dia preservando competência e valor", async ({
+    dia,
+    diaVencimento,
+    vencimentoMesSeguinte,
+  }) => {
     const modalidades = [
       { id: "modalidade-1", nome: "Jiu-Jitsu", ativa: true },
       { id: "modalidade-2", nome: "Boxe", ativa: true },
       { id: "modalidade-3", nome: "Kickboxing", ativa: true },
     ]
-    const recebidaEmAsaas = new Date("2026-09-07T12:00:00.000Z")
+    const recebidaEmAsaas = new Date(`2026-10-${dia}T12:00:00.000Z`)
     mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
       id: "solicitacao-1",
       status: "PENDENTE",
@@ -423,7 +433,7 @@ describe("aprovarMatricula", () => {
       solicitacaoId: "solicitacao-1",
       diaVencimento: 10,
       autorId: null,
-      agora: new Date("2026-09-07T13:00:00.000Z"),
+      agora: new Date(`2026-10-${dia}T13:00:00.000Z`),
       origem: "AUTOMATICA",
     })
 
@@ -451,13 +461,13 @@ describe("aprovarMatricula", () => {
     expect(mocks.tx.usuario.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          aluno: { create: expect.objectContaining({ diaVencimento: 7 }) },
+          aluno: { create: expect.objectContaining({ diaVencimento, vencimentoMesSeguinte }) },
         }),
       }),
     )
     expect(mocks.registrarMensalidadeInicialPagaAsaas).toHaveBeenCalledWith(
       mocks.tx,
-      expect.objectContaining({ valor: 281.2, pagoEm: recebidaEmAsaas }),
+      expect.objectContaining({ valor: 281.2, pagoEm: recebidaEmAsaas, competencia: "2026-09" }),
     )
     expect(mocks.tx.solicitacaoMatricula.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ planoAprovadoId: "plano-tres" }) }),

@@ -222,11 +222,33 @@ describe("preparação da mensalidade de reativação", () => {
 
 describe("recebimento da reativação", () => {
   const tx = mocks.tx as unknown as Prisma.TransactionClient
+  it.each([
+    29, 30, 31,
+  ])("reativa sem plano recebido dia %i com vencimento no mês seguinte", async (dia) => {
+    await efetivarReativacaoMatricula(tx, mensalidade, new Date(`2026-10-${dia}T12:00:00Z`))
+    expect(mocks.tx.aluno.update).toHaveBeenCalledWith({
+      where: { id: aluno.id },
+      data: {
+        status: "ATIVO",
+        tipo: "MENSALISTA",
+        planoId: plano.id,
+        diaVencimento: 1,
+        vencimentoMesSeguinte: true,
+      },
+    })
+  })
+
   it("ativa o avulso como mensalista, vincula a modalidade e audita na transação", async () => {
     await efetivarReativacaoMatricula(tx, mensalidade, agora)
     expect(mocks.tx.aluno.update).toHaveBeenCalledWith({
       where: { id: aluno.id },
-      data: { status: "ATIVO", tipo: "MENSALISTA", planoId: plano.id, diaVencimento: 5 },
+      data: {
+        status: "ATIVO",
+        tipo: "MENSALISTA",
+        planoId: plano.id,
+        diaVencimento: 5,
+        vencimentoMesSeguinte: false,
+      },
     })
     expect(mocks.tx.alunoPlanoModalidade.upsert).toHaveBeenCalledWith(
       expect.objectContaining({

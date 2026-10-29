@@ -117,7 +117,13 @@ erDiagram
 
 - **Turma** modela tanto a grade recorrente (`diasSemana`/`horaInicio`/`horaFim`) quanto eventos únicos
 - **Aluno.diaVencimento** define o dia usado ao gerar mensalidades internas; `Mensalidade.vencimento`
-  preserva a data histórica da cobrança gerada.
+  preserva a data histórica da cobrança gerada. `Aluno.vencimentoMesSeguinte` indica que o dia
+  pertence ao mês seguinte à competência. No primeiro pagamento recebido nos dias 29, 30 ou 31,
+  o vencimento recorrente passa para dia 01 do mês seguinte, mantendo a competência original
+  (setembro vence em 01/10; dezembro em 01/01). Nos dias 1 a 28, permanece no mesmo mês.
+  A matrícula inicial mantém a competência registrada na cobrança Asaas. Conversão de aula avulsa
+  e reativação sem plano aplicam a mesma regra ao iniciar o vínculo mensalista. Cadastros existentes
+  mantêm a regra anterior; não há migração retroativa de pagamentos ou cobranças emitidas.
 - **Plano.padrao** identifica o único plano mensal ativo usado como referência na aula avulsa. Para o
   autocadastro mensalista, `Plano.quantidadeModalidadesMatricula` associa de forma única os planos ativos
   mensais às ofertas de uma, duas ou três modalidades; o valor cobrado vem de `Plano.valor`.

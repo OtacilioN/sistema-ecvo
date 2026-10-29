@@ -50,7 +50,7 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 ## Financeiro (Fase 3) — ✅
 | Requisito | Entidade(s) | Arquivos |
 | --- | --- | --- |
-| Cadastro de plano, seleção única de padrão, associação opcional à quantidade do autocadastro e vínculo ao aluno com mensalidade interna (RF-046/047/RN-020/RN-025) | `Plano.padrao`,`Plano.quantidadeModalidadesMatricula`,`Aluno.diaVencimento` | `src/lib/services/financeiro.service.ts`, `src/app/actions/financeiro.ts`, `gestao/financeiro`, `gestao/alunos` |
+| Cadastro de plano, seleção única de padrão, associação opcional à quantidade do autocadastro e vínculo ao aluno com mensalidade interna (RF-046/047/RN-019/RN-020/RN-025) | `Plano.padrao`,`Plano.quantidadeModalidadesMatricula`,`Aluno.diaVencimento`,`Aluno.vencimentoMesSeguinte` | `src/lib/financeiro/vencimento.ts`, `src/lib/services/financeiro.service.ts`, `src/app/actions/financeiro.ts`, `gestao/financeiro`, `gestao/alunos` |
 | Mensalidades, status ajustável com auditoria, adimplência, lembretes para gestores e alerta automático ao aluno inadimplente (RF-048..051/RF-073..078/RF-079) | `Mensalidade`,`ConfiguracaoAcademia`,`LogAuditoria`,`Notificacao` | `financeiro.service.ts`, `src/app/api/tarefas/lembretes-financeiros/route.ts`, `gestao/financeiro`, `aluno/financeiro`, `checkin.service.ts`, `comparecimento.service.ts` |
 | Pagamentos avulsos (RF-052) | `Pagamento` | `financeiro.service.ts`, `gestao/financeiro`, `aluno/financeiro` |
 | Wellhub/TotalPass com plano mensal interno por modalidade (RF-053) | `Aluno.tipo`,`Aluno.planoId`,`AlunoPlanoModalidade` | `financeiro.service.ts`, `checkin.service.ts`, `comparecimento.service.ts`, `aluno/financeiro` |
@@ -71,6 +71,12 @@ Status: ✅ feito · 🚧 em andamento · ⬜ pendente.
 | Requisito | Entidade(s) | Arquivos |
 | --- | --- | --- |
 | Relatórios básicos com filtro de período, quebras por status/tipo e ranking configurável de horas (RF-065..072) | vários | `gestao/relatorios`, `ConfiguracaoAcademia.rankingHorasAtivo` |
-| Notificações configuráveis de eventos críticos, agendamento, lembrete de treino, financeiro, aniversário, graduação, check-in invalidado e Web Push opcional (RF-073..078) | `Notificacao`,`InscricaoPush`,`ConfiguracaoAcademia` | `src/lib/services/notificacao.service.ts`, `src/lib/services/push.service.ts`, `src/lib/services/{comparecimento,financeiro,graduacao,checkin}.service.ts`, `src/app/api/tarefas/lembretes-diarios/route.ts`, `src/app/api/tarefas/lembretes-agendamento-aulas/route.ts`, `src/app/api/tarefas/lembretes-treino/route.ts`, `src/app/api/notificacoes/push/route.ts`, `src/components/lembretes-treino-gestor-pulso.tsx`, `gestao/configuracoes`, `src/components/notificacoes-page.tsx`, `{gestao,professor,aluno}/notificacoes` |
+| Notificações configuráveis de eventos críticos, agendamento, lembrete de treino, financeiro, aniversário, graduação, check-in invalidado e Web Push opcional (RF-073..078) | `Notificacao`,`InscricaoPush`,`ConfiguracaoAcademia` | `src/lib/services/notificacao.service.ts`, `src/lib/services/push.service.ts`, `src/lib/services/{comparecimento,financeiro,graduacao,checkin}.service.ts`, `src/app/api/tarefas/lembretes-diarios/route.ts`, `src/app/api/tarefas/lembretes-agendamento-aulas/route.ts`, `src/app/api/tarefas/lembretes-treino/route.ts`, `src/app/api/notificacoes/push/route.ts`, `gestao/configuracoes`, `src/components/notificacoes-page.tsx`, `{gestao,professor,aluno}/notificacoes` |
 | Lembrete mensal de aluguel no dia 15, somente para gestores ativos, com Web Push e deduplicação mensal | `Usuario`,`Notificacao`,`InscricaoPush`,`ConfiguracaoAcademia` | `gerarLembretesAluguelGestores` em `src/lib/services/notificacao.service.ts`, `src/lib/services/notificacao.service.test.ts`, `src/app/api/tarefas/lembretes-diarios/route.ts`, `vercel.json` |
 | Auditoria de ações críticas (RF-079/080) | `LogAuditoria` | `src/lib/services/auditoria.service.ts`, `gestao/auditoria` |
+
+## Operação das tarefas automáticas
+
+| Requisito | Entidade(s) | Arquivos |
+| --- | --- | --- |
+| Cron Pro, execução exclusiva, histórico com contagens seguras, recuperação Asaas horária e alertas operacionais para gestores | `ControleTarefaAgendada`, `ExecucaoTarefaAgendada`, `Notificacao` | `src/lib/tarefas-agendadas.ts`, `src/lib/tarefa-agendada-http.ts`, `src/lib/services/{tarefa-agendada,monitoramento-tarefas,rotinas-agendadas}.service.ts`, `src/app/api/tarefas/*`, `gestao/configuracoes/tarefas`, `vercel.json`, `docs/decisoes/0017-tarefas-agendadas-pro.md` |

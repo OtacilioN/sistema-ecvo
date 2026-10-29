@@ -12,14 +12,11 @@ import {
   ratearTaxaMatriculaFamilia,
   snapshotPessoaMatriculaFamilia,
 } from "@/lib/financeiro/matricula-familia"
+import { vencimentoDoPagamentoInicial } from "@/lib/financeiro/vencimento"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { registrarMensalidadeInicialPagaAsaas } from "@/lib/services/financeiro.service"
 import { criarNotificacao, enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
-import {
-  fimExclusivoDaSemanaAcademia,
-  formatarDataHora,
-  formatarDataInput,
-} from "@/lib/utils/datas"
+import { fimExclusivoDaSemanaAcademia, formatarDataHora } from "@/lib/utils/datas"
 import type {
   AprovacaoMatriculaInput,
   RejeicaoMatriculaInput,
@@ -477,10 +474,11 @@ export async function aprovarMatricula(
           return { ok: false as const, motivo: "Pagamento da matrícula família inconsistente." }
         }
       }
-      const diaVencimento =
+      const regraVencimento =
         mensalista && origem === "AUTOMATICA" && cobrancaMatricula?.recebidaEmAsaas
-          ? Math.min(Number(formatarDataInput(cobrancaMatricula.recebidaEmAsaas).slice(-2)), 28)
-          : params.diaVencimento
+          ? vencimentoDoPagamentoInicial(cobrancaMatricula.recebidaEmAsaas)
+          : { diaVencimento: params.diaVencimento, vencimentoMesSeguinte: false }
+      const { diaVencimento } = regraVencimento
       if (mensalista) {
         if (!plano) {
           return { ok: false as const, motivo: "O plano da solicitação não está disponível." }
@@ -575,7 +573,7 @@ export async function aprovarMatricula(
               contatoEmergencia: solicitacao.contatoEmergencia,
               restricoesMedicas: solicitacao.restricoesMedicas,
               planoId: mensalista ? (plano?.id ?? null) : null,
-              ...(mensalista ? { diaVencimento } : {}),
+              ...(mensalista ? regraVencimento : {}),
               modalidades: { connect: modalidades.map((modalidade) => ({ id: modalidade.id })) },
               modalidadesPlano: {
                 create: modalidades.map((modalidade) => ({
@@ -794,6 +792,7 @@ export async function aprovarMatricula(
             modalidadeIds: modalidades.map((modalidade) => modalidade.id),
             modalidadeNomes: modalidades.map((modalidade) => modalidade.nome),
             diaVencimento: mensalista ? diaVencimento : null,
+            vencimentoMesSeguinte: mensalista ? regraVencimento.vencimentoMesSeguinte : null,
             origemAprovacao: origem,
             pagamentoAsaasConfirmado: mensalista,
             pagamentoAulaAvulsaAsaasConfirmado: aulaAvulsa,

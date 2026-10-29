@@ -12,6 +12,7 @@ import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { db } from "@/lib/db"
 import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { CUSTOS_FIXOS_PADRAO, totalizarCustosFixos } from "@/lib/financeiro/custos-fixos"
+import { vencimentoDaCompetencia } from "@/lib/financeiro/vencimento"
 import { gerarAvisosDiariosAdimplencia } from "@/lib/services/adimplencia.service"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import { criarNotificacao } from "@/lib/services/notificacao.service"
@@ -28,6 +29,8 @@ import {
 } from "@/lib/utils/datas"
 
 type Cliente = Prisma.TransactionClient | typeof db
+
+export { vencimentoDaCompetencia } from "@/lib/financeiro/vencimento"
 
 export type MensalidadeResumo = {
   status: StatusMensalidade
@@ -268,11 +271,17 @@ export async function atualizarVencimentosMensalidadesAluno(
     alunoId: string
     diaVencimentoAnterior: number
     diaVencimentoNovo: number
+    vencimentoMesSeguinteAnterior?: boolean
+    vencimentoMesSeguinteNovo?: boolean
     hoje?: Date
     autorId?: string
   },
 ) {
-  if (params.diaVencimentoAnterior === params.diaVencimentoNovo) return 0
+  if (
+    params.diaVencimentoAnterior === params.diaVencimentoNovo &&
+    Boolean(params.vencimentoMesSeguinteAnterior) === Boolean(params.vencimentoMesSeguinteNovo)
+  )
+    return 0
 
   const mensalidades = await cliente.mensalidade.findMany({
     where: {
@@ -292,7 +301,11 @@ export async function atualizarVencimentosMensalidadesAluno(
   const inicioHoje = inicioDoDia(params.hoje ?? new Date())
 
   for (const mensalidade of mensalidades) {
-    const vencimento = vencimentoDaCompetencia(mensalidade.competencia, params.diaVencimentoNovo)
+    const vencimento = vencimentoDaCompetencia(
+      mensalidade.competencia,
+      params.diaVencimentoNovo,
+      params.vencimentoMesSeguinteNovo,
+    )
     const status = statusMensalidadeAposNovoVencimento(mensalidade.status, vencimento, inicioHoje)
     await cliente.mensalidade.update({
       where: { id: mensalidade.id },
@@ -1166,6 +1179,7 @@ export async function vincularPlanoMensalista(params: {
       tipo: true,
       planoId: true,
       diaVencimento: true,
+      vencimentoMesSeguinte: true,
       modalidades: { select: { id: true } },
       modalidadesPlano: { select: { modalidadeId: true, plataformaExterna: true } },
     },
@@ -1197,6 +1211,8 @@ export async function vincularPlanoMensalista(params: {
         tipo: tipoAposVinculoPlano(anterior.tipo),
         planoId: params.planoId,
         diaVencimento: params.diaVencimento,
+        vencimentoMesSeguinte:
+          params.diaVencimento === 1 && anterior.vencimentoMesSeguinte === true,
       },
     })
 
@@ -1226,6 +1242,8 @@ export async function vincularPlanoMensalista(params: {
       alunoId: params.alunoId,
       diaVencimentoAnterior: anterior.diaVencimento,
       diaVencimentoNovo: atualizado.diaVencimento,
+      vencimentoMesSeguinteAnterior: anterior.vencimentoMesSeguinte,
+      vencimentoMesSeguinteNovo: atualizado.vencimentoMesSeguinte,
       autorId: params.autorId,
     })
 
@@ -1246,6 +1264,7 @@ export async function vincularPlanoMensalista(params: {
           tipo: atualizado.tipo,
           planoId: atualizado.planoId,
           diaVencimento: atualizado.diaVencimento,
+          vencimentoMesSeguinte: atualizado.vencimentoMesSeguinte,
           modalidadeIds,
           modalidadesExternas,
           mensalidadesVencimentoAtualizadas,
@@ -1345,14 +1364,22 @@ export async function obterOuCriarMensalidadeNaTransacao(
       competencia: params.competencia,
       valor: resumoAdimplencia({
         status: "EM_ABERTO",
-        vencimento: vencimentoDaCompetencia(params.competencia, aluno.diaVencimento),
+        vencimento: vencimentoDaCompetencia(
+          params.competencia,
+          aluno.diaVencimento,
+          aluno.vencimentoMesSeguinte,
+        ),
         valor: plano.valor,
         valorBase: plano.valorBase ?? plano.valor,
         valorComDesconto: plano.valor,
       }).valorAtual,
       valorBase: plano.valorBase ?? plano.valor,
       valorComDesconto: plano.valor,
-      vencimento: vencimentoDaCompetencia(params.competencia, aluno.diaVencimento),
+      vencimento: vencimentoDaCompetencia(
+        params.competencia,
+        aluno.diaVencimento,
+        aluno.vencimentoMesSeguinte,
+      ),
       repasseSnapshot: repasseSnapshot as unknown as Prisma.InputJsonValue,
     },
   })
@@ -1369,6 +1396,7 @@ export async function obterOuCriarMensalidadeNaTransacao(
           competencia: criada.competencia,
           valor: Number(criada.valor),
           diaVencimento: aluno.diaVencimento,
+          vencimentoMesSeguinte: aluno.vencimentoMesSeguinte,
           modalidadeIds: modalidadesInternas.map((modalidade) => modalidade.modalidadeId),
           repasseSnapshot,
           vencimento: criada.vencimento.toISOString(),
@@ -1824,7 +1852,7 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
   const hoje = inicioDoDia(agora)
   const amanha = intervaloDoDia(new Date(hoje.getTime() + 24 * 60 * 60 * 1000))
   const emCincoDias = intervaloDoDia(new Date(hoje.getTime() + 5 * 24 * 60 * 60 * 1000))
-  const vencidas = await vencerMensalidadesAtrasadas(cliente, { agora })
+  const vencidas = await vencerMensalidadesAtrasadas(cliente, { agora, notificarAlunos: false })
   const avisosAdimplencia = await gerarAvisosDiariosAdimplencia(cliente, { agora })
   const professoresNotificados = new Set<string>()
 
@@ -1857,7 +1885,7 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
       where: {
         status: "VENCIDA",
       },
-      include: { aluno: { select: { usuario: { select: { nome: true } } } } },
+      include: { aluno: { select: { usuarioId: true, usuario: { select: { nome: true } } } } },
       orderBy: { vencimento: "asc" },
     }),
   ])
@@ -1865,6 +1893,7 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
   let lembretesCriados = 0
   let lembretesPagamentoCriados = 0
   let inadimplenciasCriadas = 0
+  let alunosInadimplentesNotificados = 0
 
   for (const mensalidade of vencemEmCincoDias) {
     const paramsConteudo = {
@@ -1913,6 +1942,18 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
   }
 
   for (const mensalidade of inadimplentes) {
+    // A manutenção pode ter vencido esta mensalidade durante a madrugada sem enviar avisos.
+    // Consultamos somente VENCIDA agora: pagamentos entre a manutenção e os avisos ficam fora.
+    const conteudoAluno = mensagemInadimplenciaMensalidadeAluno({
+      competencia: mensalidade.competencia,
+      vencimento: mensalidade.vencimento,
+      valor: Number(mensalidade.valor),
+    })
+    if (
+      await criarNotificacaoFinanceiraUnica(cliente, mensalidade.aluno.usuarioId, conteudoAluno)
+    ) {
+      alunosInadimplentesNotificados++
+    }
     const paramsConteudo = {
       alunoNome: mensalidade.aluno.usuario.nome,
       competencia: mensalidade.competencia,
@@ -1940,7 +1981,7 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
     gestoresNotificados: gestores.length,
     professoresNotificados: professoresNotificados.size,
     mensalidadesVencidasAtualizadas: vencidas.mensalidadesVencidas,
-    alunosInadimplentesNotificados: vencidas.alunosNotificados,
+    alunosInadimplentesNotificados,
     mensalidadesAVencer: vencemAmanha.length,
     mensalidadesComLembretePagamento: vencemEmCincoDias.length,
     mensalidadesInadimplentes: inadimplentes.length,
@@ -1952,6 +1993,7 @@ export async function gerarLembretesFinanceiros(cliente: Cliente = db, params?: 
       lembretesCriados +
       lembretesPagamentoCriados +
       inadimplenciasCriadas +
+      alunosInadimplentesNotificados +
       avisosAdimplencia.total,
   }
 }
@@ -1989,7 +2031,7 @@ export async function listarMensalidadesAcompanhamentoProfessor(
 
 export async function vencerMensalidadesAtrasadas(
   cliente: Cliente = db,
-  params?: { agora?: Date },
+  params?: { agora?: Date; notificarAlunos?: boolean },
 ) {
   const hoje = inicioDoDia(params?.agora ?? new Date())
 
@@ -2022,6 +2064,7 @@ export async function vencerMensalidadesAtrasadas(
     await sincronizarStatusFinanceiroAluno(cliente, mensalidade.alunoId, hoje)
 
     mensalidadesVencidas += resultado.count
+    if (params?.notificarAlunos === false) continue
     const conteudo = mensagemInadimplenciaMensalidadeAluno({
       competencia: mensalidade.competencia,
       vencimento: mensalidade.vencimento,
@@ -2123,11 +2166,6 @@ function condicoesProfessorDoAluno(alunoId: string): Prisma.ProfessorWhereInput[
       },
     },
   ]
-}
-
-export function vencimentoDaCompetencia(competencia: string, diaVencimento: number): Date {
-  const [ano, mes] = competencia.split("-").map(Number)
-  return new Date(Date.UTC(ano, mes - 1, diaVencimento, 12, 0, 0))
 }
 
 function statusMensalidadeAposNovoVencimento(
@@ -2245,6 +2283,7 @@ function serializarVinculo(vinculo: {
   tipo: TipoAluno
   planoId: string | null
   diaVencimento: number
+  vencimentoMesSeguinte?: boolean
   modalidadeIds: string[]
   modalidadesExternas?: Array<{
     modalidadeId: string
@@ -2256,6 +2295,7 @@ function serializarVinculo(vinculo: {
     tipo: vinculo.tipo,
     planoId: vinculo.planoId,
     diaVencimento: vinculo.diaVencimento,
+    vencimentoMesSeguinte: vinculo.vencimentoMesSeguinte ?? false,
     modalidadeIds: vinculo.modalidadeIds,
     modalidadesExternas: vinculo.modalidadesExternas,
     ...(vinculo.mensalidadesVencimentoAtualizadas !== undefined

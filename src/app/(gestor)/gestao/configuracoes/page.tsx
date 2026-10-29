@@ -22,6 +22,11 @@ export default async function Page() {
         titulo="Configurações"
         descricao="Regras de agendamento, check-in, financeiro e notificações."
       >
+        {usuario.papel === "GESTOR" ? (
+          <Button asChild variant="outline">
+            <Link href="/gestao/configuracoes/tarefas">Tarefas automáticas</Link>
+          </Button>
+        ) : null}
         <Button asChild variant="outline">
           <Link href="/gestao/auditoria">
             <ShieldCheck className="size-4" /> Ver auditoria

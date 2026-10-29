@@ -13,6 +13,7 @@ import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { pixAutomaticoEmAndamento } from "@/lib/financeiro/pix-automatico"
+import { rotuloVencimentoMensalidade } from "@/lib/financeiro/vencimento"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
 import { formatarData, obterIntervaloMes } from "@/lib/utils/datas"
@@ -221,10 +222,12 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
   const alunosOpcao = alunos.map((aluno) => ({
     id: aluno.id,
+    diaVencimento: aluno.diaVencimento,
+    vencimentoMesSeguinte: aluno.vencimentoMesSeguinte,
     nome: aluno.usuario.nome,
     detalhe: aluno.plano
-      ? `${aluno.tipo} · ${aluno.plano.nome} · venc. dia ${aluno.diaVencimento} · ${aluno.tipoCobrancaPix === "MENSAL" ? "PIX mensal" : "PIX Automático"}`
-      : `${aluno.tipo} · venc. dia ${aluno.diaVencimento}`,
+      ? `${aluno.tipo} · ${aluno.plano.nome} · ${rotuloVencimentoMensalidade(aluno.diaVencimento, aluno.vencimentoMesSeguinte)} · ${aluno.tipoCobrancaPix === "MENSAL" ? "PIX mensal" : "PIX Automático"}`
+      : `${aluno.tipo} · ${rotuloVencimentoMensalidade(aluno.diaVencimento, aluno.vencimentoMesSeguinte)}`,
     modalidades: aluno.modalidades.map((modalidade) => ({
       id: modalidade.id,
       nome: modalidade.nome,

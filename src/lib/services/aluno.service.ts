@@ -177,6 +177,7 @@ export async function migrarMensalidadesAbertasParaPlanoAluno(
     planoNovoValor?: Prisma.Decimal | number
     planoNovoValorBase?: Prisma.Decimal | number
     diaVencimentoNovo?: number
+    vencimentoMesSeguinteNovo?: boolean
     agora?: Date
     autorId?: string
   },
@@ -217,7 +218,11 @@ export async function migrarMensalidadesAbertasParaPlanoAluno(
       const valorComDesconto = params.planoNovoValor
       const valorBase = params.planoNovoValorBase ?? valorComDesconto
       const vencimento = params.diaVencimentoNovo
-        ? vencimentoDaCompetencia(mensalidade.competencia, params.diaVencimentoNovo)
+        ? vencimentoDaCompetencia(
+            mensalidade.competencia,
+            params.diaVencimentoNovo,
+            params.vencimentoMesSeguinteNovo ?? false,
+          )
         : mensalidade.vencimento
       data.valorBase = valorBase
       data.valorComDesconto = valorComDesconto
@@ -354,6 +359,7 @@ export async function criarAluno(
           tipo: usuario.aluno?.tipo,
           status: usuario.aluno?.status,
           diaVencimento: usuario.aluno?.diaVencimento,
+          vencimentoMesSeguinte: usuario.aluno?.vencimentoMesSeguinte ?? false,
           planoId: usuario.aluno?.planoId,
           modalidadeIds: params.modalidadeIds,
           cobrancasModalidades: vinculosCobranca,
@@ -407,6 +413,7 @@ export async function atualizarAluno(
       planoId: true,
       plano: { select: { nome: true } },
       diaVencimento: true,
+      vencimentoMesSeguinte: true,
       responsavel: true,
       contratosPixAutomatico: {
         where: {
@@ -429,6 +436,9 @@ export async function atualizarAluno(
     }))
   )
     return { ok: false as const, motivo: MOTIVO_VINCULO_PLANO_FAMILIA }
+
+  const vencimentoMesSeguinteNovo =
+    (params.diaVencimento ?? atual.diaVencimento) === 1 && (atual.vencimentoMesSeguinte ?? false)
 
   const atualizado = await db.$transaction(async (tx) => {
     let mensalidadesAbertasMigradas = 0
@@ -511,7 +521,12 @@ export async function atualizarAluno(
                   : { connect: { id: params.planoId } },
             }
           : {}),
-        ...(params.diaVencimento !== undefined ? { diaVencimento: params.diaVencimento } : {}),
+        ...(params.diaVencimento !== undefined
+          ? {
+              diaVencimento: params.diaVencimento,
+              vencimentoMesSeguinte: vencimentoMesSeguinteNovo,
+            }
+          : {}),
         ...(params.modalidadeIds
           ? { modalidades: { set: params.modalidadeIds.map((id) => ({ id })) } }
           : {}),
@@ -532,6 +547,7 @@ export async function atualizarAluno(
         planoNovoValor: aluno.plano?.valor,
         planoNovoValorBase: aluno.plano?.valorBase,
         diaVencimentoNovo: params.diaVencimento,
+        vencimentoMesSeguinteNovo,
         autorId: params.autorId,
       })
     }
@@ -541,6 +557,8 @@ export async function atualizarAluno(
         alunoId: atual.id,
         diaVencimentoAnterior: atual.diaVencimento,
         diaVencimentoNovo: params.diaVencimento,
+        vencimentoMesSeguinteAnterior: atual.vencimentoMesSeguinte ?? false,
+        vencimentoMesSeguinteNovo,
         autorId: params.autorId,
       })
     }
@@ -590,6 +608,7 @@ export async function atualizarAluno(
       idExterno: atual.idExterno,
       plano: atual.plano?.nome ?? null,
       diaVencimento: atual.diaVencimento,
+      vencimentoMesSeguinte: atual.vencimentoMesSeguinte ?? false,
       modalidades: atual.modalidades.map((modalidade) => modalidade.nome),
       cobrancasModalidades: atual.modalidadesPlano,
       responsavel: atual.responsavel,
@@ -614,6 +633,7 @@ export async function atualizarAluno(
         idExterno: aluno.idExterno,
         plano: aluno.plano?.nome ?? null,
         diaVencimento: aluno.diaVencimento,
+        vencimentoMesSeguinte: aluno.vencimentoMesSeguinte ?? false,
         modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
         cobrancasModalidades:
           params.cobrancasModalidades ??
@@ -676,6 +696,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       idExterno: true,
       plano: { select: { nome: true } },
       diaVencimento: true,
+      vencimentoMesSeguinte: true,
       responsavel: true,
       contratosPixAutomatico: {
         where: {
@@ -722,6 +743,7 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
           idExterno: aluno.idExterno,
           plano: aluno.plano?.nome ?? null,
           diaVencimento: aluno.diaVencimento,
+          vencimentoMesSeguinte: aluno.vencimentoMesSeguinte ?? false,
           modalidades: aluno.modalidades.map((modalidade) => modalidade.nome),
           responsavel: aluno.responsavel,
         }),
@@ -754,6 +776,7 @@ function serializarAluno(dados: {
   idExterno: string | null
   plano: string | null
   diaVencimento: number
+  vencimentoMesSeguinte: boolean
   modalidades: string[]
   cobrancasModalidades?: Array<{
     modalidadeId: string
@@ -787,6 +810,7 @@ function serializarAluno(dados: {
     idExterno: dados.idExterno,
     plano: dados.plano,
     diaVencimento: dados.diaVencimento,
+    vencimentoMesSeguinte: dados.vencimentoMesSeguinte,
     modalidades: dados.modalidades,
     cobrancasModalidades: dados.cobrancasModalidades,
     responsavel: dados.responsavel

@@ -1,4 +1,5 @@
 import "server-only"
+import { createHash } from "node:crypto"
 import type { Papel, TipoNotificacao } from "@prisma/client"
 import webPush from "web-push"
 import { db } from "@/lib/db"
@@ -86,14 +87,15 @@ function hostEndpoint(endpoint: string): string | null {
   }
 }
 
-function opcoesEnvioPush(notificacaoId: string, endpoint: string) {
+export function opcoesEnvioPush(notificacaoId: string, endpoint: string) {
   const opcoes: webPush.RequestOptions = {
     TTL: 60 * 60 * 24,
     urgency: "normal",
   }
 
   if (hostEndpoint(endpoint) !== "web.push.apple.com") {
-    opcoes.topic = notificacaoId.slice(0, 32)
+    // O provedor aceita apenas Base64URL; o hash também distingue IDs com o mesmo prefixo.
+    opcoes.topic = createHash("sha256").update(notificacaoId).digest("base64url").slice(0, 32)
   }
 
   return opcoes

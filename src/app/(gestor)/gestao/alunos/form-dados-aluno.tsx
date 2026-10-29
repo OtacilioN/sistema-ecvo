@@ -43,6 +43,7 @@ type AlunoParaEdicao = {
   idAtleta: string | null
   planoId: string | null
   diaVencimento: number
+  vencimentoMesSeguinte?: boolean
   modalidades: string[]
   cobrancasModalidades: Array<{
     modalidadeId: string
@@ -166,6 +167,12 @@ export function FormDadosAluno({
           max="28"
           defaultValue={aluno.diaVencimento}
         />
+        {aluno.vencimentoMesSeguinte ? (
+          <p className="text-xs text-muted-foreground">
+            O dia 01 mantém o vencimento no mês seguinte à referência. Escolher outro dia passa o
+            vencimento para o próprio mês de referência.
+          </p>
+        ) : null}
       </div>
       <CampoUploadFoto
         id="fotoUrl-aluno"

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
+import { rotuloVencimentoMensalidade } from "@/lib/financeiro/vencimento"
 import { obterHistoricoObservacoesTecnicas } from "@/lib/services/aluno.service"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { resumoHoras } from "@/lib/services/horas.service"
@@ -360,7 +361,11 @@ export default async function Page({
               <Campo rotulo="Plano" valor={aluno.plano?.nome ?? null} />
               <Campo
                 rotulo="Vencimento da mensalidade"
-                valor={temMensalidadeInterna ? `Dia ${aluno.diaVencimento}` : null}
+                valor={
+                  temMensalidadeInterna
+                    ? rotuloVencimentoMensalidade(aluno.diaVencimento, aluno.vencimentoMesSeguinte)
+                    : null
+                }
               />
               <Campo
                 rotulo="Modalidades contratadas"

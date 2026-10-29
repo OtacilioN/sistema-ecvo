@@ -86,6 +86,7 @@ export default async function AlunosPage() {
               }
             : null,
           diaVencimento: a.diaVencimento,
+          vencimentoMesSeguinte: a.vencimentoMesSeguinte,
           modalidades: a.modalidades.map((m) => m.id),
           cobrancasModalidades: a.modalidadesPlano.map((modalidade) => ({
             modalidadeId: modalidade.modalidadeId,

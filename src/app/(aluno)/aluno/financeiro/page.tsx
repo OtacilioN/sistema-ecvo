@@ -7,6 +7,7 @@ import { situacaoConversaoAulaAvulsa } from "@/lib/aula-avulsa"
 import { exigirAluno } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
+import { rotuloVencimentoMensalidade } from "@/lib/financeiro/vencimento"
 import { mensalistaAdimplente, statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import {
   obterConversaoAulaAvulsa,
@@ -370,7 +371,10 @@ export default async function Page() {
               valor={formatarBRL(Number(aluno.plano.valor))}
             />
             <Campo rotulo="Valor base" valor={formatarBRL(Number(aluno.plano.valorBase))} />
-            <Campo rotulo="Vencimento" valor={`Dia ${aluno.diaVencimento}`} />
+            <Campo
+              rotulo="Vencimento"
+              valor={rotuloVencimentoMensalidade(aluno.diaVencimento, aluno.vencimentoMesSeguinte)}
+            />
             <Campo
               rotulo="Modalidades contratadas"
               valor={aluno.modalidadesPlano.map((item) => item.modalidade.nome).join(", ")}

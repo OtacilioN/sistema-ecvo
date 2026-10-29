@@ -28,6 +28,8 @@ type AlunoOpcao = {
   id: string
   nome: string
   detalhe: string
+  diaVencimento?: number
+  vencimentoMesSeguinte?: boolean
   modalidades: ModalidadeOpcao[]
   modalidadeContratadaIds: string[]
 }
@@ -355,14 +357,21 @@ export function FormVinculoPlano({
         opcoes={planos.map((p) => ({ ...p, detalhe: "" }))}
       />
       <CampoTexto
+        key={alunoId}
         id="diaVencimento"
         rotulo="Vencimento do aluno"
         type="number"
         min="1"
         max="28"
-        defaultValue="10"
+        defaultValue={String(alunoSelecionado?.diaVencimento ?? 10)}
         required
       />
+      {alunoSelecionado?.vencimentoMesSeguinte ? (
+        <p className="text-xs text-muted-foreground">
+          O dia 01 mantém o vencimento no mês seguinte à referência. Escolher outro dia passa o
+          vencimento para o próprio mês de referência.
+        </p>
+      ) : null}
       <fieldset className="space-y-2 rounded-md border border-border p-3">
         <legend className="px-1 text-sm font-medium text-muted-foreground">
           Modalidades contratadas

@@ -1841,19 +1841,65 @@ export async function processarCobrancasPixAutomaticoPendentes(hoje = new Date()
   return { ok: falhas.length === 0, analisadas: mensalidades.length, criadas, falhas }
 }
 
-export async function reconciliarPendenciasAsaas() {
+type OpcoesReconciliacaoAsaas = {
+  somenteRecuperacao?: boolean
+  agora?: Date
+  /** Limite por tipo: cobranças e autorizações são lotes independentes. */
+  limite?: number
+  /** Orçamento entre itens; uma chamada em andamento mantém o timeout do cliente Asaas. */
+  orcamentoMs?: number
+}
+
+export async function reconciliarPendenciasAsaas(opcoes: OpcoesReconciliacaoAsaas = {}) {
+  const somenteRecuperacao = opcoes.somenteRecuperacao === true
+  const agora = opcoes.agora ?? new Date()
+  const inicio = Date.now()
+  const limitePadrao = somenteRecuperacao ? 25 : 100
+  const limite = Number.isFinite(opcoes.limite)
+    ? Math.max(1, Math.min(100, Math.trunc(opcoes.limite as number)))
+    : limitePadrao
+  const orcamentoMs = Number.isFinite(opcoes.orcamentoMs)
+    ? Math.max(1_000, Math.min(180_000, opcoes.orcamentoMs as number))
+    : somenteRecuperacao
+      ? 90_000
+      : Number.POSITIVE_INFINITY
+  // A recuperação frequente respeita a reserva de criação (2 min) e não consulta
+  // novamente um item recém-alterado por uma ação ou webhook.
+  const corteRecuperacao = new Date(agora.getTime() - 15 * 60 * 1_000)
+  const cortePendentes = new Date(agora.getTime() - 6 * 60 * 60 * 1_000)
+  const pendencias: Prisma.CobrancaAsaasWhereInput[] = [
+    {
+      status: {
+        in: somenteRecuperacao
+          ? ["CRIANDO", "CANCELANDO", "ERRO"]
+          : ["CRIANDO", "PENDENTE", "CANCELANDO", "VENCIDA", "ERRO"],
+      },
+      ...(somenteRecuperacao ? { atualizadoEm: { lte: corteRecuperacao } } : {}),
+    },
+    {
+      status: "RECEBIDA",
+      mensalidade: { status: { in: ["EM_ABERTO", "VENCIDA"] } },
+      ...(somenteRecuperacao ? { atualizadoEm: { lte: corteRecuperacao } } : {}),
+    },
+  ]
+  if (somenteRecuperacao) {
+    // Uma revisão espaçada das cobranças normais também recupera webhooks perdidos,
+    // sem consultar todas as pendências a cada hora nem criar outra cobrança.
+    pendencias.push({
+      status: { in: ["PENDENTE", "VENCIDA"] },
+      ativa: true,
+      asaasPaymentId: { not: null },
+      atualizadoEm: { lte: cortePendentes },
+    })
+  }
+  let interrompidaPorTempo = false
+  let pagamentosAnalisados = 0
+  let autorizacoesAnalisadas = 0
+  const orcamentoEsgotado = (limiteMs = orcamentoMs) => Date.now() - inicio >= limiteMs
   const cobrancas = await db.cobrancaAsaas.findMany({
     where: {
       AND: [
-        {
-          OR: [
-            { status: { in: ["CRIANDO", "PENDENTE", "CANCELANDO", "VENCIDA", "ERRO"] } },
-            {
-              status: "RECEBIDA",
-              mensalidade: { status: { in: ["EM_ABERTO", "VENCIDA"] } },
-            },
-          ],
-        },
+        { OR: pendencias },
         {
           OR: [{ tipo: { not: "PIX_AUTOMATICO_INICIAL" } }, { asaasPaymentId: { not: null } }],
         },
@@ -1861,11 +1907,18 @@ export async function reconciliarPendenciasAsaas() {
       ],
     },
     orderBy: { atualizadoEm: "asc" },
-    take: 100,
+    take: limite,
   })
   let pagamentosAtualizados = 0
   const falhasPagamentos: Array<{ cobrancaId: string; motivo: string }> = []
   for (const cobranca of cobrancas) {
+    // Reservar parte do orçamento para autorizações evita que um lote de cobranças
+    // indisponíveis impeça indefinidamente a recuperação dos contratos.
+    if (orcamentoEsgotado(somenteRecuperacao ? orcamentoMs * (2 / 3) : orcamentoMs)) {
+      interrompidaPorTempo = true
+      break
+    }
+    pagamentosAnalisados++
     try {
       let remota: CobrancaRemotaAsaas | undefined
       if (cobranca.tipo === "PIX_AUTOMATICO_INICIAL" && cobranca.asaasPaymentId) {
@@ -1883,7 +1936,7 @@ export async function reconciliarPendenciasAsaas() {
         remota = encontradas.data[0]
       }
       if (!remota) {
-        if (cobranca.status === "ERRO" || !reservaAindaEmAndamento(cobranca.atualizadoEm)) {
+        if (cobranca.status === "ERRO" || !reservaAindaEmAndamento(cobranca.atualizadoEm, agora)) {
           const motivo = cobranca.ultimoErro ?? ERRO_COBRANCA_AUSENTE_ASAAS
           const status =
             !cobranca.asaasPaymentId && !STATUS_COBRANCA_TERMINAL.includes(cobranca.status as never)
@@ -1929,29 +1982,69 @@ export async function reconciliarPendenciasAsaas() {
       pagamentosAtualizados++
     } catch (erro) {
       const motivo = mensagemErroAsaasSegura(erro)
-      await db.cobrancaAsaas.update({
-        where: { id: cobranca.id },
-        data: { ultimoErro: motivo },
-      })
+      if (somenteRecuperacao) {
+        const atualizada = await db.cobrancaAsaas.updateMany({
+          where: {
+            id: cobranca.id,
+            status: cobranca.status,
+            asaasPaymentId: cobranca.asaasPaymentId,
+            atualizadoEm: cobranca.atualizadoEm,
+          },
+          data: { ultimoErro: motivo },
+        })
+        if (!atualizada.count) continue
+      } else {
+        await db.cobrancaAsaas.update({
+          where: { id: cobranca.id },
+          data: { ultimoErro: motivo },
+        })
+      }
       falhasPagamentos.push({ cobrancaId: cobranca.id, motivo })
+    } finally {
+      if (somenteRecuperacao) {
+        // Mesmo uma revisão sem alteração precisa sair do início do lote.
+        // O CAS preserva a atualização/reserva feita por um webhook ou ação concorrente.
+        await db.cobrancaAsaas.updateMany({
+          where: {
+            id: cobranca.id,
+            status: cobranca.status,
+            asaasPaymentId: cobranca.asaasPaymentId,
+            atualizadoEm: cobranca.atualizadoEm,
+          },
+          data: { atualizadoEm: new Date() },
+        })
+      }
     }
   }
 
-  const contratos = await db.contratoPixAutomatico.findMany({
-    where: {
-      status: { in: ["PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO", "ERRO"] },
-      asaasAuthorizationId: { not: null },
-    },
-    include: { aluno: { include: { clienteAsaas: true } } },
-    orderBy: { atualizadoEm: "asc" },
-    take: 100,
-  })
+  if (orcamentoEsgotado()) interrompidaPorTempo = true
+  const contratos = orcamentoEsgotado()
+    ? []
+    : await db.contratoPixAutomatico.findMany({
+        where: {
+          status: {
+            in: somenteRecuperacao
+              ? ["PENDENTE_AUTORIZACAO", "CANCELANDO", "ERRO"]
+              : ["PENDENTE_AUTORIZACAO", "ATIVO", "CANCELANDO", "ERRO"],
+          },
+          asaasAuthorizationId: { not: null },
+          ...(somenteRecuperacao ? { atualizadoEm: { lte: corteRecuperacao } } : {}),
+        },
+        include: { aluno: { include: { clienteAsaas: true } } },
+        orderBy: { atualizadoEm: "asc" },
+        take: limite,
+      })
   let autorizacoesAtualizadas = 0
   const falhasAutorizacoes: Array<{ contratoId: string; motivo: string }> = []
   for (const contrato of contratos) {
-    const customerId = contrato.aluno.clienteAsaas?.asaasCustomerId
-    if (!customerId || !contrato.asaasAuthorizationId) continue
+    if (orcamentoEsgotado()) {
+      interrompidaPorTempo = true
+      break
+    }
+    autorizacoesAnalisadas++
     try {
+      const customerId = contrato.aluno.clienteAsaas?.asaasCustomerId
+      if (!customerId || !contrato.asaasAuthorizationId) continue
       const remota = (
         await listarAutorizacoesPixAutomaticoAsaas({ customerId, limit: 100 })
       ).data.find((item) => item.id === contrato.asaasAuthorizationId)
@@ -1969,12 +2062,29 @@ export async function reconciliarPendenciasAsaas() {
         data: { ultimoErro: motivo },
       })
       falhasAutorizacoes.push({ contratoId: contrato.id, motivo })
+    } finally {
+      if (somenteRecuperacao) {
+        // Uma autorização ainda pendente ou um evento já deduplicado pode não
+        // modificar o contrato. Rotacionar apenas essa revisão inalterada evita
+        // selecionar sempre os mesmos primeiros 25, sem tocar em uma reserva
+        // ou atualização concorrente do aluno/webhook.
+        await db.contratoPixAutomatico.updateMany({
+          where: {
+            id: contrato.id,
+            status: contrato.status,
+            atualizadoEm: contrato.atualizadoEm,
+          },
+          data: { atualizadoEm: new Date() },
+        })
+      }
     }
   }
 
   return {
-    ok: falhasPagamentos.length === 0 && falhasAutorizacoes.length === 0,
-    pagamentosAnalisados: cobrancas.length,
+    ok: !interrompidaPorTempo && falhasPagamentos.length === 0 && falhasAutorizacoes.length === 0,
+    pagamentosAnalisados,
+    autorizacoesAnalisadas,
+    interrompidaPorTempo,
     pagamentosAtualizados,
     autorizacoesAtualizadas,
     falhasPagamentos,

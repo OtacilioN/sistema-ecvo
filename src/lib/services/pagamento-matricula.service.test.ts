@@ -1755,7 +1755,12 @@ describe("conversão do complemento confirmado por consulta ao Asaas", () => {
     })
     expect(mocks.tx.aluno.update).toHaveBeenCalledWith({
       where: { id: "aluno-1" },
-      data: { tipo: "MENSALISTA", planoId: "plano-1", diaVencimento: 11 },
+      data: {
+        tipo: "MENSALISTA",
+        planoId: "plano-1",
+        diaVencimento: 11,
+        vencimentoMesSeguinte: false,
+      },
     })
     expect(mocks.tx.cobrancaAsaas.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ valorCobrado: new Prisma.Decimal(80), status: "RECEBIDA" }),

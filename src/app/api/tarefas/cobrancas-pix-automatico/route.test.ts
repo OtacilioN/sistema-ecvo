@@ -5,6 +5,19 @@ vi.mock("@/lib/services/asaas.service", () => ({
   reconciliarPendenciasAsaas: vi.fn(),
   sincronizarCobrancasDescontoAdimplencia: vi.fn(),
 }))
+vi.mock("@/lib/services/tarefa-agendada.service", () => ({
+  executarTarefaAgendada: vi.fn(
+    async ({ executar }: { executar: () => Promise<{ ok?: boolean }> }) => {
+      const resultado = await executar()
+      return {
+        status: resultado.ok === false ? "FALHOU" : "CONCLUIDA",
+        resultado,
+        execucaoId: "teste",
+      }
+    },
+  ),
+  expurgarExecucoesTarefasAntigas: vi.fn(),
+}))
 vi.mock("@/lib/services/financeiro.service", () => ({
   sincronizarValoresAdimplencia: vi.fn(),
 }))
@@ -30,6 +43,8 @@ describe("cron de cobranças PIX Automático", () => {
     vi.mocked(reconciliarPendenciasAsaas).mockResolvedValue({
       ok: true,
       pagamentosAnalisados: 0,
+      autorizacoesAnalisadas: 0,
+      interrompidaPorTempo: false,
       pagamentosAtualizados: 0,
       autorizacoesAtualizadas: 0,
       falhasPagamentos: [],
@@ -68,7 +83,9 @@ describe("cron de cobranças PIX Automático", () => {
 
     expect(resposta.status).toBe(500)
     expect(processarCobrancasPixAutomaticoPendentes).toHaveBeenCalledOnce()
-    expect(corpo.erros).toEqual([{ etapa: "RECONCILIACAO", motivo: "falha temporária" }])
+    expect(corpo.erros).toEqual([
+      { etapa: "reconciliacao", motivo: "Não foi possível concluir esta etapa." },
+    ])
   })
 
   it("concilia, sincroniza o desconto e só então cria cobranças", async () => {
@@ -104,7 +121,7 @@ describe("cron de cobranças PIX Automático", () => {
     )
     expect(resposta.status).toBe(500)
     expect((await resposta.json()).erros).toEqual([
-      { etapa: "ADIMPLENCIA", motivo: "Existem cobranças com preço pendente de sincronização." },
+      { etapa: "adimplencia", motivo: "Existem itens pendentes nesta etapa." },
     ])
     expect(processarCobrancasPixAutomaticoPendentes).toHaveBeenCalledOnce()
   })

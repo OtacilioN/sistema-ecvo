@@ -79,6 +79,7 @@ export type AlunoLinha = {
     pixRecorrenteEmAndamento: boolean
   } | null
   diaVencimento: number
+  vencimentoMesSeguinte?: boolean
   modalidades: string[]
   cobrancasModalidades: Array<{
     modalidadeId: string

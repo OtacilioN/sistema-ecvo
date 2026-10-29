@@ -272,6 +272,7 @@ enum TipoNotificacao {
   CHECKIN_INVALIDADO
   CHECKIN_REALIZADO
   ANIVERSARIO
+  TAREFA_AGENDADA
 }
 
 // ───────────────────────── Identidade ─────────────────────────
@@ -336,6 +337,7 @@ model Aluno {
   plano                         Plano?                         @relation(fields: [planoId], references: [id])
   planoId                       String?
   diaVencimento                 Int                            @default(10)
+  vencimentoMesSeguinte         Boolean                        @default(false)
   modalidadesPlano              AlunoPlanoModalidade[]
   tipoCobrancaPix               TipoCobrancaPix                @default(MENSAL)
   clienteAsaas                  ClienteAsaas?
@@ -1202,4 +1204,41 @@ model InscricaoPush {
 
   @@index([usuarioId, revogadaEm])
   @@index([atualizadoEm])
+}
+
+enum StatusExecucaoTarefaAgendada {
+  EM_EXECUCAO
+  CONCLUIDA
+  FALHOU
+  INTERROMPIDA
+}
+
+// Lease durável: não mantém uma conexão PostgreSQL durante chamadas externas.
+model ControleTarefaAgendada {
+  tarefa            String                   @id
+  execucaoAtualId   String?
+  leaseAte          DateTime?
+  criadoEm          DateTime                 @default(now())
+  ultimaExecucaoEm  DateTime?
+  ultimaConclusaoEm DateTime?
+  ultimoSucessoEm   DateTime?
+  ultimaFalhaEm     DateTime?
+  atualizadoEm      DateTime                 @default(now()) @updatedAt
+  execucoes         ExecucaoTarefaAgendada[]
+}
+
+// Apenas contagens e códigos seguros; nunca resultados ou erros brutos do domínio.
+model ExecucaoTarefaAgendada {
+  id          String                       @id @default(cuid())
+  controle    ControleTarefaAgendada       @relation(fields: [tarefa], references: [tarefa], onDelete: Restrict)
+  tarefa      String
+  status      StatusExecucaoTarefaAgendada @default(EM_EXECUCAO)
+  iniciadoEm  DateTime                     @default(now())
+  concluidoEm DateTime?
+  duracaoMs   Int?
+  contadores  Json?
+  erroSeguro  String?
+
+  @@index([tarefa, iniciadoEm])
+  @@index([concluidoEm])
 }

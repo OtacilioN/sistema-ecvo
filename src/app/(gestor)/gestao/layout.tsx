@@ -1,6 +1,5 @@
 import { NAV_GESTOR, NAV_SECRETARIA } from "@/components/layout/navs"
 import { PainelShell } from "@/components/layout/painel-shell"
-import { LembretesTreinoGestorPulso } from "@/components/lembretes-treino-gestor-pulso"
 import { exigirGestao } from "@/lib/auth/dal"
 
 export default async function GestaoLayout({ children }: { children: React.ReactNode }) {
@@ -12,7 +11,6 @@ export default async function GestaoLayout({ children }: { children: React.React
       usuarioNome={usuario.nome}
       papelRotulo={ehSecretaria ? "Secretaria" : "Gestor"}
     >
-      {!ehSecretaria && <LembretesTreinoGestorPulso />}
       {children}
     </PainelShell>
   )

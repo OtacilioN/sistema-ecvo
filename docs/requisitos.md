@@ -74,7 +74,9 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
 - **RF-001.2** O gestor visualiza e aprova somente matrículas pendentes Wellhub ou TotalPass em uma única
   operação. Matrículas mensalistas e aulas avulsas são aprovadas automaticamente no `PAYMENT_RECEIVED` do
   Asaas. A aprovação mensalista usa o plano e o valor preservados na cobrança, cria o aluno, define o
-  vencimento pelo dia do pagamento (limitado a 28) e registra a mensalidade inicial paga pelo Asaas. A
+  vencimento pelo dia do recebimento do primeiro pagamento: dias 1 a 28 vencem na própria competência;
+  dias 29, 30 e 31 vencem no dia 01 do mês seguinte, mantendo o mês de referência
+  (setembro vence em 01/10). Registra a mensalidade inicial paga pelo Asaas na competência da cobrança. A
   aprovação vincula todas as modalidades selecionadas ao aluno e ao plano. A aprovação Wellhub/TotalPass cria o aluno
   com o tipo e o vínculo externo da modalidade correspondente, sem efeitos
   financeiros internos. O comprovante anexado é evidência privada opcional do fluxo mensalista e nunca
@@ -335,6 +337,8 @@ RN-018 repasse externo separa 60% para professores; nos resumos mensais Wellhub/
 aplicado após somar as contas da competência, e todo o restante integra a sobra mensal.
 
 RN-019 vencimento da mensalidade interna é configurado por aluno, com dia 10 como padrão inicial.
+No autocadastro, o primeiro pagamento recebido nos dias 29, 30 ou 31 define vencimento recorrente
+no dia 01 do mês seguinte à competência, sem mudar a referência paga; dias 1 a 28 mantêm o próprio mês.
 RN-020 plano é um pacote comercial disponível para qualquer modalidade; as modalidades contratadas são
 definidas no vínculo aluno-plano e devem ser subconjunto das modalidades do aluno. A quantidade opcional
 configurada no plano apenas associa a oferta ao autocadastro mensalista; não fixa quais modalidades podem ser escolhidas.

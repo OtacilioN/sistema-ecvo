@@ -30,6 +30,7 @@ import {
 } from "@/lib/aula-avulsa"
 import { db } from "@/lib/db"
 import { calcularTaxaAsaas } from "@/lib/financeiro/taxa-asaas"
+import { vencimentoDoPagamentoInicial } from "@/lib/financeiro/vencimento"
 import {
   conciliarEstornoParcialPeloAsaas,
   estornarMensalidadePeloAsaas,
@@ -1534,13 +1535,13 @@ async function concluirConversaoAulaAvulsa(
     )
   }
 
-  const diaVencimento = Math.min(28, Number(formatarDataInput(params.recebidaEm).slice(-2)))
+  const regraVencimento = vencimentoDoPagamentoInicial(params.recebidaEm)
   await tx.aluno.update({
     where: { id: aluno.id },
     data: {
       tipo: "MENSALISTA",
       planoId: plano.id,
-      diaVencimento,
+      ...regraVencimento,
       ...(alunoAtual.status === "TRANCADO" ? { status: "ATIVO" as const } : {}),
     },
   })
@@ -1622,7 +1623,7 @@ async function concluirConversaoAulaAvulsa(
       valorNovo: {
         tipo: "MENSALISTA",
         planoId: plano.id,
-        diaVencimento,
+        ...regraVencimento,
         mensalidadeId: mensalidadePaga.id,
         valorMensalidade: Number(acesso.valorPlanoSnapshot),
         creditoAulaAvulsa: Number(acesso.valorPago),

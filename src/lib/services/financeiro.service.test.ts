@@ -96,7 +96,14 @@ describe("mensalidadeBloqueiaTreino", () => {
 })
 
 describe("registrarMensalidadeInicialPaga", () => {
-  it("gera e baixa a competência atual na mesma transação", async () => {
+  it.each([
+    { diaVencimento: 10, vencimentoMesSeguinte: false, vencimento: "2026-08-10" },
+    { diaVencimento: 1, vencimentoMesSeguinte: true, vencimento: "2026-09-01" },
+  ])("gera e baixa a competência atual com vencimento $vencimento", async ({
+    diaVencimento,
+    vencimentoMesSeguinte,
+    vencimento,
+  }) => {
     const logs: Array<Record<string, unknown>> = []
     const notificacoes: Array<Record<string, unknown>> = []
     const mensalidadeAberta = {
@@ -121,7 +128,8 @@ describe("registrarMensalidadeInicialPaga", () => {
         findUnique: async () => ({
           id: "aluno-1",
           usuarioId: "usuario-1",
-          diaVencimento: 10,
+          diaVencimento,
+          vencimentoMesSeguinte,
           plano: { id: "plano-1", valor: 250 },
           modalidadesPlano: [
             {
@@ -205,6 +213,7 @@ describe("registrarMensalidadeInicialPaga", () => {
       mensalidade: {
         competencia: "2026-08",
         status: "PAGA",
+        vencimento: new Date(`${vencimento}T12:00:00Z`),
         pagoEm: new Date("2026-08-27T12:00:00Z"),
         formaPagamento: "Pix",
         observacao: "Pago na matrícula",
@@ -245,6 +254,41 @@ describe("registrarMensalidadeInicialPaga", () => {
 })
 
 describe("atualizarVencimentosMensalidadesAluno", () => {
+  it("recalcula quando apenas o mês do vencimento muda", async () => {
+    const atualizacoes: unknown[] = []
+    const cliente = {
+      mensalidade: {
+        findMany: async () => [
+          { id: "mensalidade-1", competencia: "2026-09", status: "EM_ABERTO" },
+        ],
+        update: async (params: unknown) => {
+          atualizacoes.push(params)
+        },
+        findFirst: async () => null,
+      },
+      aluno: { updateMany: async () => ({ count: 0 }) },
+    } as never
+    expect(
+      await atualizarVencimentosMensalidadesAluno(cliente, {
+        alunoId: "aluno-1",
+        diaVencimentoAnterior: 1,
+        diaVencimentoNovo: 1,
+        vencimentoMesSeguinteAnterior: false,
+        vencimentoMesSeguinteNovo: true,
+        hoje: new Date("2026-09-30T12:00:00Z"),
+      }),
+    ).toBe(1)
+    expect(atualizacoes).toEqual([
+      {
+        where: { id: "mensalidade-1" },
+        data: {
+          vencimento: new Date("2026-10-01T12:00:00Z"),
+          status: "EM_ABERTO",
+        },
+      },
+    ])
+  })
+
   it("recalcula vencimento e status de mensalidades abertas e vencidas", async () => {
     const atualizacoes: unknown[] = []
     const cliente = {
@@ -576,7 +620,7 @@ describe("gerarLembretesFinanceiros", () => {
                 competencia: "2026-06",
                 vencimento: new Date("2026-06-10T12:00:00Z"),
                 valor: 300,
-                aluno: { usuario: { nome: "Bruno Costa" } },
+                aluno: { usuarioId: "usuario-aluno-2", usuario: { nome: "Bruno Costa" } },
               },
             ]
           }
@@ -622,7 +666,8 @@ describe("gerarLembretesFinanceiros", () => {
       lembretesCriados: 2,
       lembretesPagamentoCriados: 1,
       inadimplenciasCriadas: 3,
-      totalCriado: 6,
+      alunosInadimplentesNotificados: 1,
+      totalCriado: 7,
     })
     expect(professoresBuscados).toHaveLength(2)
     expect(buscasNotificacao.flatMap((busca) => busca.where.OR)).toEqual(
@@ -646,6 +691,10 @@ describe("gerarLembretesFinanceiros", () => {
         titulo: "Mensalidade vence amanhã",
       }),
       expect.objectContaining({
+        usuarioId: "usuario-aluno-2",
+        titulo: "Mensalidade em atraso",
+      }),
+      expect.objectContaining({
         usuarioId: "usuario-gestor-1",
         titulo: "Mensalidade em atraso",
       }),
@@ -658,6 +707,127 @@ describe("gerarLembretesFinanceiros", () => {
         titulo: "Mensalidade em atraso",
       }),
     ])
+  })
+})
+
+describe("manutenção financeira separada da comunicação", () => {
+  type ConteudoNotificacao = { usuarioId: string; tipo: string; titulo: string; mensagem: string }
+  function prepararCliente() {
+    const mensalidades = [1, 2].map((indice) => ({
+      id: `mensalidade-${indice}`,
+      alunoId: `aluno-${indice}`,
+      competencia: "2026-06",
+      status: "EM_ABERTO",
+      vencimento: new Date("2026-06-10T12:00:00Z"),
+      valor: 250,
+      aluno: { usuarioId: `usuario-${indice}`, usuario: { nome: `Aluno ${indice}` } },
+    }))
+    const notificacoes: ConteudoNotificacao[] = []
+    const atualizacoesAluno: string[] = []
+    const cliente = {
+      mensalidade: {
+        findMany: async (params: {
+          where: {
+            status?: string | { in: string[] }
+            vencimento?: { lt?: Date; gte?: Date }
+          }
+        }) => {
+          if (typeof params.where.status !== "string") return []
+          return mensalidades.filter(
+            (mensalidade) =>
+              mensalidade.status === params.where.status &&
+              (!params.where.vencimento?.lt ||
+                mensalidade.vencimento < params.where.vencimento.lt) &&
+              (!params.where.vencimento?.gte ||
+                mensalidade.vencimento >= params.where.vencimento.gte),
+          )
+        },
+        updateMany: async (params: {
+          where: { id: string; status: string }
+          data: { status: string }
+        }) => {
+          const mensalidade = mensalidades.find((item) => item.id === params.where.id)
+          if (!mensalidade || mensalidade.status !== params.where.status) return { count: 0 }
+          mensalidade.status = params.data.status
+          return { count: 1 }
+        },
+        findFirst: async (params: { where: { alunoId: string } }) =>
+          mensalidades.find(
+            (item) => item.alunoId === params.where.alunoId && item.status === "VENCIDA",
+          ) ?? null,
+      },
+      aluno: {
+        updateMany: async (params: { where: { id: string } }) => {
+          atualizacoesAluno.push(params.where.id)
+          return { count: 1 }
+        },
+      },
+      usuario: { findMany: async () => [] },
+      professor: { findMany: async () => [] },
+      configuracaoAcademia: { findUnique: async () => ({ notificarFinanceiro: true }) },
+      notificacao: {
+        findFirst: async (params: {
+          where: { usuarioId: string; OR: Array<{ titulo: string; mensagem: string }> }
+        }) =>
+          notificacoes.find(
+            (item) =>
+              item.usuarioId === params.where.usuarioId &&
+              params.where.OR.some(
+                (conteudo) =>
+                  conteudo.titulo === item.titulo && conteudo.mensagem === item.mensagem,
+              ),
+          ) ?? null,
+        create: async (params: { data: ConteudoNotificacao }) => {
+          notificacoes.push(params.data)
+          return { id: `notificacao-${notificacoes.length}`, ...params.data }
+        },
+      },
+    }
+    return { cliente: cliente as never, mensalidades, notificacoes, atualizacoesAluno }
+  }
+
+  it("vence silenciosamente à meia-noite e avisa às 08h somente quem continua devendo", async () => {
+    const { cliente, mensalidades, notificacoes, atualizacoesAluno } = prepararCliente()
+    expect(
+      await vencerMensalidadesAtrasadas(cliente, {
+        agora: new Date("2026-06-11T00:05:00-03:00"),
+        notificarAlunos: false,
+      }),
+    ).toEqual({ ok: true, mensalidadesVencidas: 2, alunosNotificados: 0 })
+    expect(mensalidades.map((item) => item.status)).toEqual(["VENCIDA", "VENCIDA"])
+    expect(atualizacoesAluno).toEqual(["aluno-1", "aluno-2"])
+    expect(notificacoes).toHaveLength(0)
+
+    // O segundo aluno quitou entre a manutenção e o envio da manhã.
+    mensalidades[1].status = "PAGA"
+    const manha = await gerarLembretesFinanceiros(cliente, {
+      agora: new Date("2026-06-11T08:00:00-03:00"),
+    })
+    expect(manha).toMatchObject({
+      mensalidadesVencidasAtualizadas: 0,
+      alunosInadimplentesNotificados: 1,
+      totalCriado: 1,
+    })
+    expect(notificacoes).toEqual([
+      expect.objectContaining({ usuarioId: "usuario-1", titulo: "Mensalidade em atraso" }),
+    ])
+    const repeticao = await gerarLembretesFinanceiros(cliente, {
+      agora: new Date("2026-06-11T08:15:00-03:00"),
+    })
+    expect(repeticao).toMatchObject({ alunosInadimplentesNotificados: 0, totalCriado: 0 })
+    expect(notificacoes).toHaveLength(1)
+  })
+
+  it("preserva o envio padrão ao vencer e não repete esses avisos na comunicação da manhã", async () => {
+    const { cliente, notificacoes } = prepararCliente()
+    expect(
+      await vencerMensalidadesAtrasadas(cliente, { agora: new Date("2026-06-11T07:00:00-03:00") }),
+    ).toEqual({ ok: true, mensalidadesVencidas: 2, alunosNotificados: 2 })
+    expect(notificacoes).toHaveLength(2)
+    expect(
+      await gerarLembretesFinanceiros(cliente, { agora: new Date("2026-06-11T08:00:00-03:00") }),
+    ).toMatchObject({ alunosInadimplentesNotificados: 0, totalCriado: 0 })
+    expect(notificacoes).toHaveLength(2)
   })
 })
 

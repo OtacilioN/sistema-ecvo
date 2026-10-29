@@ -36,6 +36,7 @@ type CampoConfiguracaoNotificacao =
 
 const CAMPO_CONFIG: Record<TipoNotificacao, CampoConfiguracaoNotificacao | null> = {
   MATRICULA: null,
+  TAREFA_AGENDADA: null,
   COMPARECIMENTO: "notificarComparecimento",
   LEMBRETE_TREINO: "notificarLembreteTreino",
   LEMBRETE_AGENDAMENTO: "notificarLembreteAgendamento",
@@ -173,7 +174,7 @@ export async function gerarLembretesAluguelGestores(
 }
 
 export async function gerarLembretesTreino(
-  cliente: Cliente,
+  cliente: typeof db = db,
   params?: { agora?: Date; antecedenciaMinutos?: number; janelaMinutos?: number },
 ) {
   if (!(await campoNotificacaoAtivo(cliente, "notificarLembreteTreino"))) {
@@ -181,57 +182,78 @@ export async function gerarLembretesTreino(
   }
 
   const agora = params?.agora ?? new Date()
-  const inicioJanela = new Date(agora.getTime() + (params?.antecedenciaMinutos ?? 60) * 60_000)
-  const limite = new Date(inicioJanela.getTime() + (params?.janelaMinutos ?? 15) * 60_000)
-  const comparecimentos = await cliente.comparecimento.findMany({
-    where: {
-      status: "CONFIRMADO",
-      aula: {
-        cancelada: false,
-        inicio: { gte: inicioJanela, lt: limite },
-      },
-    },
-    take: 200,
-    include: {
-      aluno: { select: { usuarioId: true } },
-      aula: {
-        include: {
-          turma: { select: { nome: true, modalidade: { select: { nome: true } } } },
-          checkins: { where: { status: "VALIDO" }, select: { alunoId: true } },
+  // A janela sobreposta recupera disparos perdidos enquanto a aula ainda não começou.
+  // A chave única abaixo impede que essa recuperação gere outro aviso da mesma aula.
+  const limite = new Date(
+    agora.getTime() +
+      ((params?.antecedenciaMinutos ?? 60) + (params?.janelaMinutos ?? 15)) * 60_000,
+  )
+  let total = 0
+  let cursor: string | undefined
+  while (true) {
+    const comparecimentos = await cliente.comparecimento.findMany({
+      where: {
+        status: "CONFIRMADO",
+        aula: {
+          cancelada: false,
+          inicio: { gt: agora, lt: limite },
         },
       },
-    },
-  })
+      take: 200,
+      orderBy: { id: "asc" },
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: {
+        aluno: { select: { usuarioId: true } },
+        aula: {
+          include: {
+            turma: { select: { nome: true, modalidade: { select: { nome: true } } } },
+            checkins: { where: { status: "VALIDO" }, select: { alunoId: true } },
+          },
+        },
+      },
+    })
 
-  let total = 0
-  for (const comparecimento of comparecimentos) {
-    const jaFezCheckin = comparecimento.aula.checkins.some(
-      (checkin) => checkin.alunoId === comparecimento.alunoId,
-    )
-    if (jaFezCheckin) continue
+    for (const comparecimento of comparecimentos) {
+      const jaFezCheckin = comparecimento.aula.checkins.some(
+        (checkin) => checkin.alunoId === comparecimento.alunoId,
+      )
+      if (jaFezCheckin) continue
 
-    const titulo = "Treino em breve"
-    const mensagem = `${
-      comparecimento.aula.turma.nome ?? comparecimento.aula.turma.modalidade.nome
-    } começa em ${formatarDataHora(comparecimento.aula.inicio)}.`
-    const existente = await cliente.notificacao.findFirst({
-      where: {
+      const titulo = "Treino em breve"
+      const mensagem = `${
+        comparecimento.aula.turma.nome ?? comparecimento.aula.turma.modalidade.nome
+      } começa em ${formatarDataHora(comparecimento.aula.inicio)}.`
+      const existente = await cliente.notificacao.findFirst({
+        where: {
+          usuarioId: comparecimento.aluno.usuarioId,
+          tipo: "LEMBRETE_TREINO",
+          titulo,
+          mensagem,
+        },
+        select: { id: true },
+      })
+      if (existente) continue
+
+      const chaveDeduplicacao = `lembrete-treino:${comparecimento.aulaId}:${comparecimento.aluno.usuarioId}`
+      const notificacao: NotificacaoParaPush = {
+        id: chaveDeduplicacao,
         usuarioId: comparecimento.aluno.usuarioId,
         tipo: "LEMBRETE_TREINO",
         titulo,
         mensagem,
-      },
-      select: { id: true },
-    })
-    if (existente) continue
+      }
+      const criada = await cliente.notificacao.createMany({
+        data: [{ ...notificacao, chaveDeduplicacao }],
+        skipDuplicates: true,
+      })
+      if (criada.count === 0) continue
+      total++
+      // Este serviço recebe o cliente raiz: a gravação terminou antes de acessar o provedor push.
+      await enviarPushParaNotificacoes([notificacao])
+    }
 
-    await criarNotificacao(cliente, {
-      usuarioId: comparecimento.aluno.usuarioId,
-      tipo: "LEMBRETE_TREINO",
-      titulo,
-      mensagem,
-    })
-    total++
+    if (comparecimentos.length < 200) break
+    cursor = comparecimentos[comparecimentos.length - 1].id
   }
 
   return { ok: true as const, total }

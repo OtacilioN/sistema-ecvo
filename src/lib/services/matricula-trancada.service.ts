@@ -3,6 +3,7 @@ import type { Mensalidade, Prisma } from "@prisma/client"
 import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { VALOR_MENSALIDADE_AULA_AVULSA } from "@/lib/aula-avulsa"
 import { db } from "@/lib/db"
+import { vencimentoDoPagamentoInicial } from "@/lib/financeiro/vencimento"
 import { registrarLog } from "@/lib/services/auditoria.service"
 import {
   lerRepasseSnapshotMensalidade,
@@ -251,9 +252,7 @@ export async function efetivarReativacaoMatricula(
       status: "ATIVO",
       tipo: aluno.tipo === "AVULSO" ? "MENSALISTA" : aluno.tipo,
       planoId: mensalidade.planoId,
-      ...(aluno.planoId
-        ? {}
-        : { diaVencimento: Math.min(28, Number(formatarDataInput(recebidaEm).slice(-2))) }),
+      ...(aluno.planoId ? {} : vencimentoDoPagamentoInicial(recebidaEm)),
     },
   })
   await tx.mensalidade.update({ where: { id: mensalidade.id }, data: { reativadaEm: recebidaEm } })
