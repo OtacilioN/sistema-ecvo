@@ -2,6 +2,7 @@ import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
+import { pixAutomaticoEmAndamento } from "@/lib/financeiro/pix-automatico"
 import { listarAlunos } from "@/lib/services/aluno.service"
 import { listarModalidades } from "@/lib/services/modalidade.service"
 import { chaveCompetencia, formatarDataInput } from "@/lib/utils/datas"
@@ -79,6 +80,9 @@ export default async function AlunosPage() {
                 status: a.mensalidades[0].status,
                 pagoEm: a.mensalidades[0].pagoEm,
                 formaPagamento: a.mensalidades[0].formaPagamento,
+                pixRecorrenteEmAndamento: pixAutomaticoEmAndamento(
+                  a.mensalidades[0].contratoPixAutomatico?.status,
+                ),
               }
             : null,
           diaVencimento: a.diaVencimento,

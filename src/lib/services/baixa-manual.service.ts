@@ -1,5 +1,6 @@
 import "server-only"
 import { db } from "@/lib/db"
+import { pixAutomaticoEmAndamento } from "@/lib/financeiro/pix-automatico"
 import {
   cancelarCobrancaAsaasAntesDeBaixaManual,
   cancelarPixAutomatico,
@@ -10,16 +11,9 @@ type ParametrosBaixaManual = {
   mensalidadeId: string
   formaPagamento?: string | null
   observacao?: string | null
+  confirmarCancelamentoPixAutomatico?: boolean
   autorId: string
 }
-
-const STATUS_PIX_AUTOMATICO_EM_ANDAMENTO = new Set([
-  "CRIANDO",
-  "PENDENTE_AUTORIZACAO",
-  "ATIVO",
-  "CANCELANDO",
-  "ERRO",
-])
 
 export async function baixarMensalidadeManual(params: ParametrosBaixaManual) {
   const mensalidade = await db.mensalidade.findUnique({
@@ -33,6 +27,16 @@ export async function baixarMensalidadeManual(params: ParametrosBaixaManual) {
 
   if (!mensalidade || ["PAGA", "ISENTA"].includes(mensalidade.status)) {
     return baixarMensalidade(params)
+  }
+
+  const cancelarRecorrencia = pixAutomaticoEmAndamento(mensalidade.contratoPixAutomatico?.status)
+  if (cancelarRecorrencia && params.confirmarCancelamentoPixAutomatico !== true) {
+    return {
+      ok: false as const,
+      motivo:
+        "Confirme que esta baixa manual cancelará todo o Pix recorrente do aluno, incluindo as próximas cobranças automáticas.",
+      confirmacaoPixAutomaticoNecessaria: true as const,
+    }
   }
 
   const cobrancaAtiva = await db.cobrancaAsaas.findFirst({
@@ -55,10 +59,7 @@ export async function baixarMensalidadeManual(params: ParametrosBaixaManual) {
     if (!cancelamento.ok) return cancelamento
   }
 
-  if (
-    mensalidade.contratoPixAutomatico &&
-    STATUS_PIX_AUTOMATICO_EM_ANDAMENTO.has(mensalidade.contratoPixAutomatico.status)
-  ) {
+  if (cancelarRecorrencia) {
     const cancelamentoPixAutomatico = await cancelarPixAutomatico({
       alunoId: mensalidade.alunoId,
       autorId: params.autorId,
@@ -74,6 +75,7 @@ export async function darBaixaMensalidadeAlunoManual(params: {
   competencia: string
   formaPagamento?: string | null
   observacao?: string | null
+  confirmarCancelamentoPixAutomatico?: boolean
   autorId: string
 }) {
   const mensalidade = await gerarMensalidade({
@@ -87,6 +89,7 @@ export async function darBaixaMensalidadeAlunoManual(params: {
     mensalidadeId: mensalidade.mensalidade.id,
     formaPagamento: params.formaPagamento,
     observacao: params.observacao,
+    confirmarCancelamentoPixAutomatico: params.confirmarCancelamentoPixAutomatico,
     autorId: params.autorId,
   })
 }

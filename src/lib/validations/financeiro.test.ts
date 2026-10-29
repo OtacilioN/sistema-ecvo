@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest"
-import { planoEdicaoSchema, planoExclusaoSchema, planoSchema } from "./financeiro"
+import {
+  baixaMensalidadeAlunoSchema,
+  baixarMensalidadeSchema,
+  planoEdicaoSchema,
+  planoExclusaoSchema,
+  planoSchema,
+} from "./financeiro"
 
 describe("planoSchema", () => {
   const planoBase = {
@@ -78,5 +84,34 @@ describe("planoExclusaoSchema", () => {
     })
 
     expect(parsed.planoDestinoId).toBeNull()
+  })
+})
+
+describe.each([
+  ["financeiro", baixarMensalidadeSchema, { mensalidadeId: "mensalidade-1" }],
+  ["lista de alunos", baixaMensalidadeAlunoSchema, { alunoId: "aluno-1", competencia: "2026-11" }],
+])("confirmação do cancelamento do Pix recorrente na %s", (_nome, schema, dados) => {
+  it.each([true, "on"])("aceita confirmação explícita %s", (valor) => {
+    expect(
+      schema.parse({ ...dados, confirmarCancelamentoPixAutomatico: valor })
+        .confirmarCancelamentoPixAutomatico,
+    ).toBe(true)
+  })
+
+  it.each([
+    undefined,
+    null,
+    false,
+    "false",
+    "true",
+    "off",
+    "",
+    "1",
+    1,
+  ])("não trata %s como confirmação", (valor) => {
+    expect(
+      schema.parse({ ...dados, confirmarCancelamentoPixAutomatico: valor })
+        .confirmarCancelamentoPixAutomatico,
+    ).toBe(false)
   })
 })

@@ -76,6 +76,7 @@ export type AlunoLinha = {
     status: StatusMensalidade
     pagoEm: Date | null
     formaPagamento: string | null
+    pixRecorrenteEmAndamento: boolean
   } | null
   diaVencimento: number
   modalidades: string[]

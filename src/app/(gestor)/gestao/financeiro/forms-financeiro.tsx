@@ -43,6 +43,7 @@ export type AlunoBaixaMensalidade = {
     status: StatusMensalidade
     pagoEm: Date | null
     formaPagamento: string | null
+    pixRecorrenteEmAndamento: boolean
   } | null
   diaVencimento: number
 }
@@ -440,17 +441,55 @@ export function FormTipoCobrancaPix({
   )
 }
 
+function ConfirmacaoCancelamentoPixRecorrente({
+  confirmado,
+  aoConfirmar,
+}: {
+  confirmado: boolean
+  aoConfirmar: (confirmado: boolean) => void
+}) {
+  return (
+    <fieldset className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm sm:col-span-2">
+      <legend className="px-1 font-semibold text-destructive">
+        Esta baixa cancela todo o Pix recorrente
+      </legend>
+      <p>
+        Ao registrar esta baixa manual, todo o contrato de Pix recorrente do aluno será cancelado,
+        incluindo as próximas cobranças automáticas. O pagamento voltará ao Pix mensal. As
+        mensalidades já pagas serão preservadas.
+      </p>
+      <label className="flex cursor-pointer items-start gap-3 font-medium">
+        <input
+          type="checkbox"
+          name="confirmarCancelamentoPixAutomatico"
+          checked={confirmado}
+          onChange={(evento) => aoConfirmar(evento.target.checked)}
+          required
+          className="mt-0.5 size-4 shrink-0 accent-primary"
+        />
+        Confirmo que desejo cancelar todo o Pix recorrente e registrar esta baixa manual.
+      </label>
+    </fieldset>
+  )
+}
+
 export function FormBaixarMensalidade({
   mensalidadeId,
+  pixRecorrenteEmAndamento = false,
   aoConcluir,
 }: {
   mensalidadeId: string
+  pixRecorrenteEmAndamento?: boolean
   aoConcluir?: () => void
 }) {
-  const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(
-    acaoBaixarMensalidade,
-    undefined,
-  )
+  const [cancelamentoConfirmado, setCancelamentoConfirmado] = useState(false)
+  const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(async (anterior, dados) => {
+    const resultado = await acaoBaixarMensalidade(anterior, dados)
+    setCancelamentoConfirmado(false)
+    return resultado
+  }, undefined)
+  const exigeConfirmacao =
+    pixRecorrenteEmAndamento || estado?.confirmacaoPixAutomaticoNecessaria === true
 
   useEffect(() => {
     if (estado?.ok) aoConcluir?.()
@@ -461,9 +500,15 @@ export function FormBaixarMensalidade({
       <input type="hidden" name="mensalidadeId" value={mensalidadeId} />
       <CampoTexto id="formaPagamento" rotulo="Forma de pagamento" placeholder="Pix, cartão..." />
       <CampoTexto id="observacao" rotulo="Observação" />
+      {exigeConfirmacao && (
+        <ConfirmacaoCancelamentoPixRecorrente
+          confirmado={cancelamentoConfirmado}
+          aoConfirmar={setCancelamentoConfirmado}
+        />
+      )}
       <Erro estado={estado} />
       <div className="flex justify-end">
-        <BotaoEnviar>
+        <BotaoEnviar disabled={exigeConfirmacao && !cancelamentoConfirmado}>
           <WalletCards className="size-4" /> Baixar pagamento
         </BotaoEnviar>
       </div>
@@ -480,14 +525,19 @@ export function FormBaixaMensalidadeAluno({
   competenciaAtual: string
   aoConcluir?: () => void
 }) {
-  const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(
-    acaoDarBaixaMensalidadeAluno,
-    undefined,
-  )
+  const [cancelamentoConfirmado, setCancelamentoConfirmado] = useState(false)
+  const [estado, acao] = useActionState<EstadoFinanceiro, FormData>(async (anterior, dados) => {
+    const resultado = await acaoDarBaixaMensalidadeAluno(anterior, dados)
+    setCancelamentoConfirmado(false)
+    return resultado
+  }, undefined)
   const semPlano = !aluno.planoNome || aluno.planoValor === null
   const mensalidadeAtual = aluno.mensalidadeAtual
   const jaPaga = mensalidadeAtual?.status === "PAGA"
   const valorCompetencia = mensalidadeAtual?.valor ?? aluno.planoValor ?? 0
+  const exigeConfirmacao =
+    mensalidadeAtual?.pixRecorrenteEmAndamento ||
+    estado?.confirmacaoPixAutomaticoNecessaria === true
 
   useEffect(() => {
     if (estado?.ok) aoConcluir?.()
@@ -573,12 +623,18 @@ export function FormBaixaMensalidadeAluno({
             disabled={jaPaga}
           />
           <CampoTexto id="observacao" rotulo="Observação" disabled={jaPaga} />
+          {!jaPaga && exigeConfirmacao && (
+            <ConfirmacaoCancelamentoPixRecorrente
+              confirmado={cancelamentoConfirmado}
+              aoConfirmar={setCancelamentoConfirmado}
+            />
+          )}
         </>
       )}
 
       <Erro estado={estado} />
       <div className="flex justify-end sm:col-span-2">
-        <BotaoEnviar disabled={semPlano || jaPaga}>
+        <BotaoEnviar disabled={semPlano || jaPaga || (exigeConfirmacao && !cancelamentoConfirmado)}>
           <WalletCards className="size-4" /> Dar baixa
         </BotaoEnviar>
       </div>

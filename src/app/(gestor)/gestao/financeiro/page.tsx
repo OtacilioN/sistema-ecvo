@@ -1,4 +1,4 @@
-import type { StatusMensalidade } from "@prisma/client"
+import type { StatusContratoPixAutomatico, StatusMensalidade } from "@prisma/client"
 import { AlertTriangle, CheckCircle2, Search, WalletCards } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,7 @@ import { STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
 import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
+import { pixAutomaticoEmAndamento } from "@/lib/financeiro/pix-automatico"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
 import { formatarData, obterIntervaloMes } from "@/lib/utils/datas"
@@ -35,6 +36,7 @@ type MensalidadeVisivel = {
   observacao: string | null
   aluno: { usuario: { nome: string } }
   plano: { nome: string } | null
+  contratoPixAutomatico: { status: StatusContratoPixAutomatico } | null
   cobrancasAsaas: {
     id: string
     tipo: string
@@ -135,6 +137,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       include: {
         aluno: { select: { usuario: { select: { nome: true } } } },
         plano: { select: { nome: true } },
+        contratoPixAutomatico: { select: { status: true } },
         cobrancasAsaas: {
           orderBy: { geracao: "desc" },
           take: 1,
@@ -648,6 +651,9 @@ function ListaMensalidades({
                             observacao={mensalidade.observacao}
                             quitada={quitada}
                             cobrancaAsaas={cobrancaAsaas}
+                            pixRecorrenteEmAndamento={pixAutomaticoEmAndamento(
+                              mensalidade.contratoPixAutomatico?.status,
+                            )}
                           />
                         </div>
                       </td>

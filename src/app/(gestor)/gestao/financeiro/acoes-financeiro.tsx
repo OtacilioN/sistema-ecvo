@@ -86,12 +86,14 @@ export function AcoesMensalidade({
   observacao,
   quitada,
   cobrancaAsaas,
+  pixRecorrenteEmAndamento = false,
 }: {
   mensalidadeId: string
   status: StatusMensalidade
   formaPagamento: string | null
   observacao: string | null
   quitada: boolean
+  pixRecorrenteEmAndamento?: boolean
   cobrancaAsaas?: {
     id: string
     ativa: boolean
@@ -156,7 +158,11 @@ export function AcoesMensalidade({
             : "Marca a mensalidade como paga."
         }
       >
-        <FormBaixarMensalidade mensalidadeId={mensalidadeId} aoConcluir={fechar} />
+        <FormBaixarMensalidade
+          mensalidadeId={mensalidadeId}
+          pixRecorrenteEmAndamento={pixRecorrenteEmAndamento}
+          aoConcluir={fechar}
+        />
       </Dialog>
 
       {cobrancaAsaas && (

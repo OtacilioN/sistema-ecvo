@@ -38,7 +38,9 @@ import {
   vinculoPlanoSchema,
 } from "@/lib/validations/financeiro"
 
-export type EstadoFinanceiro = { erro?: string; ok?: boolean } | undefined
+export type EstadoFinanceiro =
+  | { erro?: string; ok?: boolean; confirmacaoPixAutomaticoNecessaria?: boolean }
+  | undefined
 
 function primeiroErro(issues: { message: string }[]): string {
   return issues[0]?.message ?? "Dados inválidos."
@@ -148,6 +150,7 @@ export async function acaoBaixarMensalidade(
     mensalidadeId: formData.get("mensalidadeId"),
     formaPagamento: formData.get("formaPagamento"),
     observacao: formData.get("observacao"),
+    confirmarCancelamentoPixAutomatico: formData.get("confirmarCancelamentoPixAutomatico"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
@@ -156,7 +159,15 @@ export async function acaoBaixarMensalidade(
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")
   revalidatePath("/aluno/perfil")
-  if (!resultado.ok) return { erro: resultado.motivo }
+  if (!resultado.ok) {
+    return {
+      erro: resultado.motivo,
+      ...("confirmacaoPixAutomaticoNecessaria" in resultado &&
+      resultado.confirmacaoPixAutomaticoNecessaria === true
+        ? { confirmacaoPixAutomaticoNecessaria: true }
+        : {}),
+    }
+  }
   return { ok: true }
 }
 
@@ -170,6 +181,7 @@ export async function acaoDarBaixaMensalidadeAluno(
     competencia: formData.get("competencia"),
     formaPagamento: formData.get("formaPagamento"),
     observacao: formData.get("observacao"),
+    confirmarCancelamentoPixAutomatico: formData.get("confirmarCancelamentoPixAutomatico"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
@@ -182,7 +194,15 @@ export async function acaoDarBaixaMensalidadeAluno(
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")
   revalidatePath("/aluno/perfil")
-  if (!resultado.ok) return { erro: resultado.motivo }
+  if (!resultado.ok) {
+    return {
+      erro: resultado.motivo,
+      ...("confirmacaoPixAutomaticoNecessaria" in resultado &&
+      resultado.confirmacaoPixAutomaticoNecessaria === true
+        ? { confirmacaoPixAutomaticoNecessaria: true }
+        : {}),
+    }
+  }
   return { ok: true }
 }
 

@@ -51,23 +51,22 @@ export function listarAlunos(opts?: {
       },
       responsavel: true,
       plano: { select: { nome: true, valor: true } },
-      mensalidades: opts?.competenciaMensalidade
-        ? {
-            where: { competencia: opts.competenciaMensalidade },
-            select: {
-              id: true,
-              competencia: true,
-              valor: true,
-              valorBase: true,
-              valorComDesconto: true,
-              vencimento: true,
-              status: true,
-              pagoEm: true,
-              formaPagamento: true,
-            },
-            take: 1,
-          }
-        : false,
+      mensalidades: {
+        where: { competencia: opts?.competenciaMensalidade },
+        select: {
+          id: true,
+          competencia: true,
+          valor: true,
+          valorBase: true,
+          valorComDesconto: true,
+          vencimento: true,
+          status: true,
+          pagoEm: true,
+          formaPagamento: true,
+          contratoPixAutomatico: { select: { status: true } },
+        },
+        take: opts?.competenciaMensalidade ? 1 : 0,
+      },
       _count: { select: { documentos: true } },
     },
   })

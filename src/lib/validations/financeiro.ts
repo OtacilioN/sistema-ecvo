@@ -57,10 +57,16 @@ export const vinculoPlanoSchema = z.object({
   modalidadeIds: z.array(z.string()).min(1, "Selecione ao menos uma modalidade contratada"),
 })
 
+const confirmacaoCancelamentoPixAutomaticoSchema = z.preprocess(
+  (valor) => valor === "on" || valor === true,
+  z.boolean(),
+)
+
 export const baixarMensalidadeSchema = z.object({
   mensalidadeId: z.string().min(1, "Selecione a mensalidade"),
   formaPagamento: textoOpcional,
   observacao: textoOpcional,
+  confirmarCancelamentoPixAutomatico: confirmacaoCancelamentoPixAutomaticoSchema,
 })
 
 export const baixaMensalidadeAlunoSchema = z.object({
@@ -68,6 +74,7 @@ export const baixaMensalidadeAlunoSchema = z.object({
   competencia: z.string().regex(/^\d{4}-\d{2}$/, "Competência inválida"),
   formaPagamento: textoOpcional,
   observacao: textoOpcional,
+  confirmarCancelamentoPixAutomatico: confirmacaoCancelamentoPixAutomaticoSchema,
 })
 
 export const statusMensalidadeSchema = z.object({

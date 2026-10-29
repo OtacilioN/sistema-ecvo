@@ -21,6 +21,7 @@ vi.mock("@/lib/services/asaas.service", () => ({
   cancelarPixAutomatico: mocks.cancelarPixAutomatico,
 }))
 
+import { STATUS_PIX_AUTOMATICO_EM_ANDAMENTO } from "@/lib/financeiro/pix-automatico"
 import { baixarMensalidadeManual, darBaixaMensalidadeAlunoManual } from "./baixa-manual.service"
 
 const parametros = {
@@ -89,7 +90,10 @@ describe("baixa manual de mensalidade", () => {
       status: "PENDENTE",
     })
 
-    const resultado = await baixarMensalidadeManual(parametros)
+    const resultado = await baixarMensalidadeManual({
+      ...parametros,
+      confirmarCancelamentoPixAutomatico: true,
+    })
 
     expect(resultado).toMatchObject({ ok: true })
     expect(mocks.cancelarPixAutomatico).toHaveBeenCalledWith({
@@ -162,7 +166,10 @@ describe("baixa manual de mensalidade", () => {
       contratoPixAutomatico: { status: "ERRO" },
     })
 
-    const resultado = await baixarMensalidadeManual(parametros)
+    const resultado = await baixarMensalidadeManual({
+      ...parametros,
+      confirmarCancelamentoPixAutomatico: true,
+    })
 
     expect(resultado).toMatchObject({ ok: true })
     expect(mocks.cancelarCobrancaAsaasAntesDeBaixaManual).not.toHaveBeenCalled()
@@ -186,7 +193,10 @@ describe("baixa manual de mensalidade", () => {
       motivo: "O Asaas não confirmou o cancelamento da autorização.",
     })
 
-    const resultado = await baixarMensalidadeManual(parametros)
+    const resultado = await baixarMensalidadeManual({
+      ...parametros,
+      confirmarCancelamentoPixAutomatico: true,
+    })
 
     expect(resultado).toEqual({
       ok: false,
@@ -217,5 +227,90 @@ describe("baixa manual de mensalidade", () => {
       autorId: "gestor-1",
     })
     expect(mocks.baixarMensalidade).toHaveBeenCalledWith(parametros)
+  })
+
+  it.each(
+    STATUS_PIX_AUTOMATICO_EM_ANDAMENTO,
+  )("exige confirmação antes de qualquer cancelamento ou baixa para contrato %s", async (status) => {
+    mocks.db.mensalidade.findUnique.mockResolvedValue({
+      status: "EM_ABERTO",
+      alunoId: "aluno-1",
+      contratoPixAutomatico: { status },
+    })
+    mocks.db.cobrancaAsaas.findFirst.mockResolvedValue({
+      id: "cobranca-automatica-1",
+      status: "PENDENTE",
+    })
+
+    for (const confirmarCancelamentoPixAutomatico of [undefined, false]) {
+      const resultado = await baixarMensalidadeManual({
+        ...parametros,
+        confirmarCancelamentoPixAutomatico,
+      })
+
+      expect(resultado).toEqual({
+        ok: false,
+        motivo:
+          "Confirme que esta baixa manual cancelará todo o Pix recorrente do aluno, incluindo as próximas cobranças automáticas.",
+        confirmacaoPixAutomaticoNecessaria: true,
+      })
+    }
+    expect(mocks.db.cobrancaAsaas.findFirst).not.toHaveBeenCalled()
+    expect(mocks.cancelarCobrancaAsaasAntesDeBaixaManual).not.toHaveBeenCalled()
+    expect(mocks.cancelarPixAutomatico).not.toHaveBeenCalled()
+    expect(mocks.baixarMensalidade).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    "CANCELADO",
+    "CONCLUIDO",
+    "RECUSADO",
+    "EXPIRADO",
+  ])("permite baixa sem confirmação e sem cancelar contrato terminal %s", async (status) => {
+    mocks.db.mensalidade.findUnique.mockResolvedValue({
+      status: "EM_ABERTO",
+      alunoId: "aluno-1",
+      contratoPixAutomatico: { status },
+    })
+
+    expect(await baixarMensalidadeManual(parametros)).toMatchObject({ ok: true })
+    expect(mocks.cancelarPixAutomatico).not.toHaveBeenCalled()
+    expect(mocks.baixarMensalidade).toHaveBeenCalledWith(parametros)
+  })
+
+  it("exige a mesma confirmação na baixa pela lista de alunos", async () => {
+    mocks.gerarMensalidade.mockResolvedValue({
+      ok: true,
+      mensalidade: { id: parametros.mensalidadeId },
+      criada: false,
+    })
+    mocks.db.mensalidade.findUnique.mockResolvedValue({
+      status: "EM_ABERTO",
+      alunoId: "aluno-1",
+      contratoPixAutomatico: { status: "PENDENTE_AUTORIZACAO" },
+    })
+
+    const baixaAluno = {
+      alunoId: "aluno-1",
+      competencia: "2026-11",
+      autorId: parametros.autorId,
+    }
+    expect(await darBaixaMensalidadeAlunoManual(baixaAluno)).toMatchObject({
+      ok: false,
+      confirmacaoPixAutomaticoNecessaria: true,
+    })
+    expect(mocks.cancelarPixAutomatico).not.toHaveBeenCalled()
+    expect(mocks.baixarMensalidade).not.toHaveBeenCalled()
+
+    expect(
+      await darBaixaMensalidadeAlunoManual({
+        ...baixaAluno,
+        confirmarCancelamentoPixAutomatico: true,
+      }),
+    ).toMatchObject({ ok: true })
+    expect(mocks.cancelarPixAutomatico).toHaveBeenCalledWith({
+      alunoId: "aluno-1",
+      autorId: parametros.autorId,
+    })
   })
 })
