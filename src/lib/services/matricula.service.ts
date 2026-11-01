@@ -68,6 +68,21 @@ async function notificarGestoresSobreMatricula(
   return notificacoes
 }
 
+export async function notificarMatriculaAlunoAntigoPaga(
+  tx: ClienteMatricula,
+  solicitacaoId: string,
+) {
+  const solicitacao = await tx.solicitacaoMatricula.findUnique({
+    where: { id: solicitacaoId },
+    select: { nome: true, status: true, descontoAlunoAntigo: true },
+  })
+  if (!solicitacao?.descontoAlunoAntigo || solicitacao.status !== "PENDENTE") return []
+  return notificarGestoresSobreMatricula(tx, {
+    titulo: "Matrícula aguardando análise",
+    mensagem: `${solicitacao.nome} pagou a matrícula com desconto para alunos antigos e aguarda aprovação.`,
+  })
+}
+
 export function listarOpcoesPublicasMatricula() {
   const agora = new Date()
   return db.modalidade.findMany({
@@ -108,9 +123,21 @@ export function listarOpcoesPublicasMatricula() {
 }
 
 export async function solicitarMatricula(
-  params: SolicitacaoMatriculaInput & { comprovante?: DadosComprovante | null },
+  params: SolicitacaoMatriculaInput & {
+    comprovante?: DadosComprovante | null
+    descontoAlunoAntigo?: boolean
+  },
 ) {
   const agora = new Date()
+  if (
+    params.descontoAlunoAntigo &&
+    (params.tipoPagamento !== "MENSALISTA" || params.modalidadeIds.length !== 1)
+  ) {
+    return {
+      ok: false as const,
+      motivo: "O desconto para alunos antigos exige uma modalidade e matrícula mensalista.",
+    }
+  }
   if (params.tipoPagamento !== "MENSALISTA" && params.comprovante) {
     return {
       ok: false as const,
@@ -177,7 +204,9 @@ export async function solicitarMatricula(
         params.tipoPagamento === "MENSALISTA"
           ? await tx.plano.findFirst({
               where: {
-                quantidadeModalidadesMatricula: modalidades.length,
+                ...(params.descontoAlunoAntigo
+                  ? { alunoAntigo: true, quantidadeModalidadesMatricula: null }
+                  : { alunoAntigo: false, quantidadeModalidadesMatricula: modalidades.length }),
                 familia: false,
                 ativo: true,
                 periodicidade: "MENSAL",
@@ -230,6 +259,7 @@ export async function solicitarMatricula(
           restricoesMedicas: params.restricoesMedicas,
           tipoPagamento: params.tipoPagamento,
           beneficioAtivoDeclarado: params.beneficioAtivoDeclarado,
+          descontoAlunoAntigo: params.descontoAlunoAntigo === true,
           aulaAvulsaId: aulaAvulsa?.id ?? null,
           modalidadePrincipalId: modalidadePrincipal.id,
           modalidades: {
@@ -254,6 +284,7 @@ export async function solicitarMatricula(
             quantidadeModalidades: modalidades.length,
             tipoPagamento: params.tipoPagamento,
             beneficioAtivoDeclarado: params.beneficioAtivoDeclarado,
+            descontoAlunoAntigo: params.descontoAlunoAntigo === true,
             comprovanteInformado: Boolean(params.comprovante),
             planoId: plano?.id ?? null,
             planoNome: plano?.nome ?? null,
@@ -296,8 +327,14 @@ export function listarMatriculasPendentes() {
   return db.solicitacaoMatricula.findMany({
     where: {
       status: "PENDENTE",
-      tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] },
-      beneficioAtivoDeclarado: true,
+      OR: [
+        { tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] }, beneficioAtivoDeclarado: true },
+        {
+          tipoPagamento: "MENSALISTA",
+          descontoAlunoAntigo: true,
+          cobrancasAsaas: { some: { status: "RECEBIDA", finalidade: "PRIMEIRA_MENSALIDADE" } },
+        },
+      ],
     },
     orderBy: { criadoEm: "asc" },
     select: {
@@ -312,6 +349,7 @@ export function listarMatriculasPendentes() {
       restricoesMedicas: true,
       tipoPagamento: true,
       beneficioAtivoDeclarado: true,
+      descontoAlunoAntigo: true,
       comprovantePagamentoUrl: true,
       comprovanteContentType: true,
       comprovanteNomeOriginal: true,
@@ -425,12 +463,15 @@ export async function aprovarMatricula(
       const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
       const externo =
         solicitacao.tipoPagamento === "WELLHUB" || solicitacao.tipoPagamento === "TOTALPASS"
-      if (origem === "MANUAL" && !externo) {
+      if (origem === "MANUAL" && !externo && !(mensalista && solicitacao.descontoAlunoAntigo)) {
         return {
           ok: false as const,
           motivo:
             "Matrículas mensalistas e aulas avulsas são aprovadas automaticamente após o pagamento recebido pelo Asaas.",
         }
+      }
+      if (origem === "AUTOMATICA" && solicitacao.descontoAlunoAntigo) {
+        return { ok: false as const, motivo: "Esta matrícula com desconto exige análise manual." }
       }
       if (origem === "AUTOMATICA" && !mensalista && !aulaAvulsa) {
         return { ok: false as const, motivo: "Este tipo de matrícula exige análise manual." }
@@ -450,7 +491,7 @@ export async function aprovarMatricula(
             : null
       const plano = solicitacao.plano
       const finalidadeEsperada = aulaAvulsa ? "AULA_AVULSA" : "PRIMEIRA_MENSALIDADE"
-      const cobrancaMatricula = params.pagamentoFamilia
+      let cobrancaMatricula = params.pagamentoFamilia
         ? await tx.cobrancaMatriculaAsaas.findUnique({
             where: { id: params.pagamentoFamilia.cobrancaId },
           })
@@ -458,6 +499,12 @@ export async function aprovarMatricula(
             (cobranca) =>
               cobranca.status === "RECEBIDA" && cobranca.finalidade === finalidadeEsperada,
           )
+      if (solicitacao.descontoAlunoAntigo && cobrancaMatricula) {
+        await tx.$queryRaw`SELECT "id" FROM "CobrancaMatriculaAsaas" WHERE "id" = ${cobrancaMatricula.id} FOR UPDATE`
+        cobrancaMatricula =
+          (await tx.cobrancaMatriculaAsaas.findUnique({ where: { id: cobrancaMatricula.id } })) ??
+          undefined
+      }
       if (params.pagamentoFamilia) {
         const grupo = await tx.matriculaFamilia.findUnique({
           where: { id: solicitacao.matriculaFamiliaId ?? "" },
@@ -475,7 +522,9 @@ export async function aprovarMatricula(
         }
       }
       const regraVencimento =
-        mensalista && origem === "AUTOMATICA" && cobrancaMatricula?.recebidaEmAsaas
+        mensalista &&
+        (origem === "AUTOMATICA" || solicitacao.descontoAlunoAntigo) &&
+        cobrancaMatricula?.recebidaEmAsaas
           ? vencimentoDoPagamentoInicial(cobrancaMatricula.recebidaEmAsaas)
           : { diaVencimento: params.diaVencimento, vencimentoMesSeguinte: false }
       const { diaVencimento } = regraVencimento
@@ -493,7 +542,11 @@ export async function aprovarMatricula(
           plano.periodicidade !== "MENSAL" ||
           (params.pagamentoFamilia
             ? !plano.familia
-            : plano.familia || plano.quantidadeModalidadesMatricula !== modalidades.length)
+            : solicitacao.descontoAlunoAntigo
+              ? plano.familia || !plano.alunoAntigo || modalidades.length !== 1
+              : plano.familia ||
+                plano.alunoAntigo ||
+                plano.quantidadeModalidadesMatricula !== modalidades.length)
         ) {
           return {
             ok: false as const,
@@ -504,7 +557,8 @@ export async function aprovarMatricula(
           cobrancaMatricula?.status !== "RECEBIDA" ||
           !cobrancaMatricula?.recebidaEmAsaas ||
           !cobrancaMatricula.asaasPaymentId ||
-          !cobrancaMatricula.asaasCustomerId
+          !cobrancaMatricula.asaasCustomerId ||
+          cobrancaMatricula.estornoParcialPendenteEm
         ) {
           return {
             ok: false as const,
@@ -787,6 +841,7 @@ export async function aprovarMatricula(
             alunoId: usuario.aluno.id,
             tipoPagamento: solicitacao.tipoPagamento,
             beneficioAtivoDeclarado: solicitacao.beneficioAtivoDeclarado,
+            descontoAlunoAntigo: solicitacao.descontoAlunoAntigo,
             planoId: mensalista ? (plano?.id ?? null) : null,
             planoAlvoConversaoId: aulaAvulsa ? (plano?.id ?? null) : null,
             modalidadeIds: modalidades.map((modalidade) => modalidade.id),
@@ -855,7 +910,9 @@ export async function rejeitarMatricula(
         nome: true,
         status: true,
         tipoPagamento: true,
+        descontoAlunoAntigo: true,
         matriculaFamiliaId: true,
+        _count: { select: { cobrancasAsaas: true } },
         cobrancasAsaas: {
           where: { status: "RECEBIDA" },
           select: { id: true },
@@ -871,6 +928,13 @@ export async function rejeitarMatricula(
         ok: false as const,
         motivo: "A matrícula família deve ser conciliada como um único grupo.",
       }
+    if (solicitacao.descontoAlunoAntigo && solicitacao._count.cobrancasAsaas > 0) {
+      return {
+        ok: false as const,
+        motivo:
+          "Esta matrícula possui histórico de cobrança Asaas e não pode ser rejeitada por esta tela. É necessária conciliação administrativa.",
+      }
+    }
     if (
       (solicitacao.tipoPagamento === "MENSALISTA" || solicitacao.tipoPagamento === "AULA_AVULSA") &&
       solicitacao.cobrancasAsaas.length > 0

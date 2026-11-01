@@ -58,4 +58,44 @@ describe("aviso de bônus no pagamento individual da matrícula", () => {
 
     expect(html).not.toContain("bônus de adimplência")
   })
+
+  it("informa análise manual após o PIX pago com desconto para aluno antigo", async () => {
+    mocks.obter.mockResolvedValue({
+      ...pagamento("MENSALISTA", 90, 120),
+      descontoAlunoAntigo: true,
+      status: "PENDENTE",
+    })
+
+    const html = renderToStaticMarkup(await Page({ params: Promise.resolve({ token: "token" }) }))
+    expect(html).toContain("90,00")
+    expect(html).toContain("120,00/mês")
+    expect(html).toContain("aguarda análise da equipe")
+    expect(html).not.toContain("matrícula foi aprovada")
+  })
+
+  it("só informa matrícula aprovada quando o estado confirma a aprovação", async () => {
+    mocks.obter.mockResolvedValue({
+      ...pagamento("MENSALISTA", 90, 120),
+      descontoAlunoAntigo: true,
+      status: "APROVADA",
+    })
+
+    const html = renderToStaticMarkup(await Page({ params: Promise.resolve({ token: "token" }) }))
+    expect(html).toContain("sua matrícula foi aprovada")
+    expect(html).not.toContain("aguarda análise da equipe")
+  })
+
+  it("informa estorno sem oferecer uma nova cobrança", async () => {
+    mocks.obter.mockResolvedValue({
+      ...pagamento("MENSALISTA", 90, 120),
+      descontoAlunoAntigo: true,
+      status: "PENDENTE",
+      cobrancasAsaas: [{ status: "ESTORNADA", valor: 90 }],
+    })
+
+    const html = renderToStaticMarkup(await Page({ params: Promise.resolve({ token: "token" }) }))
+    expect(html).toContain("Pagamento estornado")
+    expect(html).toContain("Entre em contato com a equipe")
+    expect(html).not.toContain("Atualizar cobrança PIX")
+  })
 })

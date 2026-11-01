@@ -40,11 +40,13 @@ export function FormMatricula({
   planoPadrao,
   planosMensalista,
   tipoPagamento,
+  descontoAlunoAntigo = false,
 }: {
   modalidades: Modalidade[]
   planoPadrao: { nome: string; valor: number; valorBase: number } | null
   planosMensalista: PlanoMensalista[]
   tipoPagamento: TipoPagamentoMatriculaPublica
+  descontoAlunoAntigo?: boolean
 }) {
   const [estado, acao] = useActionState(acaoSolicitarMatricula, undefined)
   const [modalidadeIds, setModalidadeIds] = useState<string[]>([])
@@ -90,6 +92,7 @@ export function FormMatricula({
   return (
     <form action={acao} className="grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
       <input type="hidden" name="tipoPagamento" value={tipoPagamento} />
+      {descontoAlunoAntigo && <input type="hidden" name="cupom" value="alunos-antigos" />}
       <div className="space-y-8 p-5 sm:p-8">
         <p className="text-xs text-muted-foreground">
           <span aria-hidden="true" className="font-semibold text-destructive">
@@ -308,16 +311,18 @@ export function FormMatricula({
                   : "Plano mensalista"}
             </p>
             <h2 className="mt-2 text-xl font-bold tracking-tight">
-              {mensalista ? "Escolha suas modalidades" : "Escolha sua modalidade"}
+              {mensalista && !descontoAlunoAntigo
+                ? "Escolha suas modalidades"
+                : "Escolha sua modalidade"}
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              {mensalista
+              {mensalista && !descontoAlunoAntigo
                 ? "Selecione de 1 a 3 modalidades. O plano e o valor mudam conforme a quantidade."
                 : "A grade muda automaticamente conforme sua escolha."}
             </p>
           </div>
 
-          {mensalista ? (
+          {mensalista && !descontoAlunoAntigo ? (
             <fieldset className="space-y-2">
               <legend className="mb-2 text-sm font-medium">
                 Modalidades
@@ -484,7 +489,9 @@ export function FormMatricula({
                 ? `O check-in será liberado após a análise da matrícula ${parceiro}.`
                 : aulaAvulsa
                   ? "Após a confirmação do pagamento, o check-in ficará restrito à aula escolhida."
-                  : "O check-in é liberado automaticamente após a confirmação do pagamento e o vínculo do plano."}
+                  : descontoAlunoAntigo
+                    ? "Após a confirmação do pagamento, a equipe analisará sua matrícula antes de liberar o check-in."
+                    : "O check-in é liberado automaticamente após a confirmação do pagamento e o vínculo do plano."}
             </p>
           </div>
         </div>

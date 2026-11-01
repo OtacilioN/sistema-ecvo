@@ -45,6 +45,7 @@ import {
   aprovarMatricula,
   aprovarMatriculaFamilia,
   type NotificacaoMatriculaConcluida,
+  notificarMatriculaAlunoAntigoPaga,
 } from "@/lib/services/matricula.service"
 import { criarNotificacao, enviarPushParaNotificacoes } from "@/lib/services/notificacao.service"
 import {
@@ -156,6 +157,13 @@ export function obterPlanosMatriculaMensalista() {
   })
 }
 
+export function obterPlanoAlunoAntigo() {
+  return db.plano.findFirst({
+    where: { alunoAntigo: true, ativo: true, familia: false, periodicidade: "MENSAL" },
+    select: { id: true, nome: true, valor: true, valorBase: true, periodicidade: true },
+  })
+}
+
 export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
   return db.solicitacaoMatricula.findUnique({
     where: { tokenAcompanhamento },
@@ -163,6 +171,7 @@ export function obterPagamentoMatriculaPublico(tokenAcompanhamento: string) {
       id: true,
       tokenAcompanhamento: true,
       tipoPagamento: true,
+      descontoAlunoAntigo: true,
       matriculaFamilia: { select: { tokenAcompanhamento: true } },
       status: true,
       criadoEm: true,
@@ -623,7 +632,7 @@ async function persistirCobranca(
     })
     const solicitacaoFamilia = await tx.solicitacaoMatricula.findUnique({
       where: { id: anterior.solicitacaoId },
-      select: { matriculaFamiliaId: true, status: true },
+      select: { matriculaFamiliaId: true, status: true, descontoAlunoAntigo: true },
     })
     const pagamentoFamilia = Boolean(solicitacaoFamilia?.matriculaFamiliaId)
     const pagamentoInicial =
@@ -757,6 +766,9 @@ async function persistirCobranca(
     if (recebida && pagamentoInicial) {
       if (pagamentoFamilia) {
         notificacoes = (await aprovarMatriculaFamilia(tx, id)) ?? []
+      } else if (solicitacaoFamilia?.descontoAlunoAntigo) {
+        if (anterior.status !== "RECEBIDA")
+          notificacoes = await notificarMatriculaAlunoAntigoPaga(tx, anterior.solicitacaoId)
       } else {
         const aprovacao = await aprovarMatricula({
           solicitacaoId: anterior.solicitacaoId,
@@ -1769,7 +1781,7 @@ export async function aplicarWebhookPagamentoMatricula(
   const pagamentoRecebido = webhook.event === "PAYMENT_RECEIVED"
   const solicitacaoDoPagamento = await tx.solicitacaoMatricula.findUnique({
     where: { id: cobranca.solicitacaoId },
-    select: { matriculaFamiliaId: true, status: true },
+    select: { matriculaFamiliaId: true, status: true, descontoAlunoAntigo: true },
   })
   if (
     solicitacaoDoPagamento?.matriculaFamiliaId &&
@@ -1861,6 +1873,9 @@ export async function aplicarWebhookPagamentoMatricula(
       : null
     if (notificacoesFamilia) {
       notificacoes = notificacoesFamilia
+    } else if (solicitacaoDoPagamento?.descontoAlunoAntigo) {
+      if (cobranca.status !== "RECEBIDA")
+        notificacoes = await notificarMatriculaAlunoAntigoPaga(tx, cobranca.solicitacaoId)
     } else {
       const aprovacao = await aprovarMatricula({
         solicitacaoId: cobranca.solicitacaoId,

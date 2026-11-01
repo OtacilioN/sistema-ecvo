@@ -15,6 +15,7 @@ import { planoCompativelComAulaAvulsa } from "@/lib/aula-avulsa"
 import { listarOpcoesPublicasMatricula } from "@/lib/services/matricula.service"
 import { obterPlanoFamilia } from "@/lib/services/matricula-familia.service"
 import {
+  obterPlanoAlunoAntigo,
   obterPlanoPadraoMatricula,
   obterPlanosMatriculaMensalista,
 } from "@/lib/services/pagamento-matricula.service"
@@ -90,30 +91,44 @@ const OPCOES: Array<{
 export default async function MatriculaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tipoPagamento?: string | string[] }>
+  searchParams: Promise<{ tipoPagamento?: string | string[]; cupom?: string | string[] }>
 }) {
-  const tipoPagamento = normalizarTipoPagamento((await searchParams).tipoPagamento)
-  const titulo = tipoPagamento ? tituloDoFluxo(tipoPagamento) : "Escolha como deseja se matricular"
+  const parametros = await searchParams
+  const descontoAlunoAntigo = parametros.cupom === "alunos-antigos"
+  const tipoPagamento = descontoAlunoAntigo
+    ? "MENSALISTA"
+    : normalizarTipoPagamento(parametros.tipoPagamento)
+  const titulo = descontoAlunoAntigo
+    ? "Matrícula para alunos antigos"
+    : tipoPagamento
+      ? tituloDoFluxo(tipoPagamento)
+      : "Escolha como deseja se matricular"
 
   let modalidades: Awaited<ReturnType<typeof listarOpcoesPublicasMatricula>> = []
   let planoPadrao: Awaited<ReturnType<typeof obterPlanoPadraoMatricula>> = null
   let planosMensalista: Awaited<ReturnType<typeof obterPlanosMatriculaMensalista>> = []
   let planoFamilia: Awaited<ReturnType<typeof obterPlanoFamilia>> = null
+  let planoAlunoAntigo: Awaited<ReturnType<typeof obterPlanoAlunoAntigo>> = null
   if (tipoPagamento) {
     const resultados = await Promise.all([
       listarOpcoesPublicasMatricula(),
       tipoPagamento === "AULA_AVULSA" ? obterPlanoPadraoMatricula() : Promise.resolve(null),
-      tipoPagamento === "MENSALISTA" ? obterPlanosMatriculaMensalista() : Promise.resolve([]),
+      tipoPagamento === "MENSALISTA" && !descontoAlunoAntigo
+        ? obterPlanosMatriculaMensalista()
+        : Promise.resolve([]),
       tipoPagamento === "FAMILIA" ? obterPlanoFamilia() : Promise.resolve(null),
+      descontoAlunoAntigo ? obterPlanoAlunoAntigo() : Promise.resolve(null),
     ])
     modalidades = resultados[0]
     planoPadrao = resultados[1]
     planosMensalista = resultados[2]
     planoFamilia = resultados[3]
+    planoAlunoAntigo = resultados[4]
   }
 
-  const formularioDisponivel =
-    tipoPagamento === "FAMILIA"
+  const formularioDisponivel = descontoAlunoAntigo
+    ? Boolean(planoAlunoAntigo)
+    : tipoPagamento === "FAMILIA"
       ? Boolean(planoFamilia)
       : tipoPagamento === "AULA_AVULSA"
         ? Boolean(planoPadrao && planoCompativelComAulaAvulsa(Number(planoPadrao.valor)))
@@ -151,9 +166,11 @@ export default async function MatriculaPage({
               {titulo}
             </h1>
             <p className="max-w-xl text-sm leading-relaxed text-background/70 sm:text-base">
-              {tipoPagamento
-                ? descricaoDoFluxo(tipoPagamento)
-                : "Selecione a forma de acesso que você já utiliza. Cada opção abre o cadastro com as etapas e declarações corretas."}
+              {descontoAlunoAntigo
+                ? "Escolha uma modalidade e pague a primeira mensalidade por PIX. Após a confirmação, sua matrícula será analisada pela equipe."
+                : tipoPagamento
+                  ? descricaoDoFluxo(tipoPagamento)
+                  : "Selecione a forma de acesso que você já utiliza. Cada opção abre o cadastro com as etapas e declarações corretas."}
             </p>
           </div>
         </div>
@@ -173,6 +190,7 @@ export default async function MatriculaPage({
           <FormMatricula
             modalidades={modalidades}
             tipoPagamento={tipoPagamento}
+            descontoAlunoAntigo={descontoAlunoAntigo}
             planoPadrao={
               planoPadrao
                 ? {
@@ -182,20 +200,33 @@ export default async function MatriculaPage({
                   }
                 : null
             }
-            planosMensalista={planosMensalista.map((plano) => ({
-              ...plano,
-              valor: Number(plano.valor),
-              valorBase: Number(plano.valorBase ?? plano.valor),
-              quantidadeModalidades: plano.quantidadeModalidadesMatricula!,
-            }))}
+            planosMensalista={
+              planoAlunoAntigo
+                ? [
+                    {
+                      ...planoAlunoAntigo,
+                      valor: Number(planoAlunoAntigo.valor),
+                      valorBase: Number(planoAlunoAntigo.valorBase),
+                      quantidadeModalidades: 1,
+                    },
+                  ]
+                : planosMensalista.map((plano) => ({
+                    ...plano,
+                    valor: Number(plano.valor),
+                    valorBase: Number(plano.valorBase ?? plano.valor),
+                    quantidadeModalidades: plano.quantidadeModalidadesMatricula!,
+                  }))
+            }
           />
         ) : (
           <p className="p-8 text-center text-sm text-destructive">
-            {tipoPagamento === "FAMILIA"
-              ? "A matrícula plano família está temporariamente indisponível porque o plano unitário não está configurado."
-              : tipoPagamento === "AULA_AVULSA"
-                ? "A aula avulsa está temporariamente indisponível porque exige o plano mensal padrão de R$ 100,00."
-                : "A matrícula mensalista online está temporariamente indisponível porque o plano de 1 modalidade não foi configurado. As matrículas por Wellhub e TotalPass continuam disponíveis."}
+            {descontoAlunoAntigo
+              ? "A matrícula com desconto para alunos antigos está temporariamente indisponível. Entre em contato com a equipe."
+              : tipoPagamento === "FAMILIA"
+                ? "A matrícula plano família está temporariamente indisponível porque o plano unitário não está configurado."
+                : tipoPagamento === "AULA_AVULSA"
+                  ? "A aula avulsa está temporariamente indisponível porque exige o plano mensal padrão de R$ 100,00."
+                  : "A matrícula mensalista online está temporariamente indisponível porque o plano de 1 modalidade não foi configurado. As matrículas por Wellhub e TotalPass continuam disponíveis."}
           </p>
         )}
       </section>

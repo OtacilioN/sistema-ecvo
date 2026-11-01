@@ -83,3 +83,24 @@ describe("proteção administrativa do plano família", () => {
     expect(mocks.db.$transaction).not.toHaveBeenCalled()
   })
 })
+
+describe("proteção da oferta de alunos antigos", () => {
+  it.each([
+    { padrao: true, quantidadeModalidadesMatricula: 1 },
+    { padrao: false, quantidadeModalidadesMatricula: 1 },
+  ])("impede que o plano oculto apareça na matrícula normal", async (extra) => {
+    mocks.db.plano.findUnique.mockResolvedValue({ familia: false, alunoAntigo: true })
+    const resultado = await atualizarPlano({
+      planoId: "alunos-antigos",
+      nome: "Alunos antigos",
+      valor: 90,
+      valorBase: 120,
+      periodicidade: "MENSAL",
+      ativo: true,
+      autorId: "gestor",
+      ...extra,
+    })
+    expect(resultado.ok).toBe(false)
+    expect(mocks.db.$transaction).not.toHaveBeenCalled()
+  })
+})

@@ -60,6 +60,7 @@ const mocks = vi.hoisted(() => {
     obterOuCriarMensalidadeNaTransacao: vi.fn(),
     criarNotificacao: vi.fn(),
     aprovarMatriculaFamilia: vi.fn(),
+    notificarMatriculaAlunoAntigoPaga: vi.fn().mockResolvedValue([]),
     estornarMensalidadePeloAsaas: vi.fn(),
     conciliarEstornoParcialPeloAsaas: vi.fn(),
     enviarPushParaNotificacoes: vi.fn(),
@@ -92,6 +93,7 @@ vi.mock("@/lib/services/notificacao.service", () => ({
 vi.mock("@/lib/services/matricula.service", () => ({
   aprovarMatricula: mocks.aprovarMatricula,
   aprovarMatriculaFamilia: mocks.aprovarMatriculaFamilia,
+  notificarMatriculaAlunoAntigoPaga: mocks.notificarMatriculaAlunoAntigoPaga,
 }))
 
 vi.mock("@/lib/services/asaas.service", () => ({
@@ -1506,6 +1508,39 @@ describe("aprovação individual pelo recebimento consultado no Asaas", () => {
   afterEach(() => {
     vi.mocked(console.error).mockRestore()
     mocks.aprovarMatricula.mockReset().mockResolvedValue({ ok: true, alunoId: "aluno-1" })
+  })
+
+  it("mantém a oferta pendente na consulta ao Asaas e notifica uma vez", async () => {
+    const { solicitacaoAtual } = prepararConsulta()
+    Object.assign(solicitacaoAtual, { descontoAlunoAntigo: true })
+    const resultado = await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, {
+      verificar: true,
+    })
+    expect(resultado.ok).toBe(true)
+    expect(mocks.aprovarMatricula).not.toHaveBeenCalled()
+    expect(mocks.notificarMatriculaAlunoAntigoPaga).toHaveBeenCalledTimes(1)
+    await gerarCobrancaMatriculaAsaas(solicitacao.tokenAcompanhamento, { verificar: true })
+    expect(mocks.notificarMatriculaAlunoAntigoPaga).toHaveBeenCalledTimes(1)
+  })
+
+  it("mantém a oferta pendente ao receber webhook de pagamento", async () => {
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      status: "PENDENTE",
+      descontoAlunoAntigo: true,
+    })
+    const resultado = await aplicarWebhookPagamentoMatricula(
+      mocks.tx as never,
+      { ...cobrancaAntiga, status: "PENDENTE", valor: new Prisma.Decimal(100) },
+      {
+        id: "evento-aluno-antigo",
+        event: "PAYMENT_RECEIVED",
+        dateCreated: "2026-09-01 00:20:00",
+        payment: { ...pagamentoRemoto("RECEIVED"), paymentDate: "2026-08-31 21:20:00" },
+      },
+    )
+    expect(resultado.ok).toBe(true)
+    expect(mocks.aprovarMatricula).not.toHaveBeenCalled()
+    expect(mocks.notificarMatriculaAlunoAntigoPaga).toHaveBeenCalledWith(mocks.tx, solicitacao.id)
   })
 
   it.each([

@@ -58,6 +58,31 @@ beforeEach(() => {
 })
 
 describe("aviso compacto de bônus na matrícula", () => {
+  it("restringe o desconto para uma modalidade e informa a análise após o pagamento", () => {
+    const html = renderToStaticMarkup(
+      createElement(FormMatricula, {
+        modalidades,
+        planoPadrao: null,
+        planosMensalista: [
+          {
+            id: "antigo",
+            nome: "Aluno antigo",
+            quantidadeModalidades: 1,
+            valor: 90,
+            valorBase: 120,
+          },
+        ],
+        tipoPagamento: "MENSALISTA",
+        descontoAlunoAntigo: true,
+      }),
+    )
+    expect(html).toContain('name="cupom" value="alunos-antigos"')
+    expect(html).toContain("90,00")
+    expect(html).toContain("120,00/mês")
+    expect(html).toContain("Escolha sua modalidade")
+    expect(html).toContain("equipe analisará sua matrícula")
+    expect(html).not.toContain("Selecione de 1 a 3 modalidades")
+  })
   it("explica o preço mensal com bônus ao lado da primeira mensalidade", () => {
     const html = renderizarIndividual("MENSALISTA")
     const preco = html.match(/data-testid="plano-matricula"[\s\S]*?<\/div>/)?.[0] ?? ""

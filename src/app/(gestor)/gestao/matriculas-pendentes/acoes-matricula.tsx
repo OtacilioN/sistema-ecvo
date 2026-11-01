@@ -25,7 +25,7 @@ export function AcoesMatricula({ solicitacao }: { solicitacao: SolicitacaoPenden
         aoFechar={() => setAcaoAberta(null)}
         variante="lateral"
         titulo="Aprovar matrícula"
-        descricao={"Confira os dados e a declaração do benefício antes de liberar o acesso."}
+        descricao="Confira os dados da solicitação antes de liberar o acesso."
       >
         <FormAprovacao solicitacao={solicitacao} aoConcluir={() => setAcaoAberta(null)} />
       </Dialog>
@@ -122,6 +122,7 @@ function FormAprovacao({
   const [estado, acao] = useActionState(acaoAprovarMatricula, undefined)
   const diaVencimentoPadrao = Math.min(new Date().getDate(), 28)
   const mensalista = solicitacao.tipoPagamento === "MENSALISTA"
+  const pagamentoConfirmado = solicitacao.cobrancasAsaas.length > 0
   const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
   const parceiro = solicitacao.tipoPagamento === "WELLHUB" ? "Wellhub" : "TotalPass"
   const planoMinimo = solicitacao.tipoPagamento === "WELLHUB" ? "Basic" : "TP1+"
@@ -187,21 +188,29 @@ function FormAprovacao({
               {solicitacao.plano
                 ? formatarBRL(solicitacao.cobrancasAsaas[0]?.valor ?? solicitacao.plano.valor)
                 : "—"}
-              {" · pagamento confirmado pelo Asaas"}
+              {pagamentoConfirmado
+                ? " · pagamento confirmado pelo Asaas"
+                : " · aguardando confirmação do pagamento"}
             </p>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor={`vencimento-${solicitacao.id}`}>Dia de vencimento</Label>
-            <Input
-              id={`vencimento-${solicitacao.id}`}
-              name="diaVencimento"
-              type="number"
-              min={1}
-              max={28}
-              defaultValue={diaVencimentoPadrao}
-              required
-            />
-          </div>
+          {solicitacao.descontoAlunoAntigo ? (
+            <p className="text-sm text-muted-foreground">
+              O vencimento será definido pela data do pagamento inicial.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor={`vencimento-${solicitacao.id}`}>Dia de vencimento</Label>
+              <Input
+                id={`vencimento-${solicitacao.id}`}
+                name="diaVencimento"
+                type="number"
+                min={1}
+                max={28}
+                defaultValue={diaVencimentoPadrao}
+                required
+              />
+            </div>
+          )}
         </section>
       )}
 
@@ -261,7 +270,7 @@ function FormAprovacao({
           {estado.erro}
         </p>
       )}
-      <BotaoEnviar size="lg" className="w-full">
+      <BotaoEnviar size="lg" className="w-full" disabled={mensalista && !pagamentoConfirmado}>
         <UserRoundCheck className="size-4" /> Aprovar matrícula e liberar aluno
       </BotaoEnviar>
     </form>

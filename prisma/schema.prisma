@@ -721,6 +721,7 @@ model Plano {
   ativo                          Boolean                @default(true)
   padrao                         Boolean                @default(false)
   familia                        Boolean                @default(false)
+  alunoAntigo                    Boolean                @default(false)
   quantidadeModalidadesMatricula Int?
   alunos                         Aluno[]
   mensalidades                   Mensalidade[]
@@ -753,6 +754,7 @@ model SolicitacaoMatricula {
   tokenAcompanhamento     String                           @unique @default(cuid())
   tipoPagamento           TipoPagamentoMatricula           @default(MENSALISTA)
   beneficioAtivoDeclarado Boolean                          @default(false)
+  descontoAlunoAntigo     Boolean                          @default(false)
   aulaAvulsa              Aula?                            @relation(fields: [aulaAvulsaId], references: [id], onDelete: Restrict)
   aulaAvulsaId            String?
   modalidadePrincipal     Modalidade                       @relation("ModalidadePrincipalSolicitacaoMatricula", fields: [modalidadePrincipalId], references: [id])

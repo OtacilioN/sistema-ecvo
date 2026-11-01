@@ -20,6 +20,7 @@ export type SolicitacaoPendente = {
   restricoesMedicas: string | null
   tipoPagamento: "MENSALISTA" | "AULA_AVULSA" | "WELLHUB" | "TOTALPASS"
   beneficioAtivoDeclarado: boolean
+  descontoAlunoAntigo: boolean
   comprovantePagamentoUrl: string | null
   comprovanteContentType: string | null
   comprovanteNomeOriginal: string | null
@@ -106,6 +107,9 @@ export function ListaMatriculasPendentes({
                     <h2 className="truncate font-semibold">{item.nome}</h2>
                     <Badge variant="warning">Aguardando análise</Badge>
                     <Badge variant="outline">{rotuloTipo(item.tipoPagamento)}</Badge>
+                    {item.descontoAlunoAntigo && (
+                      <Badge variant="outline">Desconto aluno antigo</Badge>
+                    )}
                   </div>
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
@@ -133,7 +137,13 @@ export function ListaMatriculasPendentes({
                   {item.tipoPagamento === "MENSALISTA" ? (
                     <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <FileCheck2 className="size-3.5" />{" "}
-                      {item.comprovantePagamentoUrl ? "Comprovante anexado" : "Sem comprovante"}
+                      {item.descontoAlunoAntigo
+                        ? item.cobrancasAsaas.length > 0
+                          ? "Pagamento confirmado"
+                          : "Aguardando pagamento"
+                        : item.comprovantePagamentoUrl
+                          ? "Comprovante anexado"
+                          : "Sem comprovante"}
                     </p>
                   ) : item.tipoPagamento === "AULA_AVULSA" && item.aulaAvulsa ? (
                     <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

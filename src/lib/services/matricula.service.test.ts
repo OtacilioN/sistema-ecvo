@@ -117,6 +117,7 @@ describe("solicitarMatricula", () => {
     expect(mocks.tx.plano.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          alunoAntigo: false,
           quantidadeModalidadesMatricula: 1,
           familia: false,
           ativo: true,
@@ -160,6 +161,7 @@ describe("solicitarMatricula", () => {
     expect(mocks.tx.plano.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          alunoAntigo: false,
           quantidadeModalidadesMatricula: 3,
           familia: false,
           ativo: true,
@@ -292,18 +294,198 @@ describe("solicitarMatricula", () => {
 })
 
 describe("listarMatriculasPendentes", () => {
-  it("lista somente externos declarados para análise manual", () => {
+  it("lista externos e a oferta de alunos antigos paga para análise manual", () => {
     listarMatriculasPendentes()
 
     expect(mocks.db.solicitacaoMatricula.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           status: "PENDENTE",
-          tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] },
-          beneficioAtivoDeclarado: true,
+          OR: [
+            { tipoPagamento: { in: ["WELLHUB", "TOTALPASS"] }, beneficioAtivoDeclarado: true },
+            {
+              tipoPagamento: "MENSALISTA",
+              descontoAlunoAntigo: true,
+              cobrancasAsaas: { some: { status: "RECEBIDA", finalidade: "PRIMEIRA_MENSALIDADE" } },
+            },
+          ],
         },
       }),
     )
+  })
+})
+
+describe("oferta para alunos antigos", () => {
+  it("seleciona o plano especial persistido para uma modalidade", async () => {
+    mocks.tx.plano.findFirst.mockResolvedValue({
+      id: "especial",
+      nome: "Alunos antigos",
+      valor: 90,
+      quantidadeModalidadesMatricula: null,
+    })
+    const resultado = await solicitarMatricula({
+      ...dadosBase,
+      tipoPagamento: "MENSALISTA",
+      beneficioAtivoDeclarado: false,
+      descontoAlunoAntigo: true,
+    })
+    expect(resultado.ok).toBe(true)
+    expect(mocks.tx.plano.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ alunoAntigo: true, quantidadeModalidadesMatricula: null }),
+      }),
+    )
+    expect(mocks.tx.solicitacaoMatricula.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ descontoAlunoAntigo: true, planoId: "especial" }),
+    })
+  })
+  it("recusa múltiplas modalidades ou outro tipo de pagamento", async () => {
+    for (const dados of [
+      { tipoPagamento: "MENSALISTA" as const, modalidadeIds: ["a", "b"] },
+      { tipoPagamento: "WELLHUB" as const, modalidadeIds: ["a"] },
+    ]) {
+      expect(
+        (
+          await solicitarMatricula({
+            ...dadosBase,
+            ...dados,
+            beneficioAtivoDeclarado: false,
+            descontoAlunoAntigo: true,
+          })
+        ).ok,
+      ).toBe(false)
+    }
+    expect(mocks.tx.solicitacaoMatricula.create).not.toHaveBeenCalled()
+  })
+  it("aprova manualmente após bloquear e reler a cobrança recebida", async () => {
+    const recebidaEmAsaas = new Date("2026-10-29T12:00:00Z")
+    const cobranca = {
+      id: "c",
+      status: "RECEBIDA",
+      finalidade: "PRIMEIRA_MENSALIDADE",
+      competencia: "2026-10",
+      valor: 90,
+      recebidaEmAsaas,
+      asaasPaymentId: "pay",
+      asaasCustomerId: "cus",
+      externalReference: "matricula:s",
+      estornoParcialPendenteEm: null,
+    }
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "s",
+      nome: "Aluno",
+      email: "a@example.com",
+      status: "PENDENTE",
+      senhaHash: "hash",
+      tipoPagamento: "MENSALISTA",
+      descontoAlunoAntigo: true,
+      modalidadePrincipal: { id: "m", nome: "Boxe", ativa: true },
+      modalidades: [],
+      aulaAvulsa: null,
+      plano: {
+        id: "especial",
+        ativo: true,
+        periodicidade: "MENSAL",
+        familia: false,
+        alunoAntigo: true,
+      },
+      cobrancasAsaas: [cobranca],
+    })
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockResolvedValue(cobranca)
+    mocks.registrarMensalidadeInicialPagaAsaas.mockResolvedValue({
+      ok: true,
+      mensalidade: { id: "mens-1" },
+    })
+    mocks.tx.cobrancaAsaas.create.mockResolvedValue({ id: "ca" })
+    expect(
+      await aprovarMatricula({ solicitacaoId: "s", autorId: "gestor", origem: "MANUAL" }),
+    ).toMatchObject({ ok: true })
+    expect(mocks.tx.$queryRaw).toHaveBeenCalledOnce()
+    expect(mocks.tx.cobrancaMatriculaAsaas.findUnique).toHaveBeenCalledWith({ where: { id: "c" } })
+    expect(mocks.tx.usuario.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          aluno: {
+            create: expect.objectContaining({
+              planoId: "especial",
+              diaVencimento: 1,
+              vencimentoMesSeguinte: true,
+            }),
+          },
+        }),
+      }),
+    )
+  })
+  it("recusa aprovação se cobrança foi estornada enquanto aguardava o lock", async () => {
+    const cobranca = {
+      id: "c",
+      status: "RECEBIDA",
+      finalidade: "PRIMEIRA_MENSALIDADE",
+      recebidaEmAsaas: new Date(),
+      asaasPaymentId: "pay",
+      asaasCustomerId: "cus",
+    }
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "s",
+      status: "PENDENTE",
+      senhaHash: "hash",
+      tipoPagamento: "MENSALISTA",
+      descontoAlunoAntigo: true,
+      modalidadePrincipal: { id: "m", nome: "Boxe", ativa: true },
+      modalidades: [],
+      plano: {
+        id: "especial",
+        ativo: true,
+        periodicidade: "MENSAL",
+        familia: false,
+        alunoAntigo: true,
+      },
+      cobrancasAsaas: [cobranca],
+    })
+    mocks.tx.cobrancaMatriculaAsaas.findUnique.mockResolvedValue({
+      ...cobranca,
+      status: "ESTORNADA",
+    })
+    expect(
+      await aprovarMatricula({
+        solicitacaoId: "s",
+        autorId: "gestor",
+        origem: "MANUAL",
+        diaVencimento: 10,
+      }),
+    ).toMatchObject({ ok: false })
+    expect(mocks.tx.usuario.create).not.toHaveBeenCalled()
+  })
+  it("recusa aprovação automática e manual sem pagamento confirmado", async () => {
+    mocks.tx.solicitacaoMatricula.findUnique.mockResolvedValue({
+      id: "s",
+      status: "PENDENTE",
+      senhaHash: "hash",
+      tipoPagamento: "MENSALISTA",
+      descontoAlunoAntigo: true,
+      modalidadePrincipal: { id: "m", nome: "Boxe", ativa: true },
+      modalidades: [],
+      plano: {
+        id: "especial",
+        ativo: true,
+        periodicidade: "MENSAL",
+        familia: false,
+        alunoAntigo: true,
+      },
+      cobrancasAsaas: [],
+    })
+    expect(
+      await aprovarMatricula({ solicitacaoId: "s", autorId: null, origem: "AUTOMATICA" }),
+    ).toMatchObject({ ok: false, motivo: expect.stringContaining("análise manual") })
+    expect(
+      await aprovarMatricula({
+        solicitacaoId: "s",
+        autorId: "gestor",
+        origem: "MANUAL",
+        diaVencimento: 10,
+      }),
+    ).toMatchObject({ ok: false, motivo: expect.stringContaining("não foi confirmada") })
+    expect(mocks.tx.usuario.create).not.toHaveBeenCalled()
   })
 })
 

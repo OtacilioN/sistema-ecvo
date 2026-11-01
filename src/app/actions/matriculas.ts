@@ -92,6 +92,10 @@ export async function acaoSolicitarMatricula(
   _: EstadoMatricula,
   formData: FormData,
 ): Promise<EstadoMatricula> {
+  const cupom = formData.get("cupom")
+  if (cupom !== null && cupom !== "alunos-antigos") {
+    return { erro: "Cupom de matrícula inválido." }
+  }
   const parsed = solicitacaoMatriculaSchema.safeParse({
     nome: formData.get("nome"),
     email: formData.get("email"),
@@ -110,6 +114,12 @@ export async function acaoSolicitarMatricula(
     aceiteDados: formData.get("aceiteDados"),
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
+  if (
+    cupom &&
+    (parsed.data.tipoPagamento !== "MENSALISTA" || parsed.data.modalidadeIds.length !== 1)
+  ) {
+    return { erro: "Este desconto é válido para uma modalidade na matrícula mensalista." }
+  }
 
   const valorArquivo =
     parsed.data.tipoPagamento === "MENSALISTA" ? formData.get("comprovante") : null
@@ -128,6 +138,7 @@ export async function acaoSolicitarMatricula(
     comprovanteUrl = comprovante?.url ?? null
     resultado = await solicitarMatricula({
       ...parsed.data,
+      descontoAlunoAntigo: cupom === "alunos-antigos",
       comprovante:
         arquivo && comprovante
           ? {

@@ -38,6 +38,9 @@ export default async function PagamentoMatriculaPage({
   const aulaAvulsa = solicitacao.tipoPagamento === "AULA_AVULSA"
   const cobranca = solicitacao.cobrancasAsaas[0] ?? null
   const pagamentoConfirmado = cobranca?.status === "RECEBIDA"
+  const aprovada = solicitacao.status === "APROVADA"
+  const pagamentoEstornado = cobranca?.status === "ESTORNADA"
+  const rejeitada = solicitacao.status === "REJEITADA"
   const pixDisponivel = cobranca ? pixCobrancaMatriculaDisponivel(cobranca) : false
   const qrCodeDataUrl =
     pixDisponivel && cobranca?.pixCopiaECola
@@ -46,7 +49,7 @@ export default async function PagamentoMatriculaPage({
 
   return (
     <main className="w-full max-w-2xl py-4">
-      <AtualizadorPagamento ativo={!pagamentoConfirmado} />
+      <AtualizadorPagamento ativo={!pagamentoConfirmado && !pagamentoEstornado && !rejeitada} />
       <div className="mb-6 flex justify-center">
         <Marca tamanho={56} />
       </div>
@@ -58,7 +61,13 @@ export default async function PagamentoMatriculaPage({
               {aulaAvulsa ? "Aula avulsa" : "Primeira mensalidade"}
             </p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight">
-              {pagamentoConfirmado ? "Pagamento confirmado" : "Conclua o pagamento PIX"}
+              {pagamentoEstornado
+                ? "Pagamento estornado"
+                : rejeitada
+                  ? "Solicitação não aprovada"
+                  : pagamentoConfirmado
+                    ? "Pagamento confirmado"
+                    : "Conclua o pagamento PIX"}
             </h1>
             <p className="mt-3 text-sm text-muted-foreground">
               {aulaAvulsa
@@ -77,13 +86,23 @@ export default async function PagamentoMatriculaPage({
             )}
           </div>
 
-          {pagamentoConfirmado ? (
+          {pagamentoEstornado || rejeitada ? (
+            <p className="text-center text-sm text-muted-foreground">
+              {pagamentoEstornado
+                ? "O pagamento foi estornado. Entre em contato com a equipe para mais informações."
+                : "A solicitação não foi aprovada. Entre em contato com a equipe para mais informações."}
+            </p>
+          ) : pagamentoConfirmado ? (
             <div className="space-y-4 text-center">
               <CheckCircle2 className="mx-auto size-14 text-success" />
               <p className="text-sm leading-relaxed text-muted-foreground">
-                {aulaAvulsa
-                  ? "O Asaas confirmou os R$ 20,00 da aula avulsa. Sua matrícula foi aprovada automaticamente e o acesso à aula escolhida está liberado."
-                  : "O Asaas confirmou a primeira mensalidade. Sua matrícula foi aprovada automaticamente; o comprovante anexado, quando informado, permanece apenas como evidência opcional."}
+                {aprovada
+                  ? aulaAvulsa
+                    ? "O Asaas confirmou os R$ 20,00 da aula avulsa. Sua matrícula foi aprovada e o acesso à aula escolhida está liberado."
+                    : "O Asaas confirmou a primeira mensalidade e sua matrícula foi aprovada."
+                  : solicitacao.descontoAlunoAntigo
+                    ? "O Asaas confirmou a primeira mensalidade. Sua matrícula aguarda análise da equipe antes da liberação do acesso."
+                    : "O pagamento foi confirmado e a matrícula está sendo processada."}
               </p>
             </div>
           ) : pixDisponivel && qrCodeDataUrl && cobranca?.pixCopiaECola ? (
@@ -133,13 +152,16 @@ export default async function PagamentoMatriculaPage({
             </div>
           )}
 
-          <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
-            <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
-            <p className="text-muted-foreground">
-              A matrícula é liberada automaticamente após a confirmação integrada do pagamento pelo
-              Asaas.
-            </p>
-          </div>
+          {!pagamentoEstornado && !rejeitada && (
+            <div className="flex items-start gap-3 rounded-lg border border-border bg-muted/20 p-4 text-sm">
+              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-primary" />
+              <p className="text-muted-foreground">
+                {solicitacao.descontoAlunoAntigo
+                  ? "Após a confirmação do pagamento pelo Asaas, a equipe analisa a matrícula antes de liberar o acesso."
+                  : "A matrícula é liberada após a confirmação integrada do pagamento pelo Asaas."}
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </main>

@@ -992,6 +992,7 @@ export async function atualizarPlano(params: {
       ativo: true,
       padrao: true,
       familia: true,
+      alunoAntigo: true,
     },
   })
   if (!anterior) return { ok: false as const, motivo: "Plano não encontrado." }
@@ -999,6 +1000,17 @@ export async function atualizarPlano(params: {
     return {
       ok: false as const,
       motivo: "O plano família não pode ser padrão nem uma oferta de matrícula individual.",
+    }
+  if (
+    anterior.alunoAntigo &&
+    (params.padrao ||
+      params.quantidadeModalidadesMatricula !== null ||
+      params.periodicidade !== "MENSAL")
+  )
+    return {
+      ok: false as const,
+      motivo:
+        "O plano de alunos antigos precisa ser mensal e não pode ser uma oferta pública ou padrão.",
     }
   if (params.padrao && (!params.ativo || params.periodicidade !== "MENSAL")) {
     return { ok: false as const, motivo: "O plano padrão precisa estar ativo e ser mensal." }
