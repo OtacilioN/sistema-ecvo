@@ -46,7 +46,9 @@ import {
   turmaRecorrenteSchema,
 } from "@/lib/validations/cadastros"
 
-export type EstadoForm = { erro?: string; ok?: boolean } | undefined
+export type EstadoForm =
+  | { erro?: string; ok?: boolean; exigeConfirmacaoTrancamento?: boolean }
+  | undefined
 
 function primeiroErro(issues: { message: string }[]): string {
   return issues[0]?.message ?? "Dados inválidos."
@@ -396,6 +398,11 @@ export async function acaoCriarAluno(_: EstadoForm, formData: FormData): Promise
   try {
     await criarAluno({ ...parsed.data, autorId: usuario.id })
   } catch (erro) {
+    if (
+      erro instanceof Error &&
+      erro.message === "Cadastre o aluno primeiro e depois confirme o trancamento na edição."
+    )
+      return { erro: erro.message }
     if (erro instanceof Error && erro.message.startsWith("Pagamento inicial:")) {
       return { erro: erro.message }
     }
@@ -443,6 +450,10 @@ export async function acaoAtualizarDadosAluno(
   try {
     resultado = await atualizarAluno(parsed.data.alunoId, {
       autorId: usuario.id,
+      confirmacaoTrancamento: {
+        ciente: formData.get("cienteTrancamentoAdimplente") === "on",
+        frase: String(formData.get("fraseTrancamentoAdimplente") ?? ""),
+      },
       nome: parsed.data.nome,
       tipo: parsed.data.tipo,
       status: parsed.data.status,
@@ -474,7 +485,12 @@ export async function acaoAtualizarDadosAluno(
     }
     return { erro: "Não foi possível atualizar os dados do aluno." }
   }
-  if (!resultado.ok) return { erro: resultado.motivo }
+  if (!resultado.ok)
+    return {
+      erro: resultado.motivo,
+      exigeConfirmacaoTrancamento:
+        "exigeConfirmacaoTrancamento" in resultado && resultado.exigeConfirmacaoTrancamento,
+    }
 
   revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/financeiro")
@@ -534,8 +550,20 @@ export async function acaoAtualizarStatusTipoAluno(
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
-  const resultado = await atualizarStatusTipoAluno({ ...parsed.data, autorId: usuario.id })
-  if (!resultado.ok) return { erro: resultado.motivo }
+  const resultado = await atualizarStatusTipoAluno({
+    ...parsed.data,
+    autorId: usuario.id,
+    confirmacaoTrancamento: {
+      ciente: formData.get("cienteTrancamentoAdimplente") === "on",
+      frase: String(formData.get("fraseTrancamentoAdimplente") ?? ""),
+    },
+  })
+  if (!resultado.ok)
+    return {
+      erro: resultado.motivo,
+      exigeConfirmacaoTrancamento:
+        "exigeConfirmacaoTrancamento" in resultado && resultado.exigeConfirmacaoTrancamento,
+    }
 
   revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/auditoria")

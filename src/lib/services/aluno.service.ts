@@ -16,7 +16,7 @@ import {
 } from "@/lib/services/vinculo-plano-familia"
 import { excluirFotosInternasAntigas } from "@/lib/storage/blob-fotos"
 import { TERMO_RESPONSABILIDADE_VERSAO } from "@/lib/termo-responsabilidade"
-import { formatarDataHora } from "@/lib/utils/datas"
+import { formatarDataHora, inicioDoDiaAcademia } from "@/lib/utils/datas"
 
 // Serviço de ALUNOS (RF-001..004). Criar um aluno cria o Usuario (papel ALUNO) + Aluno,
 // conecta modalidades e, se menor de idade, o responsável.
@@ -168,6 +168,37 @@ type DadosAluno = {
 
 type Cliente = Prisma.TransactionClient | typeof db
 
+const FRASE_TRANCAR_ADIMPLENTE = "trancar aluno adimplente"
+type ConfirmacaoTrancamento = { ciente: boolean; frase: string }
+
+async function precisaConfirmarTrancamento(
+  tx: Prisma.TransactionClient,
+  alunoId: string,
+  status: StatusAluno | undefined,
+  confirmacao?: ConfirmacaoTrancamento,
+  podeAlterarVencimento = false,
+) {
+  if (status !== "TRANCADO") return false
+  await tx.$queryRaw`SELECT "id" FROM "Mensalidade" WHERE "alunoId" = ${alunoId} ORDER BY "id" FOR UPDATE`
+  await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${alunoId} FOR UPDATE`
+  const aluno = await tx.aluno.findUnique({ where: { id: alunoId }, select: { status: true } })
+  if (!aluno || aluno.status === "TRANCADO") return false
+  const vencida = await tx.mensalidade.findFirst({
+    where: {
+      alunoId,
+      OR: [
+        { status: "VENCIDA" },
+        { status: "EM_ABERTO", vencimento: { lt: inicioDoDiaAcademia(new Date()) } },
+      ],
+    },
+    select: { id: true },
+  })
+  return (
+    (!vencida || podeAlterarVencimento) &&
+    !(confirmacao?.ciente && confirmacao.frase === FRASE_TRANCAR_ADIMPLENTE)
+  )
+}
+
 export async function migrarMensalidadesAbertasParaPlanoAluno(
   cliente: Cliente,
   params: {
@@ -283,6 +314,9 @@ export async function criarAluno(
     }
   } & DadosAluno,
 ) {
+  if (params.status === "TRANCADO") {
+    throw new Error("Cadastre o aluno primeiro e depois confirme o trancamento na edição.")
+  }
   const senhaHash = await gerarHashSenha(params.senha)
   const vinculosCobranca = vinculosCobrancaModalidade({
     planoId: params.planoId ?? null,
@@ -390,7 +424,12 @@ export async function criarAluno(
 
 export async function atualizarAluno(
   alunoId: string,
-  params: Partial<DadosAluno> & { nome?: string; email?: string; autorId: string },
+  params: Partial<DadosAluno> & {
+    nome?: string
+    email?: string
+    autorId: string
+    confirmacaoTrancamento?: ConfirmacaoTrancamento
+  },
 ) {
   const atual = await db.aluno.findUnique({
     where: { id: alunoId },
@@ -441,6 +480,16 @@ export async function atualizarAluno(
     (params.diaVencimento ?? atual.diaVencimento) === 1 && (atual.vencimentoMesSeguinte ?? false)
 
   const atualizado = await db.$transaction(async (tx) => {
+    if (
+      await precisaConfirmarTrancamento(
+        tx,
+        alunoId,
+        params.status,
+        params.confirmacaoTrancamento,
+        params.diaVencimento !== undefined && params.diaVencimento !== atual.diaVencimento,
+      )
+    )
+      return null
     let mensalidadesAbertasMigradas = 0
     let mensalidadesVencimentoAtualizadas = 0
 
@@ -664,6 +713,13 @@ export async function atualizarAluno(
     return aluno
   })
 
+  if (!atualizado)
+    return {
+      ok: false as const,
+      motivo: "Confirme o trancamento do aluno adimplente.",
+      exigeConfirmacaoTrancamento: true as const,
+    }
+
   if (
     params.fotoUrl !== undefined &&
     (atual.fotoUrl !== atualizado.fotoUrl || atual.usuario.fotoUrl !== atualizado.usuario.fotoUrl)
@@ -854,6 +910,7 @@ export async function atualizarStatusTipoAluno(params: {
   tipo: TipoAluno
   status: StatusAluno
   autorId: string
+  confirmacaoTrancamento?: ConfirmacaoTrancamento
 }) {
   const aluno = await db.aluno.findUnique({
     where: { id: params.alunoId },
@@ -867,6 +924,15 @@ export async function atualizarStatusTipoAluno(params: {
   if (!aluno) return { ok: false as const, motivo: "Aluno não encontrado." }
 
   const atualizado = await db.$transaction(async (tx) => {
+    if (
+      await precisaConfirmarTrancamento(
+        tx,
+        params.alunoId,
+        params.status,
+        params.confirmacaoTrancamento,
+      )
+    )
+      return null
     const novo = await tx.aluno.update({
       where: { id: params.alunoId },
       data: {
@@ -906,6 +972,13 @@ export async function atualizarStatusTipoAluno(params: {
 
     return novo
   })
+
+  if (!atualizado)
+    return {
+      ok: false as const,
+      motivo: "Confirme o trancamento do aluno adimplente.",
+      exigeConfirmacaoTrancamento: true as const,
+    }
 
   return { ok: true as const, aluno: atualizado }
 }

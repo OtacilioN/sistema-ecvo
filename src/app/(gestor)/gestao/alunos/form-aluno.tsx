@@ -20,7 +20,6 @@ const TIPOS = [
 const STATUS = [
   { v: "ATIVO", r: "Ativo" },
   { v: "INADIMPLENTE", r: "Inadimplente" },
-  { v: "TRANCADO", r: "Trancado" },
   { v: "CANCELADO", r: "Cancelado" },
 ]
 

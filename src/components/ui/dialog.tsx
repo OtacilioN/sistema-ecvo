@@ -10,6 +10,10 @@ type Variante = "centro" | "lateral"
 const SELETOR_FOCAVEL =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+// Only the foremost dialog may handle the keyboard or restore focus.
+const dialogosAbertos: symbol[] = []
+let overflowAnterior = ""
+
 /**
  * Overlay controlado (modal central ou painel lateral) construído sobre um portal.
  * Cuida de: backdrop, tecla Escape, trava de scroll, foco inicial/restaurado e trap de Tab.
@@ -32,13 +36,20 @@ export function Dialog({
   children: React.ReactNode
 }) {
   const painelRef = useRef<HTMLDivElement>(null)
+  const aoFecharRef = useRef(aoFechar)
   const tituloId = useId()
   const descricaoId = useId()
 
   useEffect(() => {
+    aoFecharRef.current = aoFechar
+  }, [aoFechar])
+
+  useEffect(() => {
     if (!aberto) return
+    const dialogo = Symbol("dialogo")
     const elementoAnterior = document.activeElement as HTMLElement | null
-    const overflowOriginal = document.body.style.overflow
+    if (dialogosAbertos.length === 0) overflowAnterior = document.body.style.overflow
+    dialogosAbertos.push(dialogo)
     document.body.style.overflow = "hidden"
 
     const painel = painelRef.current
@@ -46,8 +57,9 @@ export function Dialog({
     ;(primeiro ?? painel)?.focus()
 
     function aoTeclar(evento: KeyboardEvent) {
+      if (dialogosAbertos.at(-1) !== dialogo) return
       if (evento.key === "Escape") {
-        aoFechar()
+        aoFecharRef.current()
         return
       }
       if (evento.key !== "Tab" || !painel) return
@@ -67,10 +79,13 @@ export function Dialog({
     document.addEventListener("keydown", aoTeclar)
     return () => {
       document.removeEventListener("keydown", aoTeclar)
-      document.body.style.overflow = overflowOriginal
-      elementoAnterior?.focus?.()
+      const estavaNoTopo = dialogosAbertos.at(-1) === dialogo
+      const indice = dialogosAbertos.indexOf(dialogo)
+      if (indice !== -1) dialogosAbertos.splice(indice, 1)
+      if (dialogosAbertos.length === 0) document.body.style.overflow = overflowAnterior
+      if (estavaNoTopo && elementoAnterior?.isConnected) elementoAnterior.focus()
     }
-  }, [aberto, aoFechar])
+  }, [aberto])
 
   if (!aberto) return null
 

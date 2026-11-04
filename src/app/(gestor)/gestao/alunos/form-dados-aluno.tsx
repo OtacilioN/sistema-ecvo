@@ -1,9 +1,10 @@
 "use client"
 
-import { useActionState, useEffect, useState } from "react"
+import { startTransition, useActionState, useCallback, useEffect, useRef, useState } from "react"
 import { acaoAtualizarDadosAluno, type EstadoForm } from "@/app/actions/cadastros"
 import { CampoUploadFoto } from "@/components/campo-upload-foto"
-import { BotaoEnviar } from "@/components/ui/botao-enviar"
+import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
@@ -84,7 +85,19 @@ export function FormDadosAluno({
   aluno: AlunoParaEdicao
   aoConcluir?: () => void
 }) {
-  const [estado, acao] = useActionState<EstadoForm, FormData>(acaoAtualizarDadosAluno, undefined)
+  const [estado, acao, pendente] = useActionState<EstadoForm, FormData>(
+    acaoAtualizarDadosAluno,
+    undefined,
+  )
+  const formRef = useRef<HTMLFormElement>(null)
+  const [confirmacaoAberta, setConfirmacaoAberta] = useState(false)
+  const [ciente, setCiente] = useState(false)
+  const [frase, setFrase] = useState("")
+  const fecharConfirmacao = useCallback(() => {
+    setConfirmacaoAberta(false)
+    setCiente(false)
+    setFrase("")
+  }, [])
   const [modalidadeIds, setModalidadeIds] = useState<Set<string>>(new Set(aluno.modalidades))
   const cobrancas = new Map(
     aluno.cobrancasModalidades.map((cobranca) => [
@@ -102,6 +115,21 @@ export function FormDadosAluno({
     if (estado?.ok) aoConcluir?.()
   }, [estado?.ok, aoConcluir])
 
+  useEffect(() => {
+    if (estado?.exigeConfirmacaoTrancamento) setConfirmacaoAberta(true)
+  }, [estado])
+
+  function enviar(confirmado = false) {
+    if (!formRef.current) return
+    const dados = new FormData(formRef.current)
+    if (confirmado) {
+      dados.set("cienteTrancamentoAdimplente", ciente ? "on" : "")
+      dados.set("fraseTrancamentoAdimplente", frase)
+      fecharConfirmacao()
+    }
+    startTransition(() => acao(dados))
+  }
+
   function alternarModalidade(modalidadeId: string, selecionada: boolean) {
     setModalidadeIds((atuais) => {
       const proximas = new Set(atuais)
@@ -112,7 +140,14 @@ export function FormDadosAluno({
   }
 
   return (
-    <form action={acao} className="grid gap-4 sm:grid-cols-2">
+    <form
+      ref={formRef}
+      onSubmit={(event) => {
+        event.preventDefault()
+        enviar()
+      }}
+      className="grid gap-4 sm:grid-cols-2"
+    >
       <input type="hidden" name="alunoId" value={aluno.id} />
       <div className="space-y-1.5">
         <Label htmlFor="nome-aluno">Nome</Label>
@@ -362,9 +397,57 @@ export function FormDadosAluno({
       </fieldset>
 
       <div className="flex items-center gap-3 sm:col-span-2">
-        <BotaoEnviar disabled={uploadPendente}>Salvar aluno</BotaoEnviar>
-        {estado?.erro && <p className="text-sm text-destructive">{estado.erro}</p>}
+        <Button type="submit" disabled={uploadPendente || pendente}>
+          {pendente ? "Salvando..." : "Salvar aluno"}
+        </Button>
+        {estado?.erro && !estado.exigeConfirmacaoTrancamento && (
+          <p className="text-sm text-destructive">{estado.erro}</p>
+        )}
       </div>
+      <Dialog
+        aberto={confirmacaoAberta}
+        aoFechar={fecharConfirmacao}
+        titulo="Confirmar trancamento"
+        descricao="O aluno está em dia ou o vencimento será alterado nesta operação. O trancamento bloqueará seu acesso."
+      >
+        <div className="space-y-5">
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={ciente}
+              onChange={(event) => setCiente(event.currentTarget.checked)}
+              className="mt-1 accent-primary"
+            />
+            <span>
+              Estou ciente e desejo trancar a matrícula mesmo se o aluno estiver adimplente.
+            </span>
+          </label>
+          <div className="space-y-2">
+            <Label htmlFor="frase-trancamento">
+              Digite “trancar aluno adimplente” para confirmar
+            </Label>
+            <Input
+              id="frase-trancamento"
+              value={frase}
+              onChange={(event) => setFrase(event.currentTarget.value)}
+              autoComplete="off"
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={fecharConfirmacao}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={!ciente || frase !== "trancar aluno adimplente" || pendente}
+              onClick={() => enviar(true)}
+            >
+              Trancar matrícula
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </form>
   )
 }
