@@ -166,6 +166,7 @@ export async function prepararMensalidadeReativacao(params: {
     const existente = await tx.mensalidade.findUnique({
       where: { alunoId_competencia: { alunoId: aluno.id, competencia } },
     })
+    const valorReativacao = plano.valorBase ?? plano.valor
     if (existente?.status === "ISENTA") {
       if (!(await isencaoAtualDoTrancamento(tx, existente))) {
         return {
@@ -183,7 +184,9 @@ export async function prepararMensalidadeReativacao(params: {
     if (
       existente &&
       (existente.planoId !== plano.id ||
-        Number(existente.valor) !== Number(plano.valor) ||
+        Number(existente.valor) !== Number(valorReativacao) ||
+        Number(existente.valorBase ?? existente.valor) !== Number(valorReativacao) ||
+        Number(existente.valorComDesconto ?? existente.valor) !== Number(valorReativacao) ||
         !["EM_ABERTO", "VENCIDA"].includes(existente.status) ||
         existente.contratoPixAutomaticoId)
     ) {
@@ -204,9 +207,9 @@ export async function prepararMensalidadeReativacao(params: {
             alunoId: aluno.id,
             planoId: plano.id,
             competencia,
-            valor: plano.valor,
-            valorBase: plano.valorBase ?? plano.valor,
-            valorComDesconto: plano.valor,
+            valor: valorReativacao,
+            valorBase: valorReativacao,
+            valorComDesconto: valorReativacao,
             vencimento: vencimentoDaCompetencia(
               competencia,
               Number(formatarDataInput(agora).slice(-2)),

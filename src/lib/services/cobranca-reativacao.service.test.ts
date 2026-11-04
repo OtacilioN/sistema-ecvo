@@ -325,6 +325,60 @@ describe("cancelamento da cobrança de reativação", () => {
 })
 
 describe("recuperação de emissão da reativação", () => {
+  it("reserva o valor base e não reaproveita cobrança antiga com desconto", async () => {
+    const tx = {
+      $queryRaw: vi.fn(),
+      aluno: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "aluno-1",
+          status: "TRANCADO",
+          plano: {
+            id: "plano-1",
+            nome: "Plano",
+            ativo: true,
+            periodicidade: "MENSAL",
+            valor: 100,
+            valorBase: 120,
+          },
+          modalidadesPlano: [
+            {
+              plataformaExterna: null,
+              modalidade: { id: "modalidade-1", nome: "Modalidade", turmas: [] },
+            },
+          ],
+        }),
+      },
+      mensalidade: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: "mens-1",
+          alunoId: "aluno-1",
+          status: "ISENTA",
+          atualizadoEm: new Date(),
+        }),
+      },
+      operacaoIsencaoTrancamento: { findFirst: vi.fn().mockResolvedValue(null) },
+      cobrancaReativacaoAsaas: {
+        findFirst: vi.fn().mockResolvedValue({ ...cobranca, valor: 100 }),
+        create: vi.fn().mockImplementation(({ data }) => data),
+      },
+    }
+    mocks.garantir.mockResolvedValue({ ok: true, customerId: "cus-1" })
+    mocks.db.$transaction.mockImplementation(async (fn) => fn(tx))
+    expect(
+      await prepararCobrancaReativacaoAvulsa({ alunoId: "aluno-1", autorId: "gestor" }),
+    ).toMatchObject({ ok: false, motivo: expect.stringContaining("conciliação") })
+    expect(tx.cobrancaReativacaoAsaas.create).not.toHaveBeenCalled()
+
+    tx.cobrancaReativacaoAsaas.findFirst.mockResolvedValue(null)
+    mocks.listar.mockResolvedValue({ data: [] })
+    mocks.criar.mockRejectedValue(new Error("indisponível"))
+    mocks.db.cobrancaReativacaoAsaas.updateMany.mockResolvedValue({ count: 1 })
+    await prepararCobrancaReativacaoAvulsa({ alunoId: "aluno-1", autorId: "gestor" })
+    expect(tx.cobrancaReativacaoAsaas.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ valor: 120 }),
+    })
+  })
+
   it("não emite segunda cobrança após POST anterior incerto e pesquisa vazia", async () => {
     const retomada = {
       ...cobranca,

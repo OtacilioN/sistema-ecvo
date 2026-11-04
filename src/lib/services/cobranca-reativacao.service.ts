@@ -100,7 +100,13 @@ export async function prepararCobrancaReativacaoAvulsa(params: {
       where: { alunoId: aluno.id, ativa: true },
       include: { splits: true },
     })
+    const valorReativacao = aluno.plano.valorBase ?? aluno.plano.valor
     if (existente) {
+      if (Number(existente.valor) !== Number(valorReativacao))
+        return {
+          ok: false as const,
+          motivo: "A cobrança de reativação existente requer conciliação com a gestão.",
+        }
       if (existente.status === "CANCELANDO" || existente.operacaoPendente === "CANCELAR")
         return { ok: false as const, motivo: "O cancelamento da cobrança está em processamento." }
       if (
@@ -142,7 +148,7 @@ export async function prepararCobrancaReativacaoAvulsa(params: {
         planoId: aluno.plano.id,
         planoNome: aluno.plano.nome,
         competencia: chaveCompetencia(),
-        valor: aluno.plano.valor,
+        valor: valorReativacao,
         repasseSnapshot: snapshot as unknown as Prisma.InputJsonValue,
         vencimentoAsaas: dataCivilParaDate(formatarDataInput(new Date())),
         asaasCustomerId: cliente.customerId,

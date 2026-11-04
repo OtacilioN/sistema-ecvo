@@ -137,6 +137,28 @@ describe("trancamento de avulso vencido", () => {
 })
 
 describe("preparação da mensalidade de reativação", () => {
+  it("cobra o valor base integral sem desconto na reativação", async () => {
+    const planoComDesconto = { ...plano, valorBase: new Prisma.Decimal(120) }
+    mocks.tx.plano.findFirst.mockResolvedValue(planoComDesconto)
+    await prepararMensalidadeReativacao({ alunoId: aluno.id, autorId: aluno.usuarioId, agora })
+    expect(mocks.tx.mensalidade.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        valor: planoComDesconto.valorBase,
+        valorBase: planoComDesconto.valorBase,
+        valorComDesconto: planoComDesconto.valorBase,
+      }),
+    })
+  })
+
+  it("encaminha cobrança anterior com desconto para conciliação", async () => {
+    mocks.tx.plano.findFirst.mockResolvedValue({ ...plano, valorBase: new Prisma.Decimal(120) })
+    mocks.tx.mensalidade.findUnique.mockResolvedValue(mensalidade)
+    expect(
+      await prepararMensalidadeReativacao({ alunoId: aluno.id, autorId: aluno.usuarioId, agora }),
+    ).toMatchObject({ ok: false, motivo: expect.stringContaining("revisão da gestão") })
+    expect(mocks.tx.mensalidade.update).not.toHaveBeenCalled()
+  })
+
   it("cobra R$ 100 do avulso sem liberar ou contratar o plano e sem descontar R$ 20", async () => {
     const resultado = await prepararMensalidadeReativacao({
       alunoId: aluno.id,
