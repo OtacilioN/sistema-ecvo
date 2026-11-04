@@ -3,6 +3,7 @@
 import { Prisma } from "@prisma/client"
 import { revalidatePath } from "next/cache"
 import { exigirPapel } from "@/lib/auth/dal"
+import { db } from "@/lib/db"
 import {
   atualizarAluno,
   atualizarStatusTipoAluno,
@@ -10,8 +11,10 @@ import {
   criarDocumentoAluno,
   excluirAluno,
 } from "@/lib/services/aluno.service"
+import { cancelarCobrancaReativacaoAvulsa } from "@/lib/services/cobranca-reativacao.service"
 import { criarGestor } from "@/lib/services/gestor.service"
 import { criarGraduacaoModalidade } from "@/lib/services/graduacao.service"
+import { isencaoTrancamentoPendente } from "@/lib/services/isencao-trancamento.service"
 import {
   atualizarDadosModalidade,
   atualizarRegrasModalidade,
@@ -447,7 +450,22 @@ export async function acaoAtualizarDadosAluno(
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
   let resultado: Awaited<ReturnType<typeof atualizarAluno>>
+  let cobrancaCancelada = false
   try {
+    const atual = await db.aluno.findUnique({
+      where: { id: parsed.data.alunoId },
+      select: { status: true },
+    })
+    if (atual?.status === "TRANCADO" && parsed.data.status !== "TRANCADO") {
+      if (await isencaoTrancamentoPendente(db, parsed.data.alunoId))
+        return { erro: "Aguarde a conclusão da isenção antes de reativar o aluno." }
+      const cancelamento = await cancelarCobrancaReativacaoAvulsa({
+        alunoId: parsed.data.alunoId,
+        autorId: usuario.id,
+      })
+      if (!cancelamento.ok) return { erro: cancelamento.motivo }
+      cobrancaCancelada = cancelamento.cancelada
+    }
     resultado = await atualizarAluno(parsed.data.alunoId, {
       autorId: usuario.id,
       confirmacaoTrancamento: {
@@ -481,13 +499,17 @@ export async function acaoAtualizarDadosAluno(
       erro.code === "P2002" &&
       String(erro.meta?.target).includes("idAtleta")
     ) {
-      return { erro: "ID de atleta já cadastrado para outro aluno." }
+      return {
+        erro: `ID de atleta já cadastrado para outro aluno.${cobrancaCancelada ? " O PIX de reativação anterior foi cancelado." : ""}`,
+      }
     }
-    return { erro: "Não foi possível atualizar os dados do aluno." }
+    return {
+      erro: `Não foi possível atualizar os dados do aluno.${cobrancaCancelada ? " O PIX de reativação anterior foi cancelado." : ""}`,
+    }
   }
   if (!resultado.ok)
     return {
-      erro: resultado.motivo,
+      erro: `${resultado.motivo}${cobrancaCancelada ? " O PIX de reativação anterior foi cancelado." : ""}`,
       exigeConfirmacaoTrancamento:
         "exigeConfirmacaoTrancamento" in resultado && resultado.exigeConfirmacaoTrancamento,
     }
@@ -498,6 +520,10 @@ export async function acaoAtualizarDadosAluno(
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/financeiro")
   revalidatePath("/aluno/perfil")
+  if (resultado.isencaoPendente)
+    return {
+      erro: "Aluno trancado. A isenção ainda está pendente de conciliação e será tentada novamente.",
+    }
   return { ok: true }
 }
 
@@ -550,17 +576,39 @@ export async function acaoAtualizarStatusTipoAluno(
   })
   if (!parsed.success) return { erro: primeiroErro(parsed.error.issues) }
 
-  const resultado = await atualizarStatusTipoAluno({
-    ...parsed.data,
-    autorId: usuario.id,
-    confirmacaoTrancamento: {
-      ciente: formData.get("cienteTrancamentoAdimplente") === "on",
-      frase: String(formData.get("fraseTrancamentoAdimplente") ?? ""),
-    },
+  const atual = await db.aluno.findUnique({
+    where: { id: parsed.data.alunoId },
+    select: { status: true },
   })
+  let cobrancaCancelada = false
+  if (atual?.status === "TRANCADO" && parsed.data.status !== "TRANCADO") {
+    if (await isencaoTrancamentoPendente(db, parsed.data.alunoId))
+      return { erro: "Aguarde a conclusão da isenção antes de reativar o aluno." }
+    const cancelamento = await cancelarCobrancaReativacaoAvulsa({
+      alunoId: parsed.data.alunoId,
+      autorId: usuario.id,
+    })
+    if (!cancelamento.ok) return { erro: cancelamento.motivo }
+    cobrancaCancelada = cancelamento.cancelada
+  }
+  let resultado: Awaited<ReturnType<typeof atualizarStatusTipoAluno>>
+  try {
+    resultado = await atualizarStatusTipoAluno({
+      ...parsed.data,
+      autorId: usuario.id,
+      confirmacaoTrancamento: {
+        ciente: formData.get("cienteTrancamentoAdimplente") === "on",
+        frase: String(formData.get("fraseTrancamentoAdimplente") ?? ""),
+      },
+    })
+  } catch {
+    return {
+      erro: `Não foi possível alterar o status.${cobrancaCancelada ? " O PIX de reativação anterior foi cancelado." : ""}`,
+    }
+  }
   if (!resultado.ok)
     return {
-      erro: resultado.motivo,
+      erro: `${resultado.motivo}${cobrancaCancelada ? " O PIX de reativação anterior foi cancelado." : ""}`,
       exigeConfirmacaoTrancamento:
         "exigeConfirmacaoTrancamento" in resultado && resultado.exigeConfirmacaoTrancamento,
     }
@@ -568,6 +616,10 @@ export async function acaoAtualizarStatusTipoAluno(
   revalidatePath("/gestao/alunos")
   revalidatePath("/gestao/auditoria")
   revalidatePath("/aluno/perfil")
+  if (resultado.isencaoPendente)
+    return {
+      erro: "Aluno trancado. A isenção ainda está pendente de conciliação e será tentada novamente.",
+    }
   return { ok: true }
 }
 

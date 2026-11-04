@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic"
 
 export default async function Page() {
   const { alunoId } = await exigirAluno()
-  const [aluno, acessoAulaAvulsa] = await Promise.all([
+  const [aluno, acessoAulaAvulsa, reativacoes] = await Promise.all([
     db.aluno.findUnique({
       where: { id: alunoId },
       include: {
@@ -39,6 +39,19 @@ export default async function Page() {
       },
     }),
     obterConversaoAulaAvulsa(alunoId),
+    db.cobrancaReativacaoAsaas.findMany({
+      where: { alunoId, status: { in: ["RECEBIDA", "ESTORNADA"] } },
+      orderBy: { criadoEm: "desc" },
+      take: 12,
+      select: {
+        id: true,
+        competencia: true,
+        valor: true,
+        status: true,
+        recebidaEmAsaas: true,
+        estornoParcialPendenteEm: true,
+      },
+    }),
   ])
 
   if (!aluno) return null
@@ -524,6 +537,43 @@ export default async function Page() {
           </table>
         </CardContent>
       </Card>
+
+      {reativacoes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pagamentos de reativação</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {reativacoes.map((reativacao) => (
+              <div
+                key={reativacao.id}
+                className="border-b border-border pb-3 last:border-0 last:pb-0"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-medium">Reativação · {reativacao.competencia}</p>
+                  <Badge
+                    variant={
+                      reativacao.status === "RECEBIDA" && !reativacao.estornoParcialPendenteEm
+                        ? "success"
+                        : "warning"
+                    }
+                  >
+                    {reativacao.status === "ESTORNADA"
+                      ? "Estornada"
+                      : reativacao.estornoParcialPendenteEm
+                        ? "Estorno parcial em análise"
+                        : "Recebida"}
+                  </Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {formatarBRL(Number(reativacao.valor))}
+                  {reativacao.recebidaEmAsaas && ` · ${formatarData(reativacao.recebidaEmAsaas)}`}
+                </p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

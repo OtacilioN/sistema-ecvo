@@ -4,11 +4,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
   aluno: vi.fn(),
+  reativacoes: vi.fn(),
   qrCode: vi.fn(),
 }))
 
 vi.mock("@/lib/auth/dal", () => ({ exigirAluno: async () => ({ alunoId: "aluno-1" }) }))
-vi.mock("@/lib/db", () => ({ db: { aluno: { findUnique: mocks.aluno } } }))
+vi.mock("@/lib/db", () => ({
+  db: {
+    aluno: { findUnique: mocks.aluno },
+    cobrancaReativacaoAsaas: { findMany: mocks.reativacoes },
+  },
+}))
 vi.mock("qrcode", () => ({ default: { toDataURL: mocks.qrCode } }))
 vi.mock("@/lib/services/pagamento-matricula.service", () => ({
   obterConversaoAulaAvulsa: async () => null,
@@ -116,10 +122,35 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.setSystemTime(new Date("2026-11-11T12:00:00Z"))
   mocks.aluno.mockReset().mockResolvedValue(alunoFinanceiro())
+  mocks.reativacoes.mockReset().mockResolvedValue([])
   mocks.qrCode.mockReset().mockResolvedValue("data:image/png;base64,QR")
 })
 
 describe("programação de PIX recorrente no financeiro do aluno", () => {
+  it("mostra o pagamento de reativação separadamente e somente para o aluno autenticado", async () => {
+    mocks.reativacoes.mockResolvedValue([
+      {
+        id: "reativacao-1",
+        competencia: "2026-11",
+        valor: 90,
+        status: "RECEBIDA",
+        recebidaEmAsaas: new Date("2026-11-10T15:00:00Z"),
+        estornoParcialPendenteEm: null,
+      },
+    ])
+
+    const { html } = await renderizar()
+    expect(mocks.reativacoes).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { alunoId: "aluno-1", status: { in: ["RECEBIDA", "ESTORNADA"] } },
+      }),
+    )
+    expect(html).toContain("Pagamentos de reativação")
+    expect(html).toContain("Reativação · 2026-11")
+    expect(html).toContain("90,00")
+    expect(html).toContain("Recebida")
+  })
+
   it("oferece programação mesmo quando a mensalidade atual já está paga", async () => {
     mocks.aluno.mockResolvedValue(alunoFinanceiro({ paga: true }))
 

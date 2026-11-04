@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   db: {
     aluno: { findUnique: vi.fn(), update: vi.fn() },
+    cobrancaReativacaoAsaas: { findFirst: vi.fn() },
     mensalidade: { findFirst: vi.fn() },
     logAuditoria: { create: vi.fn() },
     $queryRaw: vi.fn(),
@@ -10,8 +11,18 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 vi.mock("@/lib/db", () => ({ db: mocks.db }))
+vi.mock("@/lib/services/isencao-trancamento.service", () => ({
+  agendarIsencaoTrancamento: vi.fn().mockResolvedValue({ id: "operacao-1" }),
+  isencaoTrancamentoPendente: vi.fn().mockResolvedValue(false),
+  processarIsencoesTrancamento: vi.fn().mockResolvedValue({ ok: true }),
+}))
 
 import { atualizarAluno, atualizarStatusTipoAluno, criarAluno } from "./aluno.service"
+import {
+  agendarIsencaoTrancamento,
+  isencaoTrancamentoPendente,
+  processarIsencoesTrancamento,
+} from "./isencao-trancamento.service"
 
 const aluno = {
   id: "aluno-1",
@@ -75,6 +86,8 @@ describe("proteção no trancamento", () => {
     })
     expect(resultado.ok).toBe(true)
     expect(mocks.db.logAuditoria.create).toHaveBeenCalled()
+    expect(agendarIsencaoTrancamento).toHaveBeenCalledWith(mocks.db, "aluno-1", "gestor")
+    expect(processarIsencoesTrancamento).toHaveBeenCalledWith({ operacaoId: "operacao-1" })
   })
 
   it("protege também a ação de alteração de status", async () => {
@@ -114,6 +127,18 @@ describe("proteção no trancamento", () => {
       autorId: "gestor",
     })
     expect(resultado).toMatchObject({ ok: false, exigeConfirmacaoTrancamento: true })
+    expect(mocks.db.aluno.update).not.toHaveBeenCalled()
+  })
+
+  it("impede reativação enquanto houver isenção pendente", async () => {
+    vi.mocked(isencaoTrancamentoPendente).mockResolvedValueOnce(true)
+    const resultado = await atualizarStatusTipoAluno({
+      alunoId: "aluno-1",
+      tipo: "MENSALISTA",
+      status: "ATIVO",
+      autorId: "gestor",
+    })
+    expect(resultado).toMatchObject({ ok: false, motivo: expect.stringContaining("isenção") })
     expect(mocks.db.aluno.update).not.toHaveBeenCalled()
   })
 })

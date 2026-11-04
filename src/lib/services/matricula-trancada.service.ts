@@ -5,11 +5,16 @@ import { VALOR_MENSALIDADE_AULA_AVULSA } from "@/lib/aula-avulsa"
 import { db } from "@/lib/db"
 import { vencimentoDoPagamentoInicial } from "@/lib/financeiro/vencimento"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import { isencaoAtualDoTrancamento } from "@/lib/services/elegibilidade-reativacao.service"
 import {
   lerRepasseSnapshotMensalidade,
   montarRepasseSnapshotMensalidade,
   vencimentoDaCompetencia,
 } from "@/lib/services/financeiro.service"
+import {
+  agendarIsencaoTrancamento,
+  processarIsencoesTrancamento,
+} from "@/lib/services/isencao-trancamento.service"
 import { chaveCompetencia, formatarDataInput } from "@/lib/utils/datas"
 
 /** Também executado na autenticação, para proteger sessões abertas antes do vencimento. */
@@ -51,7 +56,8 @@ export async function trancarAvulsosExpirados(params: { alunoId?: string; agora?
         },
         data: { status: "TRANCADO" },
       })
-      if (!resultado.count) return false
+      if (!resultado.count) return null
+      const operacao = await agendarIsencaoTrancamento(tx, acesso.alunoId, null)
       await registrarLog(
         {
           autorId: null,
@@ -65,9 +71,12 @@ export async function trancarAvulsosExpirados(params: { alunoId?: string; agora?
         },
         tx,
       )
-      return true
+      return operacao.id
     })
-    if (mudou) trancados++
+    if (mudou) {
+      trancados++
+      await processarIsencoesTrancamento({ operacaoId: mudou }).catch(() => undefined)
+    }
   }
   return { trancados }
 }
@@ -94,6 +103,17 @@ export async function prepararMensalidadeReativacao(params: {
   return db.$transaction(async (tx) => {
     // Serializa visitas simultâneas sem inverter os locks de mensalidade/aluno do webhook.
     await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`reativacao:${params.alunoId}`}))::text`
+    await tx.$queryRaw`SELECT "id" FROM "Mensalidade" WHERE "alunoId" = ${params.alunoId} ORDER BY "id" FOR UPDATE`
+    await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${params.alunoId} FOR UPDATE`
+    const isencaoPendente = await tx.operacaoIsencaoTrancamento.findFirst({
+      where: { alunoId: params.alunoId, status: { in: ["PENDENTE", "PROCESSANDO"] } },
+      select: { id: true },
+    })
+    if (isencaoPendente)
+      return {
+        ok: false as const,
+        motivo: "A isenção está sendo processada. Tente novamente mais tarde.",
+      }
     const aluno = await tx.aluno.findUnique({
       where: { id: params.alunoId },
       include: {
@@ -146,6 +166,20 @@ export async function prepararMensalidadeReativacao(params: {
     const existente = await tx.mensalidade.findUnique({
       where: { alunoId_competencia: { alunoId: aluno.id, competencia } },
     })
+    if (existente?.status === "ISENTA") {
+      if (!(await isencaoAtualDoTrancamento(tx, existente))) {
+        return {
+          ok: false as const,
+          motivo:
+            "A mensalidade isenta deste mês requer revisão da gestão para reativar a matrícula.",
+        }
+      }
+      return {
+        ok: false as const,
+        exigeCobrancaAvulsa: true as const,
+        motivo: "A mensalidade isenta será preservada; gere a cobrança de reativação.",
+      }
+    }
     if (
       existente &&
       (existente.planoId !== plano.id ||

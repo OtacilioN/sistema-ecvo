@@ -138,8 +138,10 @@ export default async function GestaoInicio() {
     modalidades,
     turmas,
     mensalidadesPendentes,
-    mensalidadesRecebidasSemana,
-    mensalidadesRecebidasMes,
+    mensalidadesRecebidasSemanaOriginais,
+    mensalidadesRecebidasMesOriginais,
+    reativacoesRecebidasSemana,
+    reativacoesRecebidasMes,
     usuariosComNascimento,
   ] = await Promise.all([
     db.aluno.findMany({
@@ -182,6 +184,14 @@ export default async function GestaoInicio() {
         pagoEm: { gte: inicioMes, lt: inicioProximoMes },
       },
       select: { valor: true, pagoEm: true },
+    }),
+    db.cobrancaReativacaoAsaas.findMany({
+      where: { status: "RECEBIDA", recebidaEmAsaas: { gte: inicioSemana, lt: fimSemanaExclusivo } },
+      select: { valor: true, recebidaEmAsaas: true },
+    }),
+    db.cobrancaReativacaoAsaas.findMany({
+      where: { status: "RECEBIDA", recebidaEmAsaas: { gte: inicioMes, lt: inicioProximoMes } },
+      select: { valor: true, recebidaEmAsaas: true },
     }),
     db.usuario.findMany({
       where: {
@@ -268,6 +278,20 @@ export default async function GestaoInicio() {
     (total, mensalidade) => total + mensalidade.valorNumero,
     0,
   )
+  const mensalidadesRecebidasSemana = [
+    ...mensalidadesRecebidasSemanaOriginais,
+    ...reativacoesRecebidasSemana.map(({ valor, recebidaEmAsaas }) => ({
+      valor,
+      pagoEm: recebidaEmAsaas,
+    })),
+  ]
+  const mensalidadesRecebidasMes = [
+    ...mensalidadesRecebidasMesOriginais,
+    ...reativacoesRecebidasMes.map(({ valor, recebidaEmAsaas }) => ({
+      valor,
+      pagoEm: recebidaEmAsaas,
+    })),
+  ]
   const valorRecebidoSemana = somarValores(mensalidadesRecebidasSemana)
   const valorRecebidoMes = somarValores(mensalidadesRecebidasMes)
   const mensalidadesVencemMes = mensalidadesComStatus.filter(

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => {
   const tx = {
     $queryRaw: vi.fn(),
+    operacaoIsencaoTrancamento: { findFirst: vi.fn() },
     solicitacaoMatricula: { findUnique: vi.fn() },
     acessoAulaAvulsa: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
     aluno: { findUnique: vi.fn(), update: vi.fn() },
@@ -173,6 +174,8 @@ function pagamentoRemoto(
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.tx.aluno.findUnique.mockResolvedValue({ status: "ATIVO" })
+  mocks.tx.operacaoIsencaoTrancamento.findFirst.mockResolvedValue(null)
   vi.useFakeTimers()
   vi.setSystemTime(new Date("2026-09-01T00:14:00.000Z"))
   mocks.tx.solicitacaoMatricula.findUnique.mockImplementation(({ select }) =>
@@ -1763,6 +1766,16 @@ describe("conversão do complemento confirmado por consulta ao Asaas", () => {
       },
     }
   }
+
+  it("não converte pagamento enquanto há isenção em andamento", async () => {
+    prepararConsulta()
+    mocks.tx.operacaoIsencaoTrancamento.findFirst.mockResolvedValue({ id: "op" })
+    const resultado = await gerarCobrancaComplementoAulaAvulsaAsaas("aluno-1", { verificar: true })
+    expect(resultado.ok).toBe(false)
+    expect(mocks.tx.aluno.update).not.toHaveBeenCalled()
+    expect(mocks.obterOuCriarMensalidadeNaTransacao).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaAsaas.create).not.toHaveBeenCalled()
+  })
 
   it.each([
     "PENDENTE",

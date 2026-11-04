@@ -344,6 +344,8 @@ model Aluno {
   contratosPixAutomatico        ContratoPixAutomatico[]
   solicitacaoMatricula          SolicitacaoMatricula?
   acessosAulaAvulsa             AcessoAulaAvulsa[]
+  operacoesIsencaoTrancamento   OperacaoIsencaoTrancamento[]
+  cobrancasReativacao           CobrancaReativacaoAsaas[]
 
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
@@ -900,6 +902,25 @@ model AlunoPlanoModalidade {
   @@index([plataformaExterna])
 }
 
+model OperacaoIsencaoTrancamento {
+  id             String   @id @default(cuid())
+  aluno          Aluno    @relation(fields: [alunoId], references: [id], onDelete: Cascade)
+  alunoId        String
+  autorId        String?
+  mensalidadeIds Json
+  status         String   @default("PENDENTE")
+  leaseToken     String?
+  leaseAte       DateTime?
+  tentativas     Int      @default(0)
+  ultimoErro     String?
+  criadoEm       DateTime @default(now())
+  atualizadoEm   DateTime @updatedAt
+  concluidoEm    DateTime?
+
+  @@index([status, leaseAte, criadoEm])
+  @@index([alunoId, status])
+}
+
 model Mensalidade {
   id                      String                  @id @default(cuid())
   aluno                   Aluno                   @relation(fields: [alunoId], references: [id], onDelete: Cascade)
@@ -932,6 +953,37 @@ model Mensalidade {
   @@unique([contratoPixAutomaticoId, numeroCicloPix])
   @@index([status])
   @@index([contratoPixAutomaticoId])
+}
+
+model CobrancaReativacaoAsaas {
+  id                String               @id @default(cuid())
+  aluno             Aluno                @relation(fields: [alunoId], references: [id], onDelete: Restrict)
+  alunoId           String
+  planoId           String
+  planoNome         String
+  competencia       String
+  valor             Decimal              @db.Decimal(10, 2)
+  taxaAsaas         Decimal?             @db.Decimal(10, 2)
+  repasseSnapshot   Json
+  status            StatusCobrancaAsaas  @default(CRIANDO)
+  ativa             Boolean              @default(true)
+  operacaoPendente  String?
+  externalReference String               @unique
+  asaasCustomerId   String?
+  asaasPaymentId    String?              @unique
+  statusAsaas       String?
+  vencimentoAsaas   DateTime
+  pixCopiaECola     String?
+  qrCodeExpiraEm    DateTime?
+  recebidaEmAsaas   DateTime?
+  estornoParcialPendenteEm DateTime?
+  ultimoErro        String?
+  criadoEm          DateTime             @default(now())
+  atualizadoEm      DateTime             @updatedAt
+  splits            SplitPagamentoAsaas[]
+
+  @@index([alunoId, ativa])
+  @@index([status])
 }
 
 model ContratoPixAutomatico {
@@ -1011,6 +1063,8 @@ model SplitPagamentoAsaas {
   cobrancaAsaasId          String?
   cobrancaMatriculaAsaas   CobrancaMatriculaAsaas?   @relation(fields: [cobrancaMatriculaAsaasId], references: [id], onDelete: Restrict)
   cobrancaMatriculaAsaasId String?
+  cobrancaReativacaoAsaas CobrancaReativacaoAsaas? @relation(fields: [cobrancaReativacaoAsaasId], references: [id], onDelete: Restrict)
+  cobrancaReativacaoAsaasId String?
   contaAsaasProfessor      ContaAsaasProfessor       @relation(fields: [contaAsaasProfessorId], references: [id], onDelete: Restrict)
   contaAsaasProfessorId    String
   walletIdSnapshot         String
@@ -1027,6 +1081,7 @@ model SplitPagamentoAsaas {
 
   @@index([cobrancaAsaasId])
   @@index([cobrancaMatriculaAsaasId])
+  @@index([cobrancaReativacaoAsaasId])
   @@index([contaAsaasProfessorId, status])
   @@index([status])
 }

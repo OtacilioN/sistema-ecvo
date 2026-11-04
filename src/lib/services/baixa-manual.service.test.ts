@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   db: {
     mensalidade: { findUnique: vi.fn() },
     cobrancaAsaas: { findFirst: vi.fn() },
+    operacaoIsencaoTrancamento: { findFirst: vi.fn() },
   },
   baixarMensalidade: vi.fn(),
   gerarMensalidade: vi.fn(),
@@ -40,6 +41,7 @@ describe("baixa manual de mensalidade", () => {
       contratoPixAutomatico: null,
     })
     mocks.db.cobrancaAsaas.findFirst.mockResolvedValue(null)
+    mocks.db.operacaoIsencaoTrancamento.findFirst.mockResolvedValue(null)
     mocks.baixarMensalidade.mockResolvedValue({
       ok: true,
       mensalidade: { id: parametros.mensalidadeId, status: "PAGA" },
@@ -55,6 +57,45 @@ describe("baixa manual de mensalidade", () => {
     expect(mocks.cancelarCobrancaAsaasAntesDeBaixaManual).not.toHaveBeenCalled()
     expect(mocks.cancelarPixAutomatico).not.toHaveBeenCalled()
     expect(mocks.baixarMensalidade).toHaveBeenCalledWith(parametros)
+  })
+
+  it("não cancela nem baixa quando há isenção em andamento", async () => {
+    mocks.db.operacaoIsencaoTrancamento.findFirst.mockResolvedValue({ id: "operacao" })
+    const resultado = await baixarMensalidadeManual(parametros)
+    expect(resultado).toMatchObject({ ok: false, motivo: expect.stringContaining("isenção") })
+    expect(mocks.cancelarCobrancaAsaasAntesDeBaixaManual).not.toHaveBeenCalled()
+    expect(mocks.cancelarPixAutomatico).not.toHaveBeenCalled()
+    expect(mocks.baixarMensalidade).not.toHaveBeenCalled()
+  })
+
+  it("informa o encerramento do PIX se a isenção começar durante o cancelamento", async () => {
+    mocks.db.cobrancaAsaas.findFirst.mockResolvedValue({ id: "cobranca-1", status: "PENDENTE" })
+    mocks.baixarMensalidade.mockResolvedValue({ ok: false, motivo: "Isenção em processamento." })
+    const resultado = await baixarMensalidadeManual(parametros)
+    expect(resultado).toMatchObject({
+      ok: false,
+      motivo: expect.stringContaining("A cobrança PIX foi encerrada ou já estava encerrada."),
+    })
+    expect(mocks.baixarMensalidade).toHaveBeenCalledOnce()
+  })
+
+  it("informa a cobrança já encerrada se o cancelamento do PIX Automático falhar", async () => {
+    mocks.db.mensalidade.findUnique.mockResolvedValue({
+      status: "EM_ABERTO",
+      alunoId: "aluno-1",
+      contratoPixAutomatico: { status: "ATIVO" },
+    })
+    mocks.db.cobrancaAsaas.findFirst.mockResolvedValue({ id: "cobranca-1", status: "PENDENTE" })
+    mocks.cancelarPixAutomatico.mockResolvedValue({ ok: false, motivo: "Cancelamento pendente." })
+    const resultado = await baixarMensalidadeManual({
+      ...parametros,
+      confirmarCancelamentoPixAutomatico: true,
+    })
+    expect(resultado).toMatchObject({
+      ok: false,
+      motivo: expect.stringContaining("A cobrança PIX foi encerrada"),
+    })
+    expect(mocks.baixarMensalidade).not.toHaveBeenCalled()
   })
 
   it("cancela a cobrança PIX mensal antes de registrar a baixa", async () => {

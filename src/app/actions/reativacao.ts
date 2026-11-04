@@ -8,6 +8,10 @@ import {
   gerarCobrancaPixMensal,
   verificarPagamentoReativacaoAsaas,
 } from "@/lib/services/asaas.service"
+import {
+  prepararCobrancaReativacaoAvulsa,
+  verificarPagamentoCobrancaReativacao,
+} from "@/lib/services/cobranca-reativacao.service"
 import { prepararMensalidadeReativacao } from "@/lib/services/matricula-trancada.service"
 
 export type EstadoReativacao = { erro?: string; mensagem?: string } | undefined
@@ -18,7 +22,14 @@ export async function acaoPrepararReativacao(
 ): Promise<EstadoReativacao> {
   const { alunoId, usuario } = await exigirAlunoTrancado()
   const resultado = await prepararMensalidadeReativacao({ alunoId, autorId: usuario.id })
-  if (!resultado.ok) return { erro: resultado.motivo }
+  if (!resultado.ok) {
+    if (!("exigeCobrancaAvulsa" in resultado && resultado.exigeCobrancaAvulsa))
+      return { erro: resultado.motivo }
+    const cobranca = await prepararCobrancaReativacaoAvulsa({ alunoId, autorId: usuario.id })
+    if (!cobranca.ok) return { erro: cobranca.motivo }
+    revalidatePath("/reativar-matricula")
+    return { mensagem: "PIX atualizado. A matrícula será reativada após o recebimento." }
+  }
   const cobranca = await gerarCobrancaPixMensal({
     alunoId,
     autorId: usuario.id,
@@ -35,8 +46,13 @@ export async function acaoVerificarReativacao(
 ): Promise<EstadoReativacao> {
   const { alunoId } = await exigirAlunoTrancado()
   const mensalidadeId = formData.get("mensalidadeId")
-  if (typeof mensalidadeId !== "string" || !mensalidadeId) return { erro: "Mensalidade inválida." }
-  const resultado = await verificarPagamentoReativacaoAsaas({ alunoId, mensalidadeId })
+  const cobrancaId = formData.get("cobrancaReativacaoId")
+  const resultado =
+    typeof cobrancaId === "string" && cobrancaId
+      ? await verificarPagamentoCobrancaReativacao({ alunoId, cobrancaId })
+      : typeof mensalidadeId === "string" && mensalidadeId
+        ? await verificarPagamentoReativacaoAsaas({ alunoId, mensalidadeId })
+        : { ok: false as const, motivo: "Cobrança inválida." }
   if (!resultado.ok) return { erro: resultado.motivo }
   const aluno = await db.aluno.findUnique({ where: { id: alunoId }, select: { status: true } })
   revalidatePath("/reativar-matricula")

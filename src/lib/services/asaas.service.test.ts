@@ -3,10 +3,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => {
   const tx = {
     solicitacaoMatricula: { findUnique: vi.fn() },
+    operacaoIsencaoTrancamento: { findFirst: vi.fn() },
     $queryRaw: vi.fn(),
     eventoWebhookAsaas: { createMany: vi.fn(), delete: vi.fn() },
     clienteAsaas: { findUnique: vi.fn() },
     cobrancaMatriculaAsaas: { findFirst: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    cobrancaReativacaoAsaas: { findFirst: vi.fn() },
     cobrancaAsaas: {
       findFirst: vi.fn(),
       findUnique: vi.fn(),
@@ -321,6 +323,57 @@ describe("processarWebhookAsaas", () => {
       },
     })
     expect(mocks.sincronizarStatusFinanceiroAluno).toHaveBeenCalledWith(mocks.tx, "aluno-1")
+  })
+
+  it("preserva a isenção e alerta gestores quando o pagamento chega depois dela", async () => {
+    mocks.tx.cobrancaAsaas.findUnique.mockResolvedValue({ status: "CANCELADA", ativa: false })
+    mocks.tx.mensalidade.findUnique.mockResolvedValue({
+      id: "mensalidade-1",
+      alunoId: "aluno-1",
+      competencia: "2026-09",
+      valor: 150,
+      vencimento,
+      status: "ISENTA",
+      aluno: { usuarioId: "usuario-1" },
+    })
+    mocks.tx.usuario.findMany.mockResolvedValue([{ id: "gestor-1" }])
+
+    const resultado = await processarWebhookAsaas({
+      id: "evt_recebido_apos_isencao",
+      event: "PAYMENT_RECEIVED",
+      payment: { id: "pay_1" },
+    })
+
+    expect(resultado).toEqual({ ok: true, duplicado: false })
+    expect(mocks.tx.mensalidade.updateMany).not.toHaveBeenCalled()
+    expect(mocks.efetivarReativacaoMatricula).not.toHaveBeenCalled()
+    expect(mocks.tx.cobrancaAsaas.update).toHaveBeenCalledWith({
+      where: { id: "cobranca-1" },
+      data: expect.objectContaining({
+        ultimoErro: "Pagamento identificado após isenção; conciliação manual necessária.",
+      }),
+    })
+    expect(mocks.registrarLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entidade: "CobrancaAsaas",
+        entidadeId: "cobranca-1",
+        valorNovo: expect.objectContaining({
+          mensalidadeId: "mensalidade-1",
+          statusMensalidade: "ISENTA",
+          valorRecebido: 150,
+        }),
+      }),
+      mocks.tx,
+    )
+    expect(mocks.tx.notificacao.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          usuarioId: "gestor-1",
+          chaveDeduplicacao: "pagamento-isenta:cobranca-1:gestor-1",
+        }),
+      ],
+      skipDuplicates: true,
+    })
   })
 
   it.each([

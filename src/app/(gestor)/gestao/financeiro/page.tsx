@@ -108,7 +108,15 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   const podeEditar = usuario.papel === "GESTOR"
   const agora = new Date()
   const { inicioMes, inicioProximoMes } = obterIntervaloMes(agora)
-  const [planos, alunos, mensalidadesEncontradas, pagamentos, recebidasNoMes] = await Promise.all([
+  const [
+    planos,
+    alunos,
+    mensalidadesEncontradas,
+    pagamentos,
+    recebidasNoMes,
+    reativacoesNoMes,
+    historicoReativacoes,
+  ] = await Promise.all([
     db.plano.findMany({
       orderBy: { criadoEm: "desc" },
       include: {
@@ -170,6 +178,28 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       },
       _sum: { valor: true },
       _count: { _all: true },
+    }),
+    db.cobrancaReativacaoAsaas.aggregate({
+      where: {
+        status: "RECEBIDA",
+        recebidaEmAsaas: { gte: inicioMes, lt: inicioProximoMes },
+      },
+      _sum: { valor: true },
+      _count: { _all: true },
+    }),
+    db.cobrancaReativacaoAsaas.findMany({
+      where: { status: { in: ["RECEBIDA", "ESTORNADA"] } },
+      orderBy: { criadoEm: "desc" },
+      take: 12,
+      select: {
+        id: true,
+        competencia: true,
+        valor: true,
+        status: true,
+        recebidaEmAsaas: true,
+        estornoParcialPendenteEm: true,
+        aluno: { select: { usuario: { select: { nome: true } } } },
+      },
     }),
   ])
 
@@ -304,12 +334,54 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         />
         <IndicadorFinanceiro
           titulo="Recebidas neste mês"
-          valor={formatarBRL(Number(recebidasNoMes._sum.valor ?? 0))}
-          detalhe={`${recebidasNoMes._count._all} ${recebidasNoMes._count._all === 1 ? "mensalidade paga" : "mensalidades pagas"} no mês`}
+          valor={formatarBRL(
+            Number(recebidasNoMes._sum.valor ?? 0) + Number(reativacoesNoMes._sum.valor ?? 0),
+          )}
+          detalhe={`${recebidasNoMes._count._all + reativacoesNoMes._count._all} recebimento(s) no mês`}
           icone={<CheckCircle2 className="size-5" />}
           destaque="success"
         />
       </section>
+
+      {historicoReativacoes.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Pagamentos de reativação</CardTitle>
+            <CardDescription>Últimos pagamentos de reativação registrados.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {historicoReativacoes.map((reativacao) => (
+              <div
+                key={reativacao.id}
+                className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 last:border-0 last:pb-0"
+              >
+                <div>
+                  <p className="font-medium">
+                    {reativacao.aluno.usuario.nome} · {reativacao.competencia}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatarBRL(Number(reativacao.valor))}
+                    {reativacao.recebidaEmAsaas && ` · ${formatarData(reativacao.recebidaEmAsaas)}`}
+                  </p>
+                </div>
+                <Badge
+                  variant={
+                    reativacao.status === "RECEBIDA" && !reativacao.estornoParcialPendenteEm
+                      ? "success"
+                      : "warning"
+                  }
+                >
+                  {reativacao.status === "ESTORNADA"
+                    ? "Estornada"
+                    : reativacao.estornoParcialPendenteEm
+                      ? "Estorno parcial em análise"
+                      : "Recebida"}
+                </Badge>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-primary/20">
         <CardHeader className="gap-1">

@@ -11,6 +11,11 @@ import {
   vencimentoDaCompetencia,
 } from "@/lib/services/financeiro.service"
 import {
+  agendarIsencaoTrancamento,
+  isencaoTrancamentoPendente,
+  processarIsencoesTrancamento,
+} from "@/lib/services/isencao-trancamento.service"
+import {
   MOTIVO_VINCULO_PLANO_FAMILIA,
   validarNovoVinculoPlanoFamilia,
 } from "@/lib/services/vinculo-plano-familia"
@@ -490,6 +495,30 @@ export async function atualizarAluno(
       )
     )
       return null
+    if (params.status)
+      await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${alunoId} FOR UPDATE`
+    const statusAtual = params.status
+      ? await tx.aluno.findUnique({ where: { id: alunoId }, select: { status: true } })
+      : null
+    if (
+      params.status &&
+      statusAtual?.status !== params.status &&
+      (await tx.cobrancaReativacaoAsaas.findFirst({
+        where: { alunoId, ativa: true },
+        select: { id: true },
+      }))
+    )
+      return "cobranca_reativacao_pendente" as const
+    if (
+      params.status &&
+      params.status !== "TRANCADO" &&
+      (await isencaoTrancamentoPendente(tx, alunoId))
+    )
+      return "isencao_pendente" as const
+    const operacao =
+      params.status === "TRANCADO" && statusAtual?.status !== "TRANCADO"
+        ? await agendarIsencaoTrancamento(tx, alunoId, params.autorId)
+        : null
     let mensalidadesAbertasMigradas = 0
     let mensalidadesVencimentoAtualizadas = 0
 
@@ -710,9 +739,20 @@ export async function atualizarAluno(
       )
     }
 
-    return aluno
+    return { aluno, operacaoId: operacao?.id }
   })
 
+  if (atualizado === "cobranca_reativacao_pendente")
+    return {
+      ok: false as const,
+      motivo:
+        "Há uma cobrança de reativação em andamento. Aguarde a conciliação antes de alterar o status.",
+    }
+  if (atualizado === "isencao_pendente")
+    return {
+      ok: false as const,
+      motivo: "Aguarde a conclusão da isenção das mensalidades antes de reativar o aluno.",
+    }
   if (!atualizado)
     return {
       ok: false as const,
@@ -722,12 +762,25 @@ export async function atualizarAluno(
 
   if (
     params.fotoUrl !== undefined &&
-    (atual.fotoUrl !== atualizado.fotoUrl || atual.usuario.fotoUrl !== atualizado.usuario.fotoUrl)
+    (atual.fotoUrl !== atualizado.aluno.fotoUrl ||
+      atual.usuario.fotoUrl !== atualizado.aluno.usuario.fotoUrl)
   ) {
-    await excluirFotosInternasAntigas([atual.fotoUrl, atual.usuario.fotoUrl], atualizado.fotoUrl)
+    await excluirFotosInternasAntigas(
+      [atual.fotoUrl, atual.usuario.fotoUrl],
+      atualizado.aluno.fotoUrl,
+    )
   }
 
-  return { ok: true as const, aluno: atualizado }
+  const isencao = atualizado.operacaoId
+    ? await processarIsencoesTrancamento({ operacaoId: atualizado.operacaoId }).catch(() => ({
+        ok: false,
+      }))
+    : null
+  return {
+    ok: true as const,
+    aluno: atualizado.aluno,
+    isencaoPendente: isencao ? !isencao.ok : false,
+  }
 }
 
 export async function excluirAluno(params: { alunoId: string; autorId: string }) {
@@ -772,7 +825,29 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
     }
   }
 
-  await db.$transaction(async (tx) => {
+  const exclusao = await db.$transaction(async (tx) => {
+    // Serializa com novas operações de isenção e cobranças de reativação.
+    await tx.$queryRaw`SELECT "id" FROM "Mensalidade" WHERE "alunoId" = ${aluno.id} ORDER BY "id" FOR UPDATE`
+    await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${aluno.id} FOR UPDATE`
+    const isencaoPendente = await tx.operacaoIsencaoTrancamento.findFirst({
+      where: { alunoId: aluno.id, status: { in: ["PENDENTE", "PROCESSANDO"] } },
+      select: { id: true },
+    })
+    if (isencaoPendente)
+      return {
+        ok: false as const,
+        motivo: "Aguarde a conclusão da isenção pendente antes de excluir o aluno.",
+      }
+    const historicoReativacao = await tx.cobrancaReativacaoAsaas.findFirst({
+      where: { alunoId: aluno.id },
+      select: { id: true },
+    })
+    if (historicoReativacao)
+      return {
+        ok: false as const,
+        motivo:
+          "Não é possível excluir o aluno porque existe histórico de cobrança de reativação. Procure a gestão para análise.",
+      }
     await tx.usuario.delete({ where: { id: aluno.usuario.id } })
     await registrarLog(
       {
@@ -806,7 +881,10 @@ export async function excluirAluno(params: { alunoId: string; autorId: string })
       },
       tx,
     )
+    return { ok: true as const }
   })
+
+  if (!exclusao.ok) return exclusao
 
   await excluirFotosInternasAntigas([aluno.fotoUrl, aluno.usuario.fotoUrl], null)
 
@@ -933,6 +1011,25 @@ export async function atualizarStatusTipoAluno(params: {
       )
     )
       return null
+    await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${params.alunoId} FOR UPDATE`
+    const statusAtual = await tx.aluno.findUnique({
+      where: { id: params.alunoId },
+      select: { status: true },
+    })
+    if (
+      statusAtual?.status !== params.status &&
+      (await tx.cobrancaReativacaoAsaas.findFirst({
+        where: { alunoId: params.alunoId, ativa: true },
+        select: { id: true },
+      }))
+    )
+      return "cobranca_reativacao_pendente" as const
+    if (params.status !== "TRANCADO" && (await isencaoTrancamentoPendente(tx, params.alunoId)))
+      return "isencao_pendente" as const
+    const operacao =
+      params.status === "TRANCADO" && statusAtual?.status !== "TRANCADO"
+        ? await agendarIsencaoTrancamento(tx, params.alunoId, params.autorId)
+        : null
     const novo = await tx.aluno.update({
       where: { id: params.alunoId },
       data: {
@@ -970,9 +1067,20 @@ export async function atualizarStatusTipoAluno(params: {
       )
     }
 
-    return novo
+    return { aluno: novo, operacaoId: operacao?.id }
   })
 
+  if (atualizado === "cobranca_reativacao_pendente")
+    return {
+      ok: false as const,
+      motivo:
+        "Há uma cobrança de reativação em andamento. Aguarde a conciliação antes de alterar o status.",
+    }
+  if (atualizado === "isencao_pendente")
+    return {
+      ok: false as const,
+      motivo: "Aguarde a conclusão da isenção das mensalidades antes de reativar o aluno.",
+    }
   if (!atualizado)
     return {
       ok: false as const,
@@ -980,7 +1088,16 @@ export async function atualizarStatusTipoAluno(params: {
       exigeConfirmacaoTrancamento: true as const,
     }
 
-  return { ok: true as const, aluno: atualizado }
+  const isencao = atualizado.operacaoId
+    ? await processarIsencoesTrancamento({ operacaoId: atualizado.operacaoId }).catch(() => ({
+        ok: false,
+      }))
+    : null
+  return {
+    ok: true as const,
+    aluno: atualizado.aluno,
+    isencaoPendente: isencao ? !isencao.ok : false,
+  }
 }
 
 export async function atualizarObservacoesTecnicas(params: {

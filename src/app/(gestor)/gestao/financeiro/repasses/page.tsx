@@ -192,6 +192,32 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     },
   })
 
+  const reativacoesPromise = db.cobrancaReativacaoAsaas.findMany({
+    where: {
+      status: "RECEBIDA",
+      recebidaEmAsaas: { gte: inicio, lt: fim },
+    },
+    select: {
+      id: true,
+      competencia: true,
+      valor: true,
+      taxaAsaas: true,
+      recebidaEmAsaas: true,
+      estornoParcialPendenteEm: true,
+      atualizadoEm: true,
+      repasseSnapshot: true,
+      aluno: { select: { usuario: { select: { nome: true } } } },
+      splits: {
+        select: {
+          valorFixoSnapshot: true,
+          status: true,
+          motivo: true,
+          contaAsaasProfessor: { select: { professorId: true } },
+        },
+      },
+    },
+  })
+
   const [mensalidades, registrosExternos, custosMensais, exclusoesExternas, outrasReceitas] =
     await Promise.all([
       db.mensalidade.findMany({
@@ -319,7 +345,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       db.exclusaoRepasseExternoMensal.findMany({ where: { competencia: mesRepasse } }),
       obterOutrasReceitasMensais(mesRepasse),
     ])
-  const aulasAvulsas = await aulasAvulsasPromise
+  const [aulasAvulsas, reativacoes] = await Promise.all([aulasAvulsasPromise, reativacoesPromise])
 
   const linhas = new Map<string, LinhaRepasse>()
   const pendencias: PendenciaRepasse[] = []
@@ -328,6 +354,17 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
   let totalTaxasAsaas = 0
   let totalReservadoPendente = 0
   const extrato: LinhaExtratoRepasse[] = []
+
+  for (const reativacao of reativacoes) {
+    if (reativacao.estornoParcialPendenteEm) {
+      pendencias.push({
+        chave: `reativacao-estorno:${reativacao.id}`,
+        origem: "Reativação de matrícula",
+        referencia: reativacao.aluno.usuario.nome,
+        motivo: "Estorno parcial pendente de conciliação; receita bruta e repasse exigem revisão.",
+      })
+    }
+  }
 
   function somarLinha(
     params: Omit<
@@ -359,7 +396,31 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
     linhas.set(chave, atual)
   }
 
-  for (const mensalidade of mensalidades) {
+  // A cobrança de reativação pode coexistir com a mensalidade isenta da competência.
+  // Ela é uma receita separada, mas segue a mesma regra de repasse de mensalidade.
+  const recebimentos = [
+    ...mensalidades,
+    ...reativacoes.map((reativacao) => ({
+      id: `reativacao:${reativacao.id}`,
+      competencia: reativacao.competencia,
+      valor: reativacao.valor,
+      status: "PAGA" as const,
+      formaPagamento: "PIX_ASAAS",
+      pagoEm: reativacao.recebidaEmAsaas,
+      atualizadoEm: reativacao.atualizadoEm,
+      repasseSnapshot: reativacao.repasseSnapshot,
+      aluno: { ...reativacao.aluno, modalidadesPlano: [] },
+      cobrancaQuitacaoAsaas: {
+        id: reativacao.id,
+        valorCobrado: reativacao.valor,
+        taxaAsaas: reativacao.taxaAsaas,
+        cobrancaFamilia: null,
+        splits: reativacao.splits,
+      },
+    })),
+  ]
+
+  for (const mensalidade of recebimentos) {
     const quitacao = mensalidade.cobrancaQuitacaoAsaas
     const splits = quitacao?.cobrancaFamilia
       ? splitsAlocacaoFamilia(quitacao.id, quitacao.cobrancaFamilia)

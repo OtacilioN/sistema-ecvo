@@ -184,6 +184,7 @@ describe("registrarMensalidadeInicialPaga", () => {
         findMany: async () => [],
         updateMany: async () => ({ count: 0 }),
       },
+      operacaoIsencaoTrancamento: { findFirst: async () => null },
       logAuditoria: {
         create: async (params: { data: Record<string, unknown> }) => {
           logs.push(params.data)

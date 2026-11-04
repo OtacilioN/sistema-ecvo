@@ -93,6 +93,7 @@ export function FormDadosAluno({
   const [confirmacaoAberta, setConfirmacaoAberta] = useState(false)
   const [ciente, setCiente] = useState(false)
   const [frase, setFrase] = useState("")
+  const [statusSelecionado, setStatusSelecionado] = useState(aluno.status)
   const fecharConfirmacao = useCallback(() => {
     setConfirmacaoAberta(false)
     setCiente(false)
@@ -169,13 +170,31 @@ export function FormDadosAluno({
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="status-aluno">Status</Label>
-        <Select id="status-aluno" name="status" defaultValue={aluno?.status ?? "ATIVO"}>
+        <Select
+          id="status-aluno"
+          name="status"
+          value={statusSelecionado}
+          onChange={(event) =>
+            setStatusSelecionado(event.currentTarget.value as AlunoParaEdicao["status"])
+          }
+        >
           {STATUS_ALUNO.map((item) => (
             <option key={item} value={item}>
               {ROTULO_STATUS[item]}
             </option>
           ))}
         </Select>
+        {statusSelecionado === "TRANCADO" && aluno.status !== "TRANCADO" && (
+          <p className="text-xs text-muted-foreground">
+            As mensalidades em aberto, inclusive vencidas, serão isentas após o cancelamento das
+            cobranças aplicáveis. O Pix Automático será cancelado, se houver.
+          </p>
+        )}
+        {statusSelecionado !== "TRANCADO" && aluno.status === "TRANCADO" && (
+          <p className="text-xs text-muted-foreground">
+            Ao alterar o status, um PIX de reativação pendente será cancelado antes de salvar.
+          </p>
+        )}
       </div>
       <div className="space-y-1.5 sm:col-span-2">
         <Label htmlFor="planoId-aluno">Plano de pagamento</Label>

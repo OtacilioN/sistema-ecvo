@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => {
   const tx = {
     $queryRaw: vi.fn(),
     aluno: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
+    operacaoIsencaoTrancamento: { findFirst: vi.fn() },
     alunoPlanoModalidade: { upsert: vi.fn() },
     plano: { findFirst: vi.fn() },
     mensalidade: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -20,6 +21,10 @@ const mocks = vi.hoisted(() => {
 })
 vi.mock("@/lib/db", () => ({ db: mocks.db }))
 vi.mock("@/lib/services/auditoria.service", () => ({ registrarLog: mocks.registrarLog }))
+vi.mock("@/lib/services/isencao-trancamento.service", () => ({
+  agendarIsencaoTrancamento: vi.fn().mockResolvedValue({ id: "operacao-1" }),
+  processarIsencoesTrancamento: vi.fn().mockResolvedValue({ ok: true }),
+}))
 
 import {
   efetivarReativacaoMatricula,

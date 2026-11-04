@@ -124,6 +124,38 @@ async function bloquearMensalidadeFinanceira(tx: Prisma.TransactionClient, mensa
 const MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO =
   "Há uma cobrança Asaas em processamento. Concilie ou cancele a cobrança no Asaas antes de alterar a mensalidade manualmente."
 
+const MOTIVO_ISENCAO_EM_ANDAMENTO =
+  "A isenção do trancamento está em processamento. Aguarde a conclusão antes de alterar a mensalidade."
+const MOTIVO_REABERTURA_ISENCAO =
+  "Não é possível alterar ou reabrir a mensalidade isenta enquanto a matrícula estiver trancada ou houver cobrança de reativação ativa."
+
+// A mensalidade deve estar bloqueada antes do aluno, na mesma ordem do trancamento.
+async function bloqueioAlteracaoManualPorTrancamento(
+  tx: Prisma.TransactionClient,
+  params: { alunoId: string; reabrindoIsenta?: boolean },
+) {
+  await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${params.alunoId} FOR UPDATE`
+  const [aluno, operacao, cobranca] = await Promise.all([
+    params.reabrindoIsenta
+      ? tx.aluno.findUnique({ where: { id: params.alunoId }, select: { status: true } })
+      : null,
+    tx.operacaoIsencaoTrancamento.findFirst({
+      where: { alunoId: params.alunoId, status: { in: ["PENDENTE", "PROCESSANDO"] } },
+      select: { id: true },
+    }),
+    params.reabrindoIsenta
+      ? tx.cobrancaReativacaoAsaas.findFirst({
+          where: { alunoId: params.alunoId, ativa: true },
+          select: { id: true },
+        })
+      : null,
+  ])
+  if (operacao) return MOTIVO_ISENCAO_EM_ANDAMENTO
+  if (params.reabrindoIsenta && (aluno?.status === "TRANCADO" || cobranca))
+    return MOTIVO_REABERTURA_ISENCAO
+  return null
+}
+
 export const CONFIGURACAO_REPASSE_PADRAO: ConfiguracaoRepasseFinanceiro = {
   valorBaseModalidade: 100,
   percentualProfessor: 60,
@@ -1296,7 +1328,7 @@ export async function gerarMensalidade(params: {
   competencia: string
   autorId?: string
 }) {
-  const resultado = await obterOuCriarMensalidade(params)
+  const resultado = await obterOuCriarMensalidade({ ...params, somenteOperacional: true })
   if (!resultado.ok) return resultado
   return { ok: true as const, mensalidade: resultado.mensalidade, criada: resultado.criada }
 }
@@ -1305,6 +1337,7 @@ async function obterOuCriarMensalidade(params: {
   alunoId: string
   competencia: string
   autorId?: string
+  somenteOperacional?: boolean
 }) {
   return db.$transaction((tx) => obterOuCriarMensalidadeNaTransacao(tx, params))
 }
@@ -1315,8 +1348,24 @@ export async function obterOuCriarMensalidadeNaTransacao(
     alunoId: string
     competencia: string
     autorId?: string
+    somenteOperacional?: boolean
   },
 ) {
+  if (params.somenteOperacional) {
+    await tx.$queryRaw`SELECT "id" FROM "Mensalidade" WHERE "alunoId" = ${params.alunoId} ORDER BY "id" FOR UPDATE`
+    await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${params.alunoId} FOR UPDATE`
+    const atual = await tx.aluno.findUnique({
+      where: { id: params.alunoId },
+      select: { status: true },
+    })
+    if (
+      !atual ||
+      !STATUS_ALUNO_OPERACIONAIS.includes(
+        atual.status as (typeof STATUS_ALUNO_OPERACIONAIS)[number],
+      )
+    )
+      return { ok: false as const, motivo: "Aluno não está ativo para geração de mensalidade." }
+  }
   const aluno = await tx.aluno.findUnique({
     where: { id: params.alunoId },
     include: {
@@ -1445,7 +1494,11 @@ export async function gerarMensalidadesRecorrentes(params?: { competencia?: stri
   const puladas: Array<{ alunoId: string; motivo: string }> = []
 
   for (const aluno of alunos) {
-    const resultado = await obterOuCriarMensalidade({ alunoId: aluno.id, competencia })
+    const resultado = await obterOuCriarMensalidade({
+      alunoId: aluno.id,
+      competencia,
+      somenteOperacional: true,
+    })
     if (!resultado.ok) {
       puladas.push({ alunoId: aluno.id, motivo: resultado.motivo })
       continue
@@ -1508,6 +1561,10 @@ async function baixarMensalidadeNaTransacao(
   }
 
   await bloquearMensalidadeFinanceira(tx, params.mensalidadeId)
+  const bloqueioTrancamento = await bloqueioAlteracaoManualPorTrancamento(tx, {
+    alunoId: mensalidade.alunoId,
+  })
+  if (bloqueioTrancamento) return { ok: false as const, motivo: bloqueioTrancamento }
   const cobrancasAtivas = await tx.cobrancaAsaas.findMany({
     where: { mensalidadeId: params.mensalidadeId, ativa: true },
     select: { ativa: true },
@@ -1710,6 +1767,11 @@ export async function atualizarStatusMensalidade(params: {
 
   const atualizada = await db.$transaction(async (tx) => {
     await bloquearMensalidadeFinanceira(tx, params.mensalidadeId)
+    const bloqueioTrancamento = await bloqueioAlteracaoManualPorTrancamento(tx, {
+      alunoId: mensalidade.alunoId,
+      reabrindoIsenta: mensalidade.status === "ISENTA",
+    })
+    if (bloqueioTrancamento) return { motivo: bloqueioTrancamento }
     const cobrancasAtivas = await tx.cobrancaAsaas.findMany({
       where: { mensalidadeId: params.mensalidadeId, ativa: true },
       select: { ativa: true },
@@ -1789,6 +1851,9 @@ export async function atualizarStatusMensalidade(params: {
 
   if (atualizada === ALTERACAO_MANUAL_BLOQUEADA) {
     return { ok: false as const, motivo: MOTIVO_COBRANCA_ASAAS_EM_ANDAMENTO }
+  }
+  if (atualizada && "motivo" in atualizada) {
+    return { ok: false as const, motivo: atualizada.motivo }
   }
   if (!atualizada) {
     return { ok: false as const, motivo: "A mensalidade foi alterada por outra operação." }

@@ -11,8 +11,9 @@ export const MOTIVO_CONTINGENCIA_SPLIT_ASAAS =
   "O Asaas recusou o split automático (invalid_action). O split foi desativado nesta cobrança; qualquer recebimento exige repasse manual."
 
 type AlvoCobranca =
-  | { cobrancaAsaasId: string; cobrancaMatriculaAsaasId?: never }
-  | { cobrancaAsaasId?: never; cobrancaMatriculaAsaasId: string }
+  | { cobrancaAsaasId: string; cobrancaMatriculaAsaasId?: never; cobrancaReativacaoAsaasId?: never }
+  | { cobrancaAsaasId?: never; cobrancaMatriculaAsaasId: string; cobrancaReativacaoAsaasId?: never }
+  | { cobrancaAsaasId?: never; cobrancaMatriculaAsaasId?: never; cobrancaReativacaoAsaasId: string }
 
 type SplitPersistido = {
   id: string
@@ -78,10 +79,11 @@ export async function prepararSplitsPagamento(
     externalReferenceCobranca: string
   },
 ) {
-  const where =
-    "cobrancaAsaasId" in params
-      ? { cobrancaAsaasId: params.cobrancaAsaasId }
-      : { cobrancaMatriculaAsaasId: params.cobrancaMatriculaAsaasId }
+  const where = params.cobrancaAsaasId
+    ? { cobrancaAsaasId: params.cobrancaAsaasId }
+    : params.cobrancaMatriculaAsaasId
+      ? { cobrancaMatriculaAsaasId: params.cobrancaMatriculaAsaasId }
+      : { cobrancaReativacaoAsaasId: params.cobrancaReativacaoAsaasId }
   const existentes = await tx.splitPagamentoAsaas.findMany({ where, orderBy: { criadoEm: "asc" } })
   if (existentes.length > 0) return existentes
 
@@ -321,6 +323,7 @@ export async function reconciliarSplitsWebhook(
         OR: [
           { cobrancaAsaas: { is: { asaasPaymentId: params.asaasPaymentId } } },
           { cobrancaMatriculaAsaas: { is: { asaasPaymentId: params.asaasPaymentId } } },
+          { cobrancaReativacaoAsaas: { is: { asaasPaymentId: params.asaasPaymentId } } },
         ],
       },
     })

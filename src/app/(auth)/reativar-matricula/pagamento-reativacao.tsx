@@ -14,10 +14,12 @@ import { Button } from "@/components/ui/button"
 
 export function PagamentoReativacao({
   mensalidadeId,
+  cobrancaReativacaoId,
   pixCopiaECola,
   qrCodeDataUrl,
 }: {
   mensalidadeId?: string
+  cobrancaReativacaoId?: string
   pixCopiaECola: string | null
   qrCodeDataUrl: string | null
 }) {
@@ -76,9 +78,12 @@ export function PagamentoReativacao({
           <BotaoEnviar className="w-full">Tentar gerar PIX novamente</BotaoEnviar>
         </form>
       )}
-      {mensalidadeId && (
+      {(mensalidadeId || cobrancaReativacaoId) && (
         <form action={verificar}>
-          <input type="hidden" name="mensalidadeId" value={mensalidadeId} />
+          {mensalidadeId && <input type="hidden" name="mensalidadeId" value={mensalidadeId} />}
+          {cobrancaReativacaoId && (
+            <input type="hidden" name="cobrancaReativacaoId" value={cobrancaReativacaoId} />
+          )}
           <BotaoEnviar variant="outline" className="w-full">
             <RefreshCw className="size-4" /> Já paguei, verificar
           </BotaoEnviar>

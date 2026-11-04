@@ -43,6 +43,7 @@ import { db } from "@/lib/db"
 import { resumoAdimplencia } from "@/lib/financeiro/adimplencia"
 import { calcularTaxaAsaas } from "@/lib/financeiro/taxa-asaas"
 import { registrarLog } from "@/lib/services/auditoria.service"
+import { aplicarPagamentoCobrancaReativacao } from "@/lib/services/cobranca-reativacao.service"
 import { aplicarStatusContaAsaasDoWebhook } from "@/lib/services/conta-asaas-professor.service"
 import {
   gerarMensalidade,
@@ -128,6 +129,17 @@ async function bloquearMensalidades(tx: Prisma.TransactionClient, ids: string[])
   )
 }
 
+// Usa a mesma ordem de locks do trancamento: mensalidades primeiro, aluno depois.
+async function isencaoPendenteParaCobranca(tx: Prisma.TransactionClient, alunoId: string) {
+  await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${alunoId} FOR UPDATE`
+  return Boolean(
+    await tx.operacaoIsencaoTrancamento.findFirst({
+      where: { alunoId, status: { in: ["PENDENTE", "PROCESSANDO"] } },
+      select: { id: true },
+    }),
+  )
+}
+
 async function voltarAlunoParaPixMensalAposContrato(
   tx: Prisma.TransactionClient,
   contrato: { id: string; alunoId: string },
@@ -165,6 +177,7 @@ function referenciaPagamentoEcvo(referencia?: string | null) {
       (referencia.startsWith("mensalidade:") ||
         referencia.startsWith("pixauto:") ||
         referencia.startsWith("pixauto-fallback:") ||
+        referencia.startsWith("ecvo-reativacao:") ||
         referencia.startsWith("matricula:")),
   )
 }
@@ -214,7 +227,7 @@ async function obterPagador(alunoId: string) {
   }
 }
 
-async function garantirClienteAsaas(alunoId: string, autorId: string | null = null) {
+export async function garantirClienteAsaas(alunoId: string, autorId: string | null = null) {
   const pagador = await obterPagador(alunoId)
   if (!pagador.ok) return pagador
   if (pagador.aluno.clienteAsaas?.asaasCustomerId) {
@@ -316,6 +329,12 @@ async function reservarIntencaoCobranca(dados: DadosIntencaoCobranca) {
     )
     if (!mensalidade || !STATUS_MENSALIDADE_COBRAVEL.includes(mensalidade.status as never)) {
       return { ok: false as const, motivo: "Esta mensalidade não aceita uma nova cobrança." }
+    }
+    if (await isencaoPendenteParaCobranca(tx, mensalidade.alunoId)) {
+      return {
+        ok: false as const,
+        motivo: "A isenção da matrícula trancada está em processamento.",
+      }
     }
 
     const ultima = await tx.cobrancaAsaas.findFirst({
@@ -1211,6 +1230,9 @@ async function prepararContratoPixAutomatico(params: {
     const contrato = await db.$transaction(async (tx) => {
       const mensalidadeIds = mensalidades.map((mensalidade) => mensalidade.id)
       await bloquearMensalidades(tx, mensalidadeIds)
+      if (await isencaoPendenteParaCobranca(tx, params.alunoId)) {
+        throw new ErroEscolhaPagamento("A isenção da matrícula trancada está em processamento.")
+      }
       const mensalidadesAtuais = await tx.mensalidade.findMany({
         where: { id: { in: mensalidadeIds } },
         select: {
@@ -1592,6 +1614,12 @@ async function reservarFallbackAutomatico(params: {
     )
     if (!mensalidade || !STATUS_MENSALIDADE_COBRAVEL.includes(mensalidade.status as never)) {
       return { ok: false as const, motivo: "Esta mensalidade não aceita uma nova cobrança." }
+    }
+    if (await isencaoPendenteParaCobranca(tx, mensalidade.alunoId)) {
+      return {
+        ok: false as const,
+        motivo: "A isenção da matrícula trancada está em processamento.",
+      }
     }
 
     const ultima = await tx.cobrancaAsaas.findFirst({
@@ -2190,6 +2218,51 @@ async function baixarMensalidadePeloAsaas(
       where: { id: cobranca.id },
       data: { status: "ERRO", ultimoErro: "Valor divergente no webhook." },
     })
+    return
+  }
+
+  // O recebimento pode chegar depois de uma isenção e do cancelamento remoto.
+  // Preserve ambos os fatos e sinalize a conciliação, sem reabrir a mensalidade.
+  if (mensalidade.status === "ISENTA") {
+    const motivo = "Pagamento identificado após isenção; conciliação manual necessária."
+    await tx.cobrancaAsaas.update({
+      where: { id: cobranca.id },
+      data: { ultimoErro: motivo, pixCopiaECola: null, qrCodeExpiraEm: null },
+    })
+    await registrarLog(
+      {
+        autorId: null,
+        acao: "PAGAMENTO",
+        entidade: "CobrancaAsaas",
+        entidadeId: cobranca.id,
+        valorNovo: {
+          mensalidadeId: mensalidade.id,
+          competencia: mensalidade.competencia,
+          statusMensalidade: mensalidade.status,
+          valorRecebido:
+            webhook.payment?.value ?? Number(cobranca.valorCobrado ?? mensalidade.valor),
+          evento: webhook.id,
+        },
+        justificativa: motivo,
+      },
+      tx,
+    )
+    const gestores = await tx.usuario.findMany({
+      where: { papel: "GESTOR", ativo: true },
+      select: { id: true },
+    })
+    if (gestores.length > 0) {
+      await tx.notificacao.createMany({
+        data: gestores.map((gestor) => ({
+          usuarioId: gestor.id,
+          tipo: "FINANCEIRO" as const,
+          titulo: "Pagamento em mensalidade isenta",
+          mensagem: `${mensalidade.competencia}: há pagamento identificado após a isenção. Concilie a cobrança.`,
+          chaveDeduplicacao: `pagamento-isenta:${cobranca.id}:${gestor.id}`,
+        })),
+        skipDuplicates: true,
+      })
+    }
     return
   }
 
@@ -2946,14 +3019,14 @@ export function cancelarCobrancaAsaasPendente(params: { cobrancaId: string; auto
 
 export function cancelarCobrancaAsaasAntesDeBaixaManual(params: {
   cobrancaId: string
-  autorId: string
+  autorId: string | null
 }) {
   return cancelarCobrancaAsaasOperacional(params, {
     permitirVinculadaAoPixAutomatico: true,
   })
 }
 
-export async function cancelarPixAutomatico(params: { alunoId: string; autorId: string }) {
+export async function cancelarPixAutomatico(params: { alunoId: string; autorId: string | null }) {
   const contrato = await db.contratoPixAutomatico.findFirst({
     where: {
       alunoId: params.alunoId,
@@ -3235,6 +3308,14 @@ async function aplicarWebhookAsaas(webhook: WebhookAsaas) {
     }
 
     if (webhook.payment && statusPagamento) {
+      const reativacao = await aplicarPagamentoCobrancaReativacao(tx, webhook)
+      if (reativacao) {
+        if (!reativacao.ok) {
+          await tx.eventoWebhookAsaas.delete({ where: { asaasEventId: webhook.id } })
+          return { ok: false as const, duplicado: false, motivo: reativacao.motivo }
+        }
+        return { ok: true as const, duplicado: false }
+      }
       const matriculaIdentificada = await tx.cobrancaMatriculaAsaas.findFirst({
         where: {
           OR: [

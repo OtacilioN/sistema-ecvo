@@ -971,6 +971,16 @@ async function reservarComplementoAulaAvulsa(alunoId: string, agora: Date) {
     if (!acesso || !["ATIVO", "USADO"].includes(acesso.status) || acesso.aluno.tipo !== "AVULSO") {
       return { ok: false as const, motivo: "A mensalidade desta aula avulsa já foi fechada." }
     }
+    await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${alunoId} FOR UPDATE`
+    const [alunoAtual, isencaoPendente] = await Promise.all([
+      tx.aluno.findUnique({ where: { id: alunoId }, select: { status: true } }),
+      tx.operacaoIsencaoTrancamento.findFirst({
+        where: { alunoId, status: { in: ["PENDENTE", "PROCESSANDO"] } },
+        select: { id: true },
+      }),
+    ])
+    if (!alunoAtual || alunoAtual.status === "TRANCADO" || isencaoPendente)
+      return { ok: false as const, motivo: "A matrícula está trancada ou em processo de isenção." }
     if (acesso.aluno.planoId) {
       return { ok: false as const, motivo: "O aluno já possui um plano mensal vinculado." }
     }
@@ -1513,6 +1523,14 @@ async function concluirConversaoAulaAvulsa(
 
   await tx.$queryRaw`SELECT "id" FROM "AcessoAulaAvulsa" WHERE "id" = ${acesso.id} FOR UPDATE`
   await tx.$queryRaw`SELECT "id" FROM "Aluno" WHERE "id" = ${aluno.id} FOR UPDATE`
+  const isencaoPendente = await tx.operacaoIsencaoTrancamento.findFirst({
+    where: { alunoId: aluno.id, status: { in: ["PENDENTE", "PROCESSANDO"] } },
+    select: { id: true },
+  })
+  if (isencaoPendente)
+    throw new Error(
+      "A isenção do trancamento está em andamento. A conversão será conciliada após sua conclusão.",
+    )
   const [acessoAtual, alunoAtual] = await Promise.all([
     tx.acessoAulaAvulsa.findUnique({ where: { id: acesso.id }, select: { status: true } }),
     tx.aluno.findUnique({

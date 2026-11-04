@@ -91,6 +91,8 @@ function clienteFinanceiro(params?: {
       findMany: vi.fn(async () => []),
       updateMany: vi.fn(async () => ({ count: 0 })),
     },
+    operacaoIsencaoTrancamento: { findFirst: vi.fn(async () => null) },
+    cobrancaReativacaoAsaas: { findFirst: vi.fn(async () => null) },
     configuracaoAcademia: {
       findUnique: vi.fn(async () => ({ notificarFinanceiro: false })),
     },

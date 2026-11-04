@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   mensalidades: vi.fn(),
   aulasAvulsas: vi.fn(),
+  reativacoes: vi.fn(),
   registros: vi.fn(),
   exclusoes: vi.fn(),
   custosFixos: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("@/lib/db", () => ({
   db: {
     mensalidade: { findMany: mocks.mensalidades },
     cobrancaMatriculaAsaas: { findMany: mocks.aulasAvulsas },
+    cobrancaReativacaoAsaas: { findMany: mocks.reativacoes },
     registroImportado: { findMany: mocks.registros },
     exclusaoRepasseExternoMensal: { findMany: mocks.exclusoes },
   },
@@ -111,6 +113,7 @@ function registro(
 beforeEach(() => {
   mocks.mensalidades.mockResolvedValue([])
   mocks.aulasAvulsas.mockResolvedValue([])
+  mocks.reativacoes.mockResolvedValue([])
   mocks.registros.mockReset()
   mocks.exclusoes.mockResolvedValue([])
   mocks.custosFixos.mockReset().mockImplementation(async (competencia: string) => ({
@@ -175,6 +178,57 @@ describe("receita de aulas avulsas no repasse mensal", () => {
         }),
       ]),
     )
+  })
+
+  it("contabiliza reativação recebida e distribui pelo snapshot, sem contar a isenção", async () => {
+    const recebimento = {
+      id: "reativacao-1",
+      competencia: "2026-09",
+      valor: 100,
+      taxaAsaas: 1.99,
+      recebidaEmAsaas: new Date("2026-09-16T15:00:00Z"),
+      estornoParcialPendenteEm: null,
+      atualizadoEm: new Date("2026-09-16T15:00:00Z"),
+      aluno: { usuario: { nome: "Aluno reativado" } },
+      splits: [],
+      repasseSnapshot: [
+        {
+          modalidadeId: "muay-thai",
+          modalidadeNome: "Muay Thai",
+          professorId: "professor-1",
+          professorNome: "Professor 1",
+          plataformaExterna: null,
+          valorBase: 100,
+          valorRepasseProfessor: 60,
+        },
+      ],
+    }
+    mocks.reativacoes.mockResolvedValue([recebimento])
+
+    const pagina = await Page({ searchParams: Promise.resolve({ competencia: "2026-09" }) })
+
+    expect(mocks.reativacoes).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ status: "RECEBIDA" }) }),
+    )
+    expect(resumo(pagina, "Receita de mensalistas")).toMatch(/100,00$/)
+    expect(resumo(pagina, "Direito identificado dos professores")).toMatch(/60,00$/)
+    expect(resumo(pagina, "Taxas Asaas")).toMatch(/1,99$/)
+    expect(linhasExtrato(pagina)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Pagador: "Aluno reativado",
+          Recebido: expect.stringMatching(/100,00$/),
+        }),
+      ]),
+    )
+
+    mocks.reativacoes.mockResolvedValue([
+      { ...recebimento, estornoParcialPendenteEm: new Date("2026-09-17T15:00:00Z") },
+    ])
+    const paginaComEstorno = await Page({
+      searchParams: Promise.resolve({ competencia: "2026-09" }),
+    })
+    expect(textoPagina(paginaComEstorno)).toContain("Estorno parcial pendente de conciliação")
   })
 
   it("soma R$ 20 + complemento de R$ 80 sem contar R$ 100 novamente", async () => {

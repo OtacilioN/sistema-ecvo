@@ -29,6 +29,27 @@ export async function baixarMensalidadeManual(params: ParametrosBaixaManual) {
     return baixarMensalidade(params)
   }
 
+  const isencaoPendente = await db.operacaoIsencaoTrancamento.findFirst({
+    where: { alunoId: mensalidade.alunoId, status: { in: ["PENDENTE", "PROCESSANDO"] } },
+    select: { id: true },
+  })
+  if (isencaoPendente)
+    return {
+      ok: false as const,
+      motivo:
+        "A isenção do trancamento está em processamento. Aguarde a conclusão antes de alterar a mensalidade.",
+    }
+
+  let cobrancaEncerrada = false
+  let recorrenciaEncerrada = false
+  function informarCancelamentos(motivo: string) {
+    const avisos = [
+      cobrancaEncerrada ? "A cobrança PIX foi encerrada ou já estava encerrada." : "",
+      recorrenciaEncerrada ? "O cancelamento do PIX Automático foi confirmado." : "",
+    ].filter(Boolean)
+    return [motivo, ...avisos].join(" ")
+  }
+
   const cancelarRecorrencia = pixAutomaticoEmAndamento(mensalidade.contratoPixAutomatico?.status)
   if (cancelarRecorrencia && params.confirmarCancelamentoPixAutomatico !== true) {
     return {
@@ -57,6 +78,7 @@ export async function baixarMensalidadeManual(params: ParametrosBaixaManual) {
       autorId: params.autorId,
     })
     if (!cancelamento.ok) return cancelamento
+    cobrancaEncerrada = true
   }
 
   if (cancelarRecorrencia) {
@@ -64,10 +86,18 @@ export async function baixarMensalidadeManual(params: ParametrosBaixaManual) {
       alunoId: mensalidade.alunoId,
       autorId: params.autorId,
     })
-    if (!cancelamentoPixAutomatico.ok) return cancelamentoPixAutomatico
+    if (!cancelamentoPixAutomatico.ok)
+      return {
+        ...cancelamentoPixAutomatico,
+        motivo: informarCancelamentos(cancelamentoPixAutomatico.motivo),
+      }
+    recorrenciaEncerrada = true
   }
 
-  return baixarMensalidade(params)
+  const resultado = await baixarMensalidade(params)
+  if (!resultado.ok && (cobrancaEncerrada || recorrenciaEncerrada))
+    return { ...resultado, motivo: informarCancelamentos(resultado.motivo) }
+  return resultado
 }
 
 export async function darBaixaMensalidadeAlunoManual(params: {
