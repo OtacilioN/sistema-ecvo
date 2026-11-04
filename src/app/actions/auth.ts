@@ -73,7 +73,12 @@ export async function entrar(_anterior: EstadoLogin, formData: FormData): Promis
     }
     usuario.aluno.status = aluno.status
   }
-  await criarSessao({ sub: usuario.id, papel: usuario.papel, nome: usuario.nome })
+  await criarSessao({
+    sub: usuario.id,
+    papel: usuario.papel,
+    nome: usuario.nome,
+    versao: usuario.sessaoVersao,
+  })
   if (usuario.papel === "ALUNO" && usuario.aluno?.status === "TRANCADO") {
     redirect(ROTA_REATIVACAO_MATRICULA)
   }

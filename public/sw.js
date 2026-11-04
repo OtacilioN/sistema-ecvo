@@ -1,4 +1,4 @@
-const VERSAO = "ecvo-pwa-v1"
+const VERSAO = "ecvo-pwa-v3"
 const CACHE_APP = `${VERSAO}-app`
 const CACHE_PAGINAS = `${VERSAO}-pages`
 const CACHE_ESTATICOS = `${VERSAO}-static`
@@ -34,6 +34,12 @@ function ehArquivoEstatico(url, request) {
 
 function podeSalvar(response) {
   return response?.ok && response.type === "basic"
+}
+
+function ehPaginaSemCache(endereco) {
+  return ["/redefinir-senha"].includes(
+    new URL(endereco, self.location.origin).pathname.replace(/\/+$/, ""),
+  )
 }
 
 self.addEventListener("install", (event) => {
@@ -144,16 +150,19 @@ async function cacheFirst(request) {
 
 async function networkFirstPagina(request) {
   const cache = await caches.open(CACHE_PAGINAS)
+  // Estas páginas contêm segredos na URL. Nunca persista a resposta nem use
+  // uma cópia offline que contorne a expiração do acesso.
+  const permiteCache = !ehPaginaSemCache(request.url)
 
   try {
     const response = await fetch(request)
-    if (podeSalvar(response)) {
+    if (permiteCache && !ehPaginaSemCache(response.url) && podeSalvar(response)) {
       cache.put(request, response.clone())
     }
     return response
   } catch (_erro) {
-    const paginaSalva = await cache.match(request)
-    if (paginaSalva) return paginaSalva
+    const paginaSalva = permiteCache ? await cache.match(request) : null
+    if (paginaSalva && !ehPaginaSemCache(paginaSalva.url)) return paginaSalva
 
     const fallback = await caches.match("/offline")
     if (fallback) return fallback

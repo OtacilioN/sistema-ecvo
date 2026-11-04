@@ -13,6 +13,7 @@ export type SessaoPayload = {
   sub: string // id do Usuario
   papel: Papel
   nome: string
+  versao?: number
 }
 
 function chave() {

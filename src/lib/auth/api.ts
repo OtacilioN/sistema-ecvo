@@ -8,9 +8,9 @@ export async function obterUsuarioAtualApi() {
 
   const usuario = await db.usuario.findUnique({
     where: { id: sessao.sub },
-    select: { id: true, papel: true, ativo: true },
+    select: { id: true, papel: true, ativo: true, sessaoVersao: true },
   })
 
-  if (!usuario?.ativo) return null
+  if (!usuario?.ativo || (usuario.sessaoVersao ?? 0) !== (sessao.versao ?? 0)) return null
   return usuario
 }

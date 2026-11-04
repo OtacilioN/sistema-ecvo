@@ -66,6 +66,20 @@ autenticação própria (jose + bcrypt + DAL) · zod · Biome · Vitest · Playw
 `dev` · `build` · `start` · `lint` · `format` · `typecheck` · `test` · `test:e2e` ·
 `db:migrate` · `db:deploy` · `db:push` · `db:seed` · `db:studio`.
 
+## Recuperação de senha
+
+Alunos com conta ativa podem solicitar um link em “Esqueci minha senha” na tela de login.
+O link vale por uma hora, é de uso único e invalida as sessões anteriores ao ser utilizado.
+Entre solicitações para a mesma conta há um intervalo de cinco minutos. A resposta da tela
+é genérica; erros de configuração ou envio são registrados no servidor sem incluir o endereço
+ou o link.
+
+Para habilitar o envio, configure `RESEND_API_KEY`, `EMAIL_REMETENTE` (de um domínio
+verificado no Resend) e `NEXT_PUBLIC_APP_URL` (a URL pública HTTPS em produção). Aplique
+a migration de recuperação de senha antes de disponibilizar o código e teste a entrega com
+uma conta de teste. Solicitações de matrícula ainda não aprovadas não possuem conta de aluno
+e não entram nesse fluxo.
+
 ## Deploy na Vercel
 
 1. Conecte o repositório à Vercel e adicione a integração **Neon** (cria um banco por preview deploy).

@@ -51,7 +51,7 @@ export async function alterarSenhaPropria(params: {
   await db.$transaction(async (tx) => {
     await tx.usuario.update({
       where: { id: usuario.id },
-      data: { senhaHash },
+      data: { senhaHash, recuperacaoHash: null, recuperacaoExpiraEm: null },
       select: { id: true },
     })
 
@@ -192,7 +192,7 @@ export async function redefinirSenhaUsuario(params: {
   await db.$transaction(async (tx) => {
     await tx.usuario.update({
       where: { id: usuario.id },
-      data: { senhaHash },
+      data: { senhaHash, recuperacaoHash: null, recuperacaoExpiraEm: null },
       select: { id: true },
     })
 

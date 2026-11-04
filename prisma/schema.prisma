@@ -281,6 +281,10 @@ model Usuario {
   id                   String                 @id @default(cuid())
   email                String                 @unique
   senhaHash            String
+  sessaoVersao         Int                    @default(0)
+  recuperacaoHash      String?                @unique
+  recuperacaoExpiraEm  DateTime?
+  recuperacaoEnviadaEm DateTime?
   nome                 String
   fotoUrl              String?
   dataNascimento       DateTime?

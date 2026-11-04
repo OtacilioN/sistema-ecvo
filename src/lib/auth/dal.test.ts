@@ -20,7 +20,7 @@ vi.mock("@/lib/services/matricula-trancada.service", () => ({
   trancarAvulsosExpirados: mocks.trancar,
 }))
 
-import { exigirAluno, exigirAlunoTrancado, getUsuarioAtual } from "./dal"
+import { exigirAluno, exigirAlunoTrancado, getUsuarioAtual, sessaoOpcional } from "./dal"
 
 const usuario = {
   id: "usuario-1",
@@ -71,5 +71,40 @@ describe("acesso da matrícula trancada", () => {
     })
     await expect(exigirAlunoTrancado()).rejects.toThrow("redirect:/professor")
     expect(mocks.trancar).not.toHaveBeenCalled()
+  })
+})
+
+describe("revogação de sessão após recuperação de senha", () => {
+  it("bloqueia a sessão antiga antes de consultar ou alterar a matrícula", async () => {
+    mocks.lerSessao.mockResolvedValue({ sub: usuario.id, papel: "ALUNO", versao: 0 })
+    mocks.usuario.mockResolvedValue({ ...usuario, sessaoVersao: 1 })
+
+    await expect(getUsuarioAtual()).rejects.toThrow("redirect:/api/auth/sessao-invalida")
+    expect(await sessaoOpcional()).toBeNull()
+    expect(mocks.aluno).not.toHaveBeenCalled()
+    expect(mocks.trancar).not.toHaveBeenCalled()
+  })
+
+  it("também revoga cookies antigos que não possuem versão", async () => {
+    mocks.usuario.mockResolvedValue({ ...usuario, sessaoVersao: 1 })
+
+    await expect(getUsuarioAtual()).rejects.toThrow("redirect:/api/auth/sessao-invalida")
+    expect(await sessaoOpcional()).toBeNull()
+  })
+
+  it("preserva cookies sem versão enquanto a conta está na versão zero", async () => {
+    mocks.usuario.mockResolvedValue({ ...usuario, sessaoVersao: 0 })
+
+    expect((await getUsuarioAtual()).id).toBe(usuario.id)
+    expect(await sessaoOpcional()).toEqual({ sub: usuario.id, papel: "ALUNO" })
+  })
+
+  it("aceita uma sessão nova na versão atual", async () => {
+    const sessao = { sub: usuario.id, papel: "ALUNO", versao: 2 }
+    mocks.lerSessao.mockResolvedValue(sessao)
+    mocks.usuario.mockResolvedValue({ ...usuario, sessaoVersao: 2 })
+
+    expect((await getUsuarioAtual()).id).toBe(usuario.id)
+    expect(await sessaoOpcional()).toEqual(sessao)
   })
 })

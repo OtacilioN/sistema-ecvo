@@ -9,6 +9,13 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/redefinir-senha",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+      {
         source: "/sw.js",
         headers: [
           {

@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { type KeyboardEvent, useActionState } from "react"
 import { entrar } from "@/app/actions/auth"
 import { Button } from "@/components/ui/button"
@@ -46,6 +47,13 @@ export function LoginForm({ mensagemInicial }: { mensagemInicial?: string }) {
           placeholder="••••••••"
         />
       </div>
+
+      <Link
+        href="/esqueci-senha"
+        className="self-end text-sm font-medium text-primary hover:underline"
+      >
+        Esqueci minha senha
+      </Link>
 
       {(estado?.erro || mensagemInicial) && (
         <p className="text-sm text-destructive" role="alert">

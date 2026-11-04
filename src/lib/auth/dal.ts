@@ -33,7 +33,14 @@ export const verificarSessao = cache(async (): Promise<SessaoPayload> => {
 
 /** Retorna a sessão sem redirecionar (para checagens condicionais). */
 export const sessaoOpcional = cache(async (): Promise<SessaoPayload | null> => {
-  return lerSessao()
+  const sessao = await lerSessao()
+  if (!sessao?.sub) return null
+  const usuario = await db.usuario.findUnique({
+    where: { id: sessao.sub },
+    select: { ativo: true, sessaoVersao: true },
+  })
+  if (!usuario?.ativo || (usuario.sessaoVersao ?? 0) !== (sessao.versao ?? 0)) return null
+  return sessao
 })
 
 /** Carrega o usuário atual do banco (DTO enxuto — sem senha). */
@@ -48,11 +55,13 @@ const carregarUsuarioAtual = cache(async () => {
       fotoUrl: true,
       papel: true,
       ativo: true,
+      sessaoVersao: true,
       aluno: { select: { id: true, status: true } },
       professor: { select: { id: true } },
     },
   })
-  if (!usuario?.ativo) redirect(ROTA_SESSAO_INVALIDA)
+  if (!usuario?.ativo || (usuario.sessaoVersao ?? 0) !== (sessao.versao ?? 0))
+    redirect(ROTA_SESSAO_INVALIDA)
   if (
     usuario.papel === "ALUNO" &&
     usuario.aluno &&

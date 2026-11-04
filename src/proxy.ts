@@ -19,7 +19,7 @@ const PAPEIS_POR_PREFIXO: Record<string, string[]> = {
   "/aluno": ["ALUNO"],
 }
 
-const ROTAS_PUBLICAS = ["/login", "/matricula"]
+const ROTAS_PUBLICAS = ["/login", "/matricula", "/esqueci-senha", "/redefinir-senha"]
 const ROTAS_PWA = ["/manifest.webmanifest", "/offline", "/sw.js"]
 
 export async function proxy(req: NextRequest) {
@@ -41,7 +41,10 @@ export async function proxy(req: NextRequest) {
   const home = PREFIXO_POR_PAPEL[sessao.papel] ?? "/login"
 
   // Autenticado em rota pública ou raiz → manda para a home do papel.
-  if (ehPublica || pathname === "/") {
+  if (
+    (ehPublica && pathname !== "/esqueci-senha" && pathname !== "/redefinir-senha") ||
+    pathname === "/"
+  ) {
     return NextResponse.redirect(new URL(home, req.nextUrl))
   }
 
