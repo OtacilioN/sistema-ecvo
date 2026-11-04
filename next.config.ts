@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/gestao/checkin",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "private, no-store" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Permissions-Policy", value: "geolocation=(self)" },
+        ],
+      },
+      {
         source: "/redefinir-senha",
         headers: [
           { key: "Referrer-Policy", value: "no-referrer" },

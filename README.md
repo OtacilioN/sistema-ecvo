@@ -80,6 +80,32 @@ a migration de recuperação de senha antes de disponibilizar o código e teste 
 uma conta de teste. Solicitações de matrícula ainda não aprovadas não possuem conta de aluno
 e não entram nesse fluxo.
 
+## Chamada rápida para professores
+
+`/gestao/checkin` mostra um único total de **Alunos presentes**: todos os check-ins válidos,
+com ou sem agendamento. Gestor, Secretaria e Professor autenticados usam sua sessão normal;
+somente o Gestor mantém as ações de edição. Há atualização automática a cada 30 segundos
+enquanto a página está visível e um botão para atualizar imediatamente.
+
+Para habilitar a consulta sem login, configure `CHECKIN_CHAMADA_CHAVE` no ambiente do app
+(mínimo de 32 caracteres; gere com `openssl rand -hex 32`). O QR impresso deve apontar para
+`https://app.ecvo.com.br/gestao/checkin?acesso=VALOR_DA_CHAVE`. Não publique essa URL.
+Sem configuração, ou com chave inválida/ausente/repetida, o acesso exige login.
+
+O visitante confirma a localização pelo navegador (até **200 m** das coordenadas da academia
+em `src/lib/geolocalizacao.ts`, com precisão de até 200 m e coleta recente), depois digita
+a contra-senha **combate**. A confirmação da localização vale por dois minutos para concluir
+a entrada. A consulta é liberada por **30 minutos**, sempre exigindo a chave na URL;
+após expirar, deve repetir localização e contra-senha. Rotacionar a chave revoga as permissões
+existentes e exige atualizar o QR impresso. O cookie dessa consulta não é uma sessão de usuário.
+
+Essa entrada permite somente consultar nomes e situação de presença das aulas **de hoje**,
+sem observações, financeiro, fotos ou alterações nos check-ins. As demais rotas e subrotas,
+inclusive `/gestao/checkin/qrcode`, continuam exigindo os papéis habituais. A chamada não é
+armazenada no cache offline. A localização informada pelo dispositivo pode ser simulada;
+essas barreiras são adequadas a uma consulta restrita, mas não comprovam a identidade do professor.
+O raio de 300 m do check-in dos alunos permanece independente.
+
 ## Deploy na Vercel
 
 1. Conecte o repositório à Vercel e adicione a integração **Neon** (cria um banco por preview deploy).

@@ -25,6 +25,9 @@ const ROTAS_PWA = ["/manifest.webmanifest", "/offline", "/sw.js"]
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
   if (ROTAS_PWA.includes(pathname)) return NextResponse.next()
+  // Exceção exata: a página valida perfil OU chave do QR + permissão de chamada.
+  // Subrotas (inclusive /qrcode) continuam com a autenticação habitual.
+  if (pathname === "/gestao/checkin") return NextResponse.next()
 
   const token = req.cookies.get(COOKIE_SESSAO)?.value
   const sessao = await descriptografar(token)

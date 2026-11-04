@@ -1,18 +1,14 @@
 import { addDays, format } from "date-fns"
 import { fromZonedTime } from "date-fns-tz"
-import {
-  AlertTriangle,
-  Check,
-  CheckCheck,
-  Circle,
-  Clock3,
-  QrCode,
-  ShieldAlert,
-  UsersRound,
-} from "lucide-react"
+import { AlertTriangle, Check, Circle, Clock3, QrCode, ShieldAlert, UsersRound } from "lucide-react"
 import Link from "next/link"
 import { z } from "zod"
+import {
+  type OpcaoAulaCheckin,
+  SeletorAulaCheckin,
+} from "@/app/(gestor)/gestao/checkin/seletor-aula-checkin"
 import { AcoesCardAlunoCheckin } from "@/components/checkin/acoes-card-aluno"
+import { AtualizarChamada } from "@/components/checkin/atualizar-chamada"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
@@ -21,9 +17,9 @@ import {
   type ObservacaoTecnicaHistorico,
   ROTULO_STATUS_LINHA,
 } from "@/lib/aula-monitoramento"
-import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
 import { carregarMonitoramentoAula } from "@/lib/services/aula-monitoramento.service"
+import { carregarChamadaRapida } from "@/lib/services/chamada-rapida.service"
 import { cn } from "@/lib/utils"
 import {
   fimExclusivoDoDiaAcademia,
@@ -36,11 +32,12 @@ import {
   paraFusoAcademia,
   TIMEZONE,
 } from "@/lib/utils/datas"
-import { type OpcaoAulaCheckin, SeletorAulaCheckin } from "./seletor-aula-checkin"
 
-export const dynamic = "force-dynamic"
-
-type SearchParams = Promise<{ aulaId?: string | string[]; data?: string | string[] }>
+export type SearchParams = Promise<{
+  aulaId?: string | string[]
+  data?: string | string[]
+  acesso?: string | string[]
+}>
 
 type AulaDoDia = {
   id: string
@@ -58,13 +55,7 @@ type AulaDoDia = {
   }
 }
 
-type StatusPainel =
-  | "INADIMPLENTE"
-  | "PENDENTE_REVISAO"
-  | "CHECKIN_COMPARECIMENTO"
-  | "CHECKIN"
-  | "COMPARECIMENTO"
-  | "AUSENTE"
+type StatusPainel = "INADIMPLENTE" | "PENDENTE_REVISAO" | "CHECKIN" | "COMPARECIMENTO" | "AUSENTE"
 
 type LinhaPainel = {
   alunoId: string
@@ -80,7 +71,6 @@ type LinhaPainel = {
 const prioridadePainel: Record<StatusPainel, number> = {
   INADIMPLENTE: 0,
   PENDENTE_REVISAO: 1,
-  CHECKIN_COMPARECIMENTO: 2,
   CHECKIN: 3,
   COMPARECIMENTO: 4,
   AUSENTE: 5,
@@ -111,17 +101,9 @@ const visualPainel: Record<
     badgeClassName: "border-amber-700 bg-amber-700 text-white",
     Icone: Clock3,
   },
-  CHECKIN_COMPARECIMENTO: {
-    titulo: "Check-in + agendamento",
-    resumo: "Presença com agendamento",
-    className:
-      "border-emerald-500 bg-emerald-50 text-emerald-950 shadow-[0_12px_30px_rgba(16,185,129,0.22)] ring-2 ring-emerald-300/70",
-    badgeClassName: "border-emerald-700 bg-emerald-700 text-white",
-    Icone: CheckCheck,
-  },
   CHECKIN: {
-    titulo: "Check-in",
-    resumo: "Presente",
+    titulo: "Alunos presentes",
+    resumo: "Com check-in válido",
     className:
       "border-green-500 bg-green-50 text-green-950 shadow-[0_10px_24px_rgba(34,197,94,0.14)]",
     badgeClassName: "border-green-700 bg-green-700 text-white",
@@ -217,7 +199,7 @@ function montarLinhaPainel(
       ? `Check-in às ${formatarHora(linha.checkinRealizadoEm)}`
       : null
 
-  if (tentativaInadimplente) {
+  if (tentativaInadimplente && !temCheckin) {
     return {
       alunoId: linha.alunoId,
       nome: linha.nome,
@@ -248,26 +230,17 @@ function montarLinhaPainel(
     }
   }
 
-  if (temCheckin && temComparecimento) {
-    return {
-      alunoId: linha.alunoId,
-      nome: linha.nome,
-      statusPainel: "CHECKIN_COMPARECIMENTO",
-      badges: ["Check-in", "Agendamento", ...(badgeHorarioReal ? [badgeHorarioReal] : [])],
-      detalhe: "Presença confirmada e agendamento marcado.",
-      observacoesTecnicas: linha.observacoesTecnicas,
-      historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
-      totalTentativasInadimplencia: 0,
-    }
-  }
-
   if (temCheckin) {
     return {
       alunoId: linha.alunoId,
       nome: linha.nome,
       statusPainel: "CHECKIN",
-      badges: ["Check-in", ...(badgeHorarioReal ? [badgeHorarioReal] : [])],
-      detalhe: "Presença confirmada sem agendamento prévio.",
+      badges: [
+        "Check-in",
+        ...(temComparecimento ? ["Agendamento"] : []),
+        ...(badgeHorarioReal ? [badgeHorarioReal] : []),
+      ],
+      detalhe: "Presença confirmada.",
       observacoesTecnicas: linha.observacoesTecnicas,
       historicoObservacoesTecnicas: linha.historicoObservacoesTecnicas,
       totalTentativasInadimplencia: 0,
@@ -311,7 +284,6 @@ function contarPorStatus(linhas: LinhaPainel[]) {
     {
       INADIMPLENTE: 0,
       PENDENTE_REVISAO: 0,
-      CHECKIN_COMPARECIMENTO: 0,
       CHECKIN: 0,
       COMPARECIMENTO: 0,
       AUSENTE: 0,
@@ -319,16 +291,24 @@ function contarPorStatus(linhas: LinhaPainel[]) {
   )
 }
 
-export default async function CheckinGestaoPage({ searchParams }: { searchParams: SearchParams }) {
-  const usuario = await exigirGestao()
-  const podeEditar = usuario.papel === "GESTOR"
+export async function PainelChamada({
+  searchParams,
+  podeEditar,
+  acessoRapido = false,
+  mostrarQrCode = true,
+}: {
+  searchParams: SearchParams
+  podeEditar: boolean
+  acessoRapido?: boolean
+  mostrarQrCode?: boolean
+}) {
   const params = await searchParams
   const agora = new Date()
   const hojeAcademia = paraFusoAcademia(agora)
   const chaveHoje = format(hojeAcademia, "yyyy-MM-dd")
   const chaveOntem = format(addDays(hojeAcademia, -1), "yyyy-MM-dd")
   const dataValidada = z.iso.date().safeParse(parametroUnico(params.data))
-  const dataSelecionada = dataValidada.success ? dataValidada.data : chaveHoje
+  const dataSelecionada = !acessoRapido && dataValidada.success ? dataValidada.data : chaveHoje
   const diaSelecionado = fromZonedTime(`${dataSelecionada}T12:00:00`, TIMEZONE)
   const inicioDia = inicioDoDiaAcademia(diaSelecionado)
   const fimDia = fimExclusivoDoDiaAcademia(diaSelecionado)
@@ -351,7 +331,11 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
   })
 
   const aulaSelecionada = selecionarAulaPadrao(aulas, parametroUnico(params.aulaId), agora)
-  const monitoramento = aulaSelecionada ? await carregarMonitoramentoAula(aulaSelecionada.id) : null
+  const monitoramento = aulaSelecionada
+    ? await (acessoRapido
+        ? carregarChamadaRapida(aulaSelecionada.id)
+        : carregarMonitoramentoAula(aulaSelecionada.id))
+    : null
 
   const tentativasPorAluno = new Map(
     monitoramento?.tentativasInadimplentes.map((tentativa) => [tentativa.alunoId, tentativa]) ?? [],
@@ -400,13 +384,20 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
     <div className="space-y-6">
       <CabecalhoPagina
         titulo="Check-in"
-        descricao="Consulte as aulas por data, com presença, agendamento, inadimplência e ausências."
+        descricao={
+          acessoRapido
+            ? "Confira a chamada das aulas de hoje e compare o total de presentes com a turma."
+            : "Consulte as aulas por data, com presença, agendamento, inadimplência e ausências."
+        }
       >
-        <Button asChild variant="outline">
-          <Link href="/gestao/checkin/qrcode">
-            <QrCode className="size-4" /> Consultar QR Code
-          </Link>
-        </Button>
+        <AtualizarChamada />
+        {!acessoRapido && mostrarQrCode && (
+          <Button asChild variant="outline">
+            <Link href="/gestao/checkin/qrcode">
+              <QrCode className="size-4" /> Consultar QR Code
+            </Link>
+          </Button>
+        )}
       </CabecalhoPagina>
 
       <section className="grid gap-4 rounded-md border border-border bg-card p-4 shadow-sm xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -435,8 +426,8 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
             <>
               <h2 className="text-2xl font-black tracking-tight">Nenhuma aula nesta data</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {formatarDataExtenso(diaSelecionado)} · Selecione outra data para consultar os
-                check-ins.
+                {formatarDataExtenso(diaSelecionado)}
+                {!acessoRapido && " · Selecione outra data para consultar os check-ins."}
               </p>
             </>
           )}
@@ -447,20 +438,20 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
           dataSelecionada={formatarDataInput(diaSelecionado)}
           dataHoje={chaveHoje}
           dataOntem={chaveOntem}
+          somenteHoje={acessoRapido}
         />
       </section>
 
       {aulaSelecionada && (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
             {(
               [
-                "INADIMPLENTE",
-                "PENDENTE_REVISAO",
-                "CHECKIN_COMPARECIMENTO",
                 "CHECKIN",
+                "PENDENTE_REVISAO",
                 "COMPARECIMENTO",
                 "AUSENTE",
+                ...(!acessoRapido ? ["INADIMPLENTE" as const] : []),
               ] as const
             ).map((status) => {
               const visual = visualPainel[status]
@@ -468,13 +459,25 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
               return (
                 <div
                   key={status}
-                  className={cn("rounded-md border p-3 shadow-sm", visual.className)}
+                  className={cn(
+                    "rounded-md border p-3 shadow-sm",
+                    visual.className,
+                    status === "CHECKIN" &&
+                      "border-green-600 ring-2 ring-green-300 sm:col-span-2 xl:col-span-1",
+                  )}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs font-bold uppercase">{visual.titulo}</span>
                     <Icone className="size-4" />
                   </div>
-                  <p className="mt-2 text-3xl font-black tabular-nums">{contadores[status]}</p>
+                  <p
+                    className={cn(
+                      "mt-2 text-3xl font-black tabular-nums",
+                      status === "CHECKIN" && "text-5xl",
+                    )}
+                  >
+                    {contadores[status]}
+                  </p>
                   <p className="text-xs font-medium opacity-75">{visual.resumo}</p>
                 </div>
               )
@@ -488,8 +491,9 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
                   <UsersRound className="size-4" /> Alunos da aula
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Ordenado por inadimplência, revisão, check-in com agendamento, check-in,
-                  agendamento e ausentes.
+                  {acessoRapido
+                    ? "Confira quem fez check-in e quem ainda está sem presença confirmada."
+                    : "Ordenado por inadimplência, revisão, check-in, agendamento e ausentes."}
                 </p>
               </div>
               <Badge variant="secondary">{linhasPainel.length} aluno(s)</Badge>
@@ -515,17 +519,14 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
                             <div className="flex size-10 items-center justify-center rounded-md bg-white/70">
                               <Icone className="size-5" />
                             </div>
-                            {podeEditar && (
+                            {podeEditar && !acessoRapido && (
                               <AcoesCardAlunoCheckin
                                 aulaId={aulaSelecionada.id}
                                 alunoId={linha.alunoId}
                                 nome={linha.nome}
                                 observacoesTecnicas={linha.observacoesTecnicas}
                                 historicoObservacoesTecnicas={linha.historicoObservacoesTecnicas}
-                                checkinLancado={
-                                  linha.statusPainel === "CHECKIN" ||
-                                  linha.statusPainel === "CHECKIN_COMPARECIMENTO"
-                                }
+                                checkinLancado={linha.statusPainel === "CHECKIN"}
                               />
                             )}
                           </div>
@@ -547,7 +548,7 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
 
                       <div className="mt-5 space-y-2">
                         <p className="text-sm font-semibold">{linha.detalhe}</p>
-                        {linha.observacoesTecnicas && (
+                        {!acessoRapido && linha.observacoesTecnicas && (
                           <p className="line-clamp-2 rounded-md bg-white/60 px-2 py-1 text-xs">
                             {linha.observacoesTecnicas}
                           </p>
@@ -566,7 +567,7 @@ export default async function CheckinGestaoPage({ searchParams }: { searchParams
         </>
       )}
 
-      {monitoramento && monitoramento.tentativasInadimplentes.length > 0 && (
+      {!acessoRapido && monitoramento && monitoramento.tentativasInadimplentes.length > 0 && (
         <section className="rounded-md border border-red-200 bg-red-50 p-4 text-red-950">
           <h2 className="flex items-center gap-2 text-sm font-bold uppercase">
             <AlertTriangle className="size-4" /> Bloqueios por inadimplência

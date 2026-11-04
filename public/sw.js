@@ -37,7 +37,7 @@ function podeSalvar(response) {
 }
 
 function ehPaginaSemCache(endereco) {
-  return ["/redefinir-senha"].includes(
+  return ["/gestao/checkin", "/redefinir-senha"].includes(
     new URL(endereco, self.location.origin).pathname.replace(/\/+$/, ""),
   )
 }

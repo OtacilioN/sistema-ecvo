@@ -1,19 +1,22 @@
+import * as React from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => ({
-  exigirGestao: vi.fn(),
   findMany: vi.fn(),
   carregarMonitoramentoAula: vi.fn(),
 }))
 
-vi.mock("@/lib/auth/dal", () => ({ exigirGestao: mocks.exigirGestao }))
 vi.mock("@/lib/db", () => ({ db: { aula: { findMany: mocks.findMany } } }))
 vi.mock("@/lib/services/aula-monitoramento.service", () => ({
   carregarMonitoramentoAula: mocks.carregarMonitoramentoAula,
 }))
 vi.mock("@/components/checkin/acoes-card-aluno", () => ({ AcoesCardAlunoCheckin: () => null }))
 
-import Page from "./page"
+import { PainelChamada } from "./painel-chamada"
+
+function Page({ searchParams }: Pick<Parameters<typeof PainelChamada>[0], "searchParams">) {
+  return PainelChamada({ searchParams, podeEditar: true })
+}
 
 describe("consulta de check-ins por data", () => {
   beforeEach(() => {
@@ -21,18 +24,18 @@ describe("consulta de check-ins por data", () => {
     // Já é dia 22 em UTC, mas ainda é dia 21 no fuso da academia.
     vi.setSystemTime(new Date("2026-10-22T01:00:00Z"))
     vi.clearAllMocks()
-    mocks.exigirGestao.mockResolvedValue({ papel: "GESTOR" })
+    vi.stubGlobal("React", React)
     mocks.findMany.mockResolvedValue([])
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    vi.unstubAllGlobals()
   })
 
   it("usa o dia atual da academia quando não há filtro", async () => {
     await Page({ searchParams: Promise.resolve({}) })
 
-    expect(mocks.exigirGestao).toHaveBeenCalled()
     expect(mocks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

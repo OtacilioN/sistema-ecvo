@@ -49,6 +49,7 @@ export const NAV_SECRETARIA: ItemNav[] = NAV_GESTOR.filter(
 
 export const NAV_PROFESSOR: ItemNav[] = [
   { href: "/professor", rotulo: "Início", icone: <LayoutDashboard className={ic} /> },
+  { href: "/gestao/checkin", rotulo: "Chamada", icone: <ClipboardCheck className={ic} /> },
   { href: "/professor/turmas", rotulo: "Minhas aulas", icone: <CalendarDays className={ic} /> },
   { href: "/professor/graduacoes", rotulo: "Graduações", icone: <Award className={ic} /> },
   { href: "/professor/financeiro", rotulo: "Financeiro", icone: <CreditCard className={ic} /> },
