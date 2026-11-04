@@ -985,7 +985,7 @@ function vinculosCobrancaModalidade(params: {
 
 export async function atualizarStatusTipoAluno(params: {
   alunoId: string
-  tipo: TipoAluno
+  tipo?: TipoAluno
   status: StatusAluno
   autorId: string
   confirmacaoTrancamento?: ConfirmacaoTrancamento
@@ -1033,13 +1033,13 @@ export async function atualizarStatusTipoAluno(params: {
     const novo = await tx.aluno.update({
       where: { id: params.alunoId },
       data: {
-        tipo: params.tipo,
+        ...(params.tipo ? { tipo: params.tipo } : {}),
         status: params.status,
       },
       select: { id: true, tipo: true, status: true },
     })
 
-    if (aluno.tipo !== novo.tipo) {
+    if (params.tipo && aluno.tipo !== novo.tipo) {
       await registrarLog(
         {
           autorId: params.autorId,

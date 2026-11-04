@@ -5,17 +5,21 @@ import {
   FileText,
   ImagePlus,
   KeyRound,
+  LockKeyhole,
   Pencil,
   Plus,
   Trash2,
   WalletCards,
 } from "lucide-react"
-import { useState } from "react"
-import { acaoExcluirAluno } from "@/app/actions/cadastros"
+import { useRouter } from "next/navigation"
+import { useActionState, useEffect, useState } from "react"
+import { acaoAtualizarStatusTipoAluno, acaoExcluirAluno } from "@/app/actions/cadastros"
 import { FormRedefinirSenhaUsuario } from "@/components/auth/form-redefinir-senha-usuario"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
 import { DialogoConfirmacao } from "@/components/ui/dialogo-confirmacao"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { ItemMenu, MenuAcoes, SeparadorMenu } from "@/components/ui/menu-acoes"
 import { FormFotoUsuarioGestor } from "@/components/usuarios/form-foto-usuario"
 import type { StatusAlunoDominio } from "@/lib/alunos/status"
@@ -134,7 +138,16 @@ export function BotaoNovoAluno({
   )
 }
 
-type Painel = "editar" | "foto" | "senha" | "horas" | "pagamento" | "documento" | "excluir" | null
+type Painel =
+  | "editar"
+  | "foto"
+  | "senha"
+  | "horas"
+  | "pagamento"
+  | "documento"
+  | "trancar"
+  | "excluir"
+  | null
 
 /** Menu de ações por linha da tabela de alunos. */
 export function AcoesAluno({
@@ -218,6 +231,17 @@ export function AcoesAluno({
                   Anexar documento
                 </ItemMenu>
                 <SeparadorMenu />
+                {aluno.status !== "TRANCADO" && (
+                  <ItemMenu
+                    icone={LockKeyhole}
+                    onClick={() => {
+                      fecharMenu()
+                      setPainel("trancar")
+                    }}
+                  >
+                    Trancar aluno
+                  </ItemMenu>
+                )}
                 <ItemMenu
                   icone={Trash2}
                   variante="destructive"
@@ -320,6 +344,8 @@ export function AcoesAluno({
         <FormDocumentoAluno aluno={{ id: aluno.id, nome: aluno.nome }} aoConcluir={fechar} />
       </Dialog>
 
+      {painel === "trancar" && <DialogTrancarAluno aluno={aluno} aoFechar={fechar} />}
+
       <DialogoConfirmacao
         aberto={painel === "excluir"}
         aoFechar={fechar}
@@ -337,5 +363,96 @@ export function AcoesAluno({
         }
       />
     </>
+  )
+}
+
+function DialogTrancarAluno({ aluno, aoFechar }: { aluno: AlunoLinha; aoFechar: () => void }) {
+  const router = useRouter()
+  const [estado, acao, pendente] = useActionState(acaoAtualizarStatusTipoAluno, undefined)
+  const [ciente, setCiente] = useState(false)
+  const [frase, setFrase] = useState("")
+
+  useEffect(() => {
+    if (estado?.ok) {
+      aoFechar()
+      router.refresh()
+    }
+  }, [estado?.ok, aoFechar, router])
+
+  return (
+    <Dialog
+      aberto
+      aoFechar={() => {
+        aoFechar()
+        if (estado?.alteracaoConcluida) router.refresh()
+      }}
+      titulo="Trancar aluno"
+      descricao={aluno.nome}
+    >
+      <form action={acao} className="space-y-5">
+        <input type="hidden" name="alunoId" value={aluno.id} />
+        <input type="hidden" name="tipo" value={aluno.tipo} />
+        <input type="hidden" name="status" value="TRANCADO" />
+        <input type="hidden" name="somenteStatus" value="on" />
+        <p className="text-sm text-muted-foreground">O trancamento bloqueará o acesso do aluno.</p>
+        {estado?.exigeConfirmacaoTrancamento && (
+          <>
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                name="cienteTrancamentoAdimplente"
+                checked={ciente}
+                onChange={(event) => setCiente(event.currentTarget.checked)}
+                className="mt-1 accent-primary"
+              />
+              <span>
+                Estou ciente e desejo trancar a matrícula mesmo se o aluno estiver adimplente.
+              </span>
+            </label>
+            <div className="space-y-2">
+              <Label htmlFor={`frase-trancamento-${aluno.id}`}>
+                Digite “trancar aluno adimplente” para confirmar
+              </Label>
+              <Input
+                id={`frase-trancamento-${aluno.id}`}
+                name="fraseTrancamentoAdimplente"
+                value={frase}
+                onChange={(event) => setFrase(event.currentTarget.value)}
+                autoComplete="off"
+              />
+            </div>
+          </>
+        )}
+        {estado?.erro && !estado.exigeConfirmacaoTrancamento && (
+          <p role="alert" className="text-sm text-destructive">
+            {estado.erro}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              aoFechar()
+              if (estado?.alteracaoConcluida) router.refresh()
+            }}
+          >
+            {estado?.alteracaoConcluida ? "Fechar" : "Cancelar"}
+          </Button>
+          <Button
+            type="submit"
+            variant="destructive"
+            disabled={
+              pendente ||
+              Boolean(estado?.alteracaoConcluida) ||
+              (Boolean(estado?.exigeConfirmacaoTrancamento) &&
+                (!ciente || frase !== "trancar aluno adimplente"))
+            }
+          >
+            {pendente ? "Trancando..." : "Trancar matrícula"}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   )
 }

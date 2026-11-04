@@ -90,6 +90,19 @@ describe("proteção no trancamento", () => {
     expect(processarIsencoesTrancamento).toHaveBeenCalledWith({ operacaoId: "operacao-1" })
   })
 
+  it("tranca sem alterar o tipo quando somente o status foi solicitado", async () => {
+    mocks.db.mensalidade.findFirst.mockResolvedValue({ id: "vencida" })
+    const resultado = await atualizarStatusTipoAluno({
+      alunoId: "aluno-1",
+      status: "TRANCADO",
+      autorId: "gestor",
+    })
+    expect(resultado.ok).toBe(true)
+    expect(mocks.db.aluno.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { status: "TRANCADO" } }),
+    )
+  })
+
   it("protege também a ação de alteração de status", async () => {
     const resultado = await atualizarStatusTipoAluno({
       alunoId: "aluno-1",

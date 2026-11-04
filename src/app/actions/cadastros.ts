@@ -50,7 +50,12 @@ import {
 } from "@/lib/validations/cadastros"
 
 export type EstadoForm =
-  | { erro?: string; ok?: boolean; exigeConfirmacaoTrancamento?: boolean }
+  | {
+      erro?: string
+      ok?: boolean
+      exigeConfirmacaoTrancamento?: boolean
+      alteracaoConcluida?: boolean
+    }
   | undefined
 
 function primeiroErro(issues: { message: string }[]): string {
@@ -595,6 +600,7 @@ export async function acaoAtualizarStatusTipoAluno(
   try {
     resultado = await atualizarStatusTipoAluno({
       ...parsed.data,
+      tipo: formData.get("somenteStatus") === "on" ? undefined : parsed.data.tipo,
       autorId: usuario.id,
       confirmacaoTrancamento: {
         ciente: formData.get("cienteTrancamentoAdimplente") === "on",
@@ -613,12 +619,15 @@ export async function acaoAtualizarStatusTipoAluno(
         "exigeConfirmacaoTrancamento" in resultado && resultado.exigeConfirmacaoTrancamento,
     }
 
-  revalidatePath("/gestao/alunos")
-  revalidatePath("/gestao/auditoria")
-  revalidatePath("/aluno/perfil")
+  if (formData.get("somenteStatus") !== "on") {
+    revalidatePath("/gestao/alunos")
+    revalidatePath("/gestao/auditoria")
+    revalidatePath("/aluno/perfil")
+  }
   if (resultado.isencaoPendente)
     return {
       erro: "Aluno trancado. A isenção ainda está pendente de conciliação e será tentada novamente.",
+      alteracaoConcluida: true,
     }
   return { ok: true }
 }
