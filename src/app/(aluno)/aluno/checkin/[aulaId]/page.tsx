@@ -3,6 +3,10 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { alunoContaOperacionalmente } from "@/lib/alunos/status"
 import { exigirAluno } from "@/lib/auth/dal"
+import {
+  filtroCheckinNaModalidadeNoDia,
+  mensagemLimiteDiarioCheckin,
+} from "@/lib/checkin-limite-diario"
 import { plataformaCheckinDoTipo } from "@/lib/checkin-plataforma"
 import { db } from "@/lib/db"
 import { formatarDataExtenso, formatarHora } from "@/lib/utils/datas"
@@ -37,6 +41,8 @@ export default async function CheckinQrPage({
       cancelada: true,
       turma: {
         select: {
+          nome: true,
+          modalidadeId: true,
           local: true,
           modalidade: { select: { nome: true } },
         },
@@ -48,6 +54,18 @@ export default async function CheckinQrPage({
 
   const jaPresente = aula.checkins.some((checkin) => checkin.status === "VALIDO")
   const pendenteRevisao = aula.checkins.some((checkin) => checkin.status === "PENDENTE_REVISAO")
+  const outroCheckinNoDia =
+    alunoOperacional && !jaPresente && !pendenteRevisao
+      ? await db.checkin.findFirst({
+          where: filtroCheckinNaModalidadeNoDia({
+            alunoId,
+            modalidadeId: aula.turma.modalidadeId,
+            inicioAula: aula.inicio,
+            aulaIdIgnorada: aula.id,
+          }),
+          select: { id: true },
+        })
+      : null
 
   return (
     <div className="space-y-5">
@@ -62,9 +80,12 @@ export default async function CheckinQrPage({
             <Badge variant="outline">{aula.turma.modalidade.nome}</Badge>
             {aula.cancelada && <Badge variant="destructive">Cancelada</Badge>}
           </div>
-          <CardTitle className="capitalize">{formatarDataExtenso(aula.inicio)}</CardTitle>
+          <CardTitle>{aula.turma.nome ?? aula.turma.modalidade.nome}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-sm capitalize text-muted-foreground">
+            {formatarDataExtenso(aula.inicio)}
+          </p>
           <p className="text-sm text-muted-foreground">
             {formatarHora(aula.inicio)}-{formatarHora(aula.fim)}
             {aula.turma.local ? ` · ${aula.turma.local}` : ""}
@@ -77,6 +98,10 @@ export default async function CheckinQrPage({
           ) : aula.cancelada ? (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
               Esta aula foi cancelada.
+            </p>
+          ) : outroCheckinNoDia ? (
+            <p className="rounded-md border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+              {mensagemLimiteDiarioCheckin(aula.turma.modalidade.nome)}
             </p>
           ) : (
             <FormCheckinQr

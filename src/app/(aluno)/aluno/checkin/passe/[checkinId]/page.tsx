@@ -122,7 +122,10 @@ export default async function PasseCheckinPage({
               <Badge variant="outline">{checkin.aula.turma.modalidade.nome}</Badge>
               <Badge variant="success">Check-in válido</Badge>
             </div>
-            <p className="text-lg font-semibold capitalize">
+            <p className="text-lg font-semibold">
+              {checkin.aula.turma.nome ?? checkin.aula.turma.modalidade.nome}
+            </p>
+            <p className="text-sm capitalize text-muted-foreground">
               {formatarDataExtenso(checkin.aula.inicio)}
             </p>
             <p className="text-sm text-muted-foreground">

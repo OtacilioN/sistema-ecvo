@@ -10,6 +10,7 @@ import {
   selecionarAulaReferenciaCheckinLivre,
   TOLERANCIA_PADRAO_CHECKIN_MINUTOS,
 } from "@/lib/checkin-horario"
+import { mensagemLimiteDiarioCheckin } from "@/lib/checkin-limite-diario"
 import { plataformaCheckinDoTipo } from "@/lib/checkin-plataforma"
 import { db } from "@/lib/db"
 import { montarCandidataCheckinLivre } from "@/lib/services/checkin.service"
@@ -17,6 +18,7 @@ import { tokenCheckinValido } from "@/lib/services/checkin-token.service"
 import {
   fimExclusivoDoDiaAcademia,
   formatarDataExtenso,
+  formatarDataInput,
   formatarHora,
   inicioDoDiaAcademia,
 } from "@/lib/utils/datas"
@@ -24,6 +26,7 @@ import { MinhasHorasAluno } from "../minhas-horas-aluno"
 import { FormCheckinGeolocalizacao } from "./form-checkin-geolocalizacao"
 import { FormCheckinGlobal } from "./form-checkin-global"
 import { LeitorQRCodeAluno } from "./leitor-qrcode-aluno"
+import { SeletorTurmaCheckin } from "./seletor-turma-checkin"
 
 export const dynamic = "force-dynamic"
 
@@ -129,6 +132,26 @@ export default async function CheckinGlobalPage({
       })
     : []
 
+  const primeiroInicio = aulasCandidatas.reduce(
+    (inicio, aula) => (aula.inicio < inicio ? aula.inicio : inicio),
+    inicioDia,
+  )
+  const registrosDiarios = aulasCandidatas.length
+    ? await db.checkin.findMany({
+        where: {
+          alunoId,
+          status: { in: ["VALIDO", "PENDENTE_REVISAO"] },
+          aula: {
+            inicio: { gte: inicioDoDiaAcademia(primeiroInicio), lt: fimDia },
+          },
+        },
+        select: {
+          aulaId: true,
+          aula: { select: { inicio: true, turma: { select: { modalidadeId: true } } } },
+        },
+      })
+    : []
+
   const referenciasLivres = new Set<string>()
   const aulasLivresPorModalidade = new Map<string, typeof aulasCandidatas>()
   for (const aula of aulasCandidatas) {
@@ -147,17 +170,15 @@ export default async function CheckinGlobalPage({
     if (referencia) referenciasLivres.add(referencia.id)
   }
 
-  const aulas = aulasCandidatas
-    .filter((aula) =>
-      aula.turma.modalidade.checkinSemRestricaoHorario
-        ? referenciasLivres.has(aula.id)
-        : podeRealizarCheckinNaJanela({
-            inicioAula: aula.inicio,
-            fimAula: aula.fim,
-            agora,
-          }),
-    )
-    .slice(0, 8)
+  const aulas = aulasCandidatas.filter((aula) =>
+    aula.turma.modalidade.checkinSemRestricaoHorario
+      ? referenciasLivres.has(aula.id)
+      : podeRealizarCheckinNaJanela({
+          inicioAula: aula.inicio,
+          fimAula: aula.fim,
+          agora,
+        }),
+  )
 
   return (
     <div className="space-y-5">
@@ -218,8 +239,8 @@ export default async function CheckinGlobalPage({
         </Card>
       )}
 
-      <div className="grid gap-3">
-        {aulas.map((aula) => {
+      <SeletorTurmaCheckin
+        aulas={aulas.map((aula) => {
           const checkinValido = aula.checkins.find(
             (checkin) => checkin.alunoId === alunoId && checkin.status === "VALIDO",
           )
@@ -231,61 +252,81 @@ export default async function CheckinGlobalPage({
           )
           const registro = checkinValido ?? checkinPendente
           const horarioLivre = aula.turma.modalidade.checkinSemRestricaoHorario
-
-          return (
-            <Card key={aula.id}>
-              <CardHeader>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">{aula.turma.modalidade.nome}</Badge>
-                  {horarioLivre && <Badge variant="secondary">Check-in livre</Badge>}
-                  {checkinValido && (
-                    <Badge variant="success" className="gap-1">
-                      <Check className="size-3.5" /> Presente
-                    </Badge>
-                  )}
-                  {pendenteRevisao && <Badge variant="warning">Pendente de revisão</Badge>}
-                  {registro?.associadoAutomaticamente && (
-                    <Badge variant="outline">
-                      Check-in às {formatarHora(registro.realizadoEm)}
-                    </Badge>
-                  )}
-                </div>
-                <CardTitle className="capitalize">{formatarDataExtenso(aula.inicio)}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  {formatarHora(aula.inicio)}-{formatarHora(aula.fim)}
-                  {aula.turma.local ? ` · ${aula.turma.local}` : ""}
-                </p>
-                {horarioLivre && !registro && (
-                  <p className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-                    Seu check-in será associado à aula das {formatarHora(aula.inicio)}. O horário
-                    exato será registrado.
-                  </p>
-                )}
-
-                {checkinValido ? (
-                  <Button asChild className="w-full">
-                    <Link href={`/aluno/checkin/passe/${checkinValido.id}`}>Ver passe</Link>
-                  </Button>
-                ) : pendenteRevisao ? (
-                  <p className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-                    Check-in pendente de revisão.
-                  </p>
-                ) : tokenAtual ? (
-                  <FormCheckinGlobal
-                    aulaId={aula.id}
-                    token={token ?? ""}
-                    plataforma={plataformaCheckin}
-                  />
-                ) : (
-                  <FormCheckinGeolocalizacao aulaId={aula.id} plataforma={plataformaCheckin} />
-                )}
-              </CardContent>
-            </Card>
+          const bloqueadaPorLimiteDiario = registrosDiarios.some(
+            (item) =>
+              item.aulaId !== aula.id &&
+              item.aula.turma.modalidadeId === aula.turma.modalidade.id &&
+              formatarDataInput(item.aula.inicio) === formatarDataInput(aula.inicio),
           )
+
+          return {
+            id: aula.id,
+            nome: aula.turma.nome ?? aula.turma.modalidade.nome,
+            horario: `${formatarHora(aula.inicio)}–${formatarHora(aula.fim)}`,
+            checkinRegistrado: Boolean(registro),
+            bloqueadaPorLimiteDiario,
+            conteudo: (
+              <Card key={aula.id}>
+                <CardHeader>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{aula.turma.modalidade.nome}</Badge>
+                    {horarioLivre && <Badge variant="secondary">Check-in livre</Badge>}
+                    {checkinValido && (
+                      <Badge variant="success" className="gap-1">
+                        <Check className="size-3.5" /> Presente
+                      </Badge>
+                    )}
+                    {pendenteRevisao && <Badge variant="warning">Pendente de revisão</Badge>}
+                    {registro?.associadoAutomaticamente && (
+                      <Badge variant="outline">
+                        Check-in às {formatarHora(registro.realizadoEm)}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardTitle>{aula.turma.nome ?? aula.turma.modalidade.nome}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm capitalize text-muted-foreground">
+                    {formatarDataExtenso(aula.inicio)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatarHora(aula.inicio)}-{formatarHora(aula.fim)}
+                    {aula.turma.local ? ` · ${aula.turma.local}` : ""}
+                  </p>
+                  {horarioLivre && !registro && (
+                    <p className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                      Seu check-in será associado à aula das {formatarHora(aula.inicio)}. O horário
+                      exato será registrado.
+                    </p>
+                  )}
+
+                  {checkinValido ? (
+                    <Button asChild className="w-full">
+                      <Link href={`/aluno/checkin/passe/${checkinValido.id}`}>Ver passe</Link>
+                    </Button>
+                  ) : pendenteRevisao ? (
+                    <p className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                      Check-in pendente de revisão.
+                    </p>
+                  ) : bloqueadaPorLimiteDiario ? (
+                    <p className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+                      {mensagemLimiteDiarioCheckin(aula.turma.modalidade.nome)}
+                    </p>
+                  ) : tokenAtual ? (
+                    <FormCheckinGlobal
+                      aulaId={aula.id}
+                      token={token ?? ""}
+                      plataforma={plataformaCheckin}
+                    />
+                  ) : (
+                    <FormCheckinGeolocalizacao aulaId={aula.id} plataforma={plataformaCheckin} />
+                  )}
+                </CardContent>
+              </Card>
+            ),
+          }
         })}
-      </div>
+      />
 
       <div className="border-t border-border pt-5">
         <MinhasHorasAluno alunoId={alunoId} />

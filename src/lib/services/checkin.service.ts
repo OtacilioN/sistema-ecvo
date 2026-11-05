@@ -13,6 +13,10 @@ import {
   selecionarAulaReferenciaCheckinLivre,
 } from "@/lib/checkin-horario"
 import {
+  filtroCheckinNaModalidadeNoDia,
+  mensagemLimiteDiarioCheckin,
+} from "@/lib/checkin-limite-diario"
+import {
   mensagemConfirmacaoCheckinPlataforma,
   plataformaCheckinDoTipo,
 } from "@/lib/checkin-plataforma"
@@ -199,9 +203,17 @@ export type ResultadoCheckin =
         | "LOCALIZACAO_INVALIDA"
         | "TERMO_NAO_ACEITO"
         | "SEM_AULA_REFERENCIA"
+        | "LIMITE_DIARIO_MODALIDADE"
     }
 
-class ErroConcorrenciaCheckin extends Error {}
+class ErroConcorrenciaCheckin extends Error {
+  constructor(
+    mensagem: string,
+    readonly codigo?: "LIMITE_DIARIO_MODALIDADE",
+  ) {
+    super(mensagem)
+  }
+}
 
 type AulaParaReferencia = {
   id: string
@@ -679,6 +691,23 @@ export async function realizarCheckin(params: {
     }
   }
 
+  const outroCheckinNoDia = await db.checkin.findFirst({
+    where: filtroCheckinNaModalidadeNoDia({
+      alunoId: params.alunoId,
+      modalidadeId: aula.turma.modalidadeId,
+      inicioAula: aula.inicio,
+      aulaIdIgnorada: aula.id,
+    }),
+    select: { id: true },
+  })
+  if (outroCheckinNoDia) {
+    return {
+      ok: false,
+      codigo: "LIMITE_DIARIO_MODALIDADE",
+      motivo: mensagemLimiteDiarioCheckin(aula.turma.modalidade.nome),
+    }
+  }
+
   const regras = resolverRegrasTreino(config, aula.turma.modalidade)
   const termoAceito = await termoResponsabilidadeAtualAceito(params.alunoId)
   const modalidadeCobertaPeloPlano = aluno.modalidadesPlano.some(
@@ -746,7 +775,7 @@ export async function realizarCheckin(params: {
   let checkinId: string
   try {
     checkinId = await db.$transaction(async (tx) => {
-      // Serializa a modalidade para manter a ofensiva consistente entre turmas/horários concorrentes.
+      // Serializa a modalidade para proteger o limite diário entre turmas e a ofensiva.
       await tx.$queryRaw`SELECT "id" FROM "Modalidade" WHERE "id" = ${aula.turma.modalidadeId} FOR UPDATE`
       // Serializa check-ins da mesma aula para revalidar duplicidade e capacidade sem corrida.
       await tx.$queryRaw`SELECT "id" FROM "Aula" WHERE "id" = ${aula.id} FOR UPDATE`
@@ -812,6 +841,24 @@ export async function realizarCheckin(params: {
           checkinAtual?.status === "PENDENTE_REVISAO"
             ? "Check-in desta aula já está pendente de revisão."
             : "Check-in já realizado nesta aula.",
+        )
+      }
+
+      // Revalida sob o lock: outra turma pode ter recebido o primeiro check-in nesse intervalo.
+      // Excluir a própria aula permite que a equipe aprove um registro pendente existente.
+      const outroCheckinAtual = await tx.checkin.findFirst({
+        where: filtroCheckinNaModalidadeNoDia({
+          alunoId: params.alunoId,
+          modalidadeId: aulaAtual.turma.modalidadeId,
+          inicioAula: aulaAtual.inicio,
+          aulaIdIgnorada: aula.id,
+        }),
+        select: { id: true },
+      })
+      if (outroCheckinAtual) {
+        throw new ErroConcorrenciaCheckin(
+          mensagemLimiteDiarioCheckin(aula.turma.modalidade.nome),
+          "LIMITE_DIARIO_MODALIDADE",
         )
       }
 
@@ -938,7 +985,7 @@ export async function realizarCheckin(params: {
     })
   } catch (erro) {
     if (erro instanceof ErroConcorrenciaCheckin) {
-      return { ok: false, motivo: erro.message }
+      return { ok: false, motivo: erro.message, codigo: erro.codigo }
     }
     throw erro
   }

@@ -153,10 +153,19 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   permissão; plano mensal interno adimplente se configurado; aula
   existente; há agendamento se exigido; vaga disponível). Na janela padrão, o check-in é permitido
   de 30 minutos antes do início até 30 minutos após o término da aula.
+- **RF-020.2** Na janela padrão, quando houver mais de uma aula disponível para um novo check-in, o aluno deve
+  escolher explicitamente a turma, identificada pelo nome e horário, antes de confirmar por QR Code
+  ou geolocalização. Turmas da mesma modalidade também devem aparecer como opções distintas.
 - **RF-020.1** A modalidade pode liberar check-in sem restrição de horário. Nesse modo, o sistema
   associa o registro a uma aula oficial do mesmo dia: prioriza agendamento confirmado, aula em andamento,
   próxima aula futura e, após o último horário, a última aula encerrada. O horário real do check-in é
   preservado e sinalizado; sem aula oficial no dia, o check-in é bloqueado.
+- **RF-020.3** O aluno pode fazer apenas uma aula por modalidade por dia civil da academia
+  (`America/Sao_Paulo`), considerando o início da aula. Check-in válido ou pendente de revisão em
+  outra turma da mesma modalidade bloqueia um segundo registro nesse dia, inclusive em lançamentos
+  por gestor/professor e retroativos. Registros invalidados ou excluídos não consomem esse limite;
+  a aprovação do registro pendente da própria aula continua permitida. Modalidades e dias diferentes
+  são independentes. Boxe e Kickboxing compartilham o limite por pertencerem à mesma modalidade.
 - **RF-021** Check-in associado ao agendamento correspondente.
 - **RF-022** Check-in sem agendamento prévio: permitir / bloquear / apenas com aprovação.
 - **RF-023** Check-in válido gera presença automaticamente e horas conforme a duração da aula.
