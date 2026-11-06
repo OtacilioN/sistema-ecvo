@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const mocks = vi.hoisted(() => ({ lerSessao: vi.fn(), usuario: vi.fn() }))
+const mocks = vi.hoisted(() => ({ lerSessao: vi.fn(), usuario: vi.fn(), autorizar: vi.fn() }))
 vi.mock("server-only", () => ({}))
 vi.mock("./session", () => ({ lerSessao: mocks.lerSessao }))
+vi.mock("./sessao-dispositivo", () => ({ autorizarSessaoDispositivo: mocks.autorizar }))
 vi.mock("@/lib/db", () => ({ db: { usuario: { findUnique: mocks.usuario } } }))
 
 import { obterUsuarioAtualApi } from "./api"
@@ -13,9 +14,14 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.lerSessao.mockResolvedValue({ sub: usuario.id, papel: "ALUNO" })
   mocks.usuario.mockResolvedValue(usuario)
+  mocks.autorizar.mockResolvedValue(true)
 })
 
 describe("autenticação da API após recuperação de senha", () => {
+  it("rejeita sessão revogada no dispositivo", async () => {
+    mocks.autorizar.mockResolvedValue(false)
+    expect(await obterUsuarioAtualApi()).toBeNull()
+  })
   it("preserva a sessão sem versão quando a conta está na versão zero", async () => {
     expect(await obterUsuarioAtualApi()).toEqual(usuario)
   })

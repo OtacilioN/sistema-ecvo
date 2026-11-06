@@ -295,10 +295,23 @@ model Usuario {
   logs                 LogAuditoria[]         @relation("AutorLog")
   notificacoes         Notificacao[]
   inscricoesPush       InscricaoPush[]
+  sessoesDispositivo   SessaoDispositivo[]
   matriculasAnalisadas SolicitacaoMatricula[] @relation("AnalisadorMatricula")
   exclusoesRepasseCriadas ExclusaoRepasseExternoMensal[]
   criadoEm             DateTime               @default(now())
   atualizadoEm         DateTime               @updatedAt
+}
+
+model SessaoDispositivo {
+  id         String    @id
+  usuarioId  String
+  usuario    Usuario   @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  expiraEm   DateTime
+  revogadaEm DateTime?
+  criadaEm   DateTime  @default(now())
+
+  @@index([usuarioId])
+  @@index([expiraEm])
 }
 
 model Aluno {

@@ -3,6 +3,7 @@ import type { Papel } from "@prisma/client"
 import { redirect } from "next/navigation"
 import { cache } from "react"
 import { alunoComMatriculaCancelada } from "@/lib/alunos/status"
+import { autorizarSessaoDispositivo } from "@/lib/auth/sessao-dispositivo"
 import { lerSessao, type SessaoPayload } from "@/lib/auth/session"
 import { db } from "@/lib/db"
 import { trancarAvulsosExpirados } from "@/lib/services/matricula-trancada.service"
@@ -37,9 +38,15 @@ export const sessaoOpcional = cache(async (): Promise<SessaoPayload | null> => {
   if (!sessao?.sub) return null
   const usuario = await db.usuario.findUnique({
     where: { id: sessao.sub },
-    select: { ativo: true, sessaoVersao: true },
+    select: { ativo: true, papel: true, sessaoVersao: true },
   })
-  if (!usuario?.ativo || (usuario.sessaoVersao ?? 0) !== (sessao.versao ?? 0)) return null
+  if (
+    !usuario?.ativo ||
+    usuario.papel !== sessao.papel ||
+    (usuario.sessaoVersao ?? 0) !== (sessao.versao ?? 0)
+  )
+    return null
+  if (!(await autorizarSessaoDispositivo(sessao))) return null
   return sessao
 })
 
@@ -61,6 +68,8 @@ const carregarUsuarioAtual = cache(async () => {
     },
   })
   if (!usuario?.ativo || (usuario.sessaoVersao ?? 0) !== (sessao.versao ?? 0))
+    redirect(ROTA_SESSAO_INVALIDA)
+  if (usuario.papel !== sessao.papel || !(await autorizarSessaoDispositivo(sessao)))
     redirect(ROTA_SESSAO_INVALIDA)
   if (
     usuario.papel === "ALUNO" &&

@@ -1,5 +1,6 @@
 import "server-only"
 import { db } from "@/lib/db"
+import { autorizarSessaoDispositivo } from "./sessao-dispositivo"
 import { lerSessao } from "./session"
 
 export async function obterUsuarioAtualApi() {
@@ -11,6 +12,12 @@ export async function obterUsuarioAtualApi() {
     select: { id: true, papel: true, ativo: true, sessaoVersao: true },
   })
 
-  if (!usuario?.ativo || (usuario.sessaoVersao ?? 0) !== (sessao.versao ?? 0)) return null
+  if (
+    !usuario?.ativo ||
+    usuario.papel !== sessao.papel ||
+    (usuario.sessaoVersao ?? 0) !== (sessao.versao ?? 0)
+  )
+    return null
+  if (!(await autorizarSessaoDispositivo(sessao))) return null
   return usuario
 }

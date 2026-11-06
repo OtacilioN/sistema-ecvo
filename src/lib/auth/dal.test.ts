@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   usuario: vi.fn(),
   aluno: vi.fn(),
   trancar: vi.fn(),
+  autorizar: vi.fn(),
 }))
 vi.mock("react", () => ({ cache: (fn: unknown) => fn }))
 vi.mock("next/navigation", () => ({
@@ -13,6 +14,7 @@ vi.mock("next/navigation", () => ({
   },
 }))
 vi.mock("@/lib/auth/session", () => ({ lerSessao: mocks.lerSessao }))
+vi.mock("@/lib/auth/sessao-dispositivo", () => ({ autorizarSessaoDispositivo: mocks.autorizar }))
 vi.mock("@/lib/db", () => ({
   db: { usuario: { findUnique: mocks.usuario }, aluno: { findUnique: mocks.aluno } },
 }))
@@ -34,6 +36,7 @@ beforeEach(() => {
   mocks.usuario.mockImplementation(async () => ({ ...usuario, aluno: { ...usuario.aluno } }))
   mocks.aluno.mockResolvedValue({ status: "ATIVO" })
   mocks.trancar.mockResolvedValue({ trancados: 0 })
+  mocks.autorizar.mockResolvedValue(true)
 })
 
 describe("acesso da matrícula trancada", () => {
@@ -63,6 +66,7 @@ describe("acesso da matrícula trancada", () => {
     expect(mocks.trancar).not.toHaveBeenCalled()
   })
   it("não libera a rota de reativação para professor", async () => {
+    mocks.lerSessao.mockResolvedValue({ sub: "professor-1", papel: "PROFESSOR" })
     mocks.usuario.mockResolvedValue({
       id: "professor-1",
       ativo: true,
@@ -75,6 +79,17 @@ describe("acesso da matrícula trancada", () => {
 })
 
 describe("revogação de sessão após recuperação de senha", () => {
+  it("nega sessão revogada em todos os acessos da DAL", async () => {
+    mocks.autorizar.mockResolvedValue(false)
+    await expect(getUsuarioAtual()).rejects.toThrow("redirect:/api/auth/sessao-invalida")
+    expect(await sessaoOpcional()).toBeNull()
+  })
+
+  it("rejeita papel desatualizado inclusive na sessão opcional", async () => {
+    mocks.usuario.mockResolvedValue({ ...usuario, papel: "PROFESSOR" })
+    expect(await sessaoOpcional()).toBeNull()
+    await expect(getUsuarioAtual()).rejects.toThrow("redirect:/api/auth/sessao-invalida")
+  })
   it("bloqueia a sessão antiga antes de consultar ou alterar a matrícula", async () => {
     mocks.lerSessao.mockResolvedValue({ sub: usuario.id, papel: "ALUNO", versao: 0 })
     mocks.usuario.mockResolvedValue({ ...usuario, sessaoVersao: 1 })

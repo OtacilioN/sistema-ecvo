@@ -20,3 +20,18 @@ Implementar o **padrão de sessão própria documentado pelo Next.js 16**:
 - Controle total do fluxo e dos dados (bom para LGPD), sem dependência de lib externa em beta.
 - Sem login social/MFA prontos — fora do escopo do MVP; se necessário no futuro, reavaliar uma lib.
 - Compatível com o runtime nodejs do `proxy` no Next 16.
+
+## Persistência do login dos alunos — 2026-11-05
+
+- Cada login recebe uma sessão independente no banco. Para alunos, a validade é renovada
+  durante uso autenticado até 30 dias após o último período de atividade, com limite
+  absoluto de 365 dias para o JWT e cookie. Após a inatividade ou o limite, é preciso entrar.
+- O cookie não é reemitido nas navegações: uma resposta atrasada não restaura o login
+  após sair nem substitui o cookie de um login posterior.
+- Sessões antigas permanecem válidas até sua expiração original e são identificadas por
+  hash do token, permitindo revogar cada uma sem guardar o token. Não são estendidas.
+- Gestor, Secretaria e Professor continuam com validade fixa de 7 dias.
+- O proxy preserva a versão original da sessão. Conta inativa, recuperação de senha e
+  restrições de matrícula continuam sendo verificadas na DAL/API; renovação não concede acesso.
+- Sair revoga apenas a sessão do dispositivo e remove o cookie; as demais continuam ativas.
+  A recuperação de senha continua invalidando todas pela versão. Não há senha ou token em localStorage.
