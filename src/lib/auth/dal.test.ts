@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   usuario: vi.fn(),
   aluno: vi.fn(),
   trancar: vi.fn(),
+  trancarInadimplentes: vi.fn(),
   autorizar: vi.fn(),
 }))
 vi.mock("react", () => ({ cache: (fn: unknown) => fn }))
@@ -21,6 +22,9 @@ vi.mock("@/lib/db", () => ({
 vi.mock("@/lib/services/matricula-trancada.service", () => ({
   trancarAvulsosExpirados: mocks.trancar,
 }))
+vi.mock("@/lib/services/trancamento-inadimplencia.service", () => ({
+  trancarAlunosInadimplentes: mocks.trancarInadimplentes,
+}))
 
 import { exigirAluno, exigirAlunoTrancado, getUsuarioAtual, sessaoOpcional } from "./dal"
 
@@ -36,6 +40,7 @@ beforeEach(() => {
   mocks.usuario.mockImplementation(async () => ({ ...usuario, aluno: { ...usuario.aluno } }))
   mocks.aluno.mockResolvedValue({ status: "ATIVO" })
   mocks.trancar.mockResolvedValue({ trancados: 0 })
+  mocks.trancarInadimplentes.mockResolvedValue({ trancados: 0 })
   mocks.autorizar.mockResolvedValue(true)
 })
 
@@ -52,6 +57,15 @@ describe("acesso da matrícula trancada", () => {
       alunoId: "aluno-1",
     })
   })
+  it("encaminha uma sessão aberta à reativação quando a inadimplência tranca a matrícula", async () => {
+    mocks.trancarInadimplentes.mockImplementation(async () => {
+      mocks.aluno.mockResolvedValue({ status: "TRANCADO" })
+      return { trancados: 1 }
+    })
+
+    await expect(exigirAluno()).rejects.toThrow("redirect:/reativar-matricula")
+    expect(mocks.trancarInadimplentes).toHaveBeenCalledWith({ alunoId: "aluno-1" })
+  })
   it("após o pagamento devolve o aluno à área normal", async () => {
     await expect(exigirAlunoTrancado()).rejects.toThrow("redirect:/aluno")
     expect((await exigirAluno()).alunoId).toBe("aluno-1")
@@ -64,6 +78,7 @@ describe("acesso da matrícula trancada", () => {
     mocks.lerSessao.mockResolvedValue(null)
     await expect(getUsuarioAtual()).rejects.toThrow("redirect:/login")
     expect(mocks.trancar).not.toHaveBeenCalled()
+    expect(mocks.trancarInadimplentes).not.toHaveBeenCalled()
   })
   it("não libera a rota de reativação para professor", async () => {
     mocks.lerSessao.mockResolvedValue({ sub: "professor-1", papel: "PROFESSOR" })
@@ -75,6 +90,7 @@ describe("acesso da matrícula trancada", () => {
     })
     await expect(exigirAlunoTrancado()).rejects.toThrow("redirect:/professor")
     expect(mocks.trancar).not.toHaveBeenCalled()
+    expect(mocks.trancarInadimplentes).not.toHaveBeenCalled()
   })
 })
 
@@ -83,6 +99,7 @@ describe("revogação de sessão após recuperação de senha", () => {
     mocks.autorizar.mockResolvedValue(false)
     await expect(getUsuarioAtual()).rejects.toThrow("redirect:/api/auth/sessao-invalida")
     expect(await sessaoOpcional()).toBeNull()
+    expect(mocks.trancarInadimplentes).not.toHaveBeenCalled()
   })
 
   it("rejeita papel desatualizado inclusive na sessão opcional", async () => {
@@ -98,6 +115,7 @@ describe("revogação de sessão após recuperação de senha", () => {
     expect(await sessaoOpcional()).toBeNull()
     expect(mocks.aluno).not.toHaveBeenCalled()
     expect(mocks.trancar).not.toHaveBeenCalled()
+    expect(mocks.trancarInadimplentes).not.toHaveBeenCalled()
   })
 
   it("também revoga cookies antigos que não possuem versão", async () => {

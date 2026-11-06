@@ -217,6 +217,16 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   Registro de mensalidades.
 - **RF-049** Status financeiro (Em aberto, Paga, Vencida, Cancelada, Isenta).
 - **RF-050** Adimplência. **RF-051** Bloqueio por inadimplência (alertar / bloquear agendamento / bloquear check-in / não aplicar).
+- **RF-051.1** Alunos operacionais (`ATIVO` ou `INADIMPLENTE`) com mensalidade interna
+  `EM_ABERTO` ou `VENCIDA` há mais de sete dias passam automaticamente a `TRANCADO` no 8º dia
+  civil de atraso, em `America/Sao_Paulo`, independentemente da configuração de bloqueio do RF-051.
+  Exemplo: vencimento no dia 10 permite trancamento a partir de 00h do dia 18; até o fim do
+  dia 17, esta regra não tranca a matrícula. A manutenção financeira diária das 00h05, o login
+  e a verificação da sessão aplicam a regra, revalidando pagamento e vencimento na transação.
+  A mudança registra auditoria e segue o trancamento existente: agenda a isenção das mensalidades
+  abertas/vencidas e o cancelamento conciliado das cobranças e do Pix Automático, com retentativa
+  em caso de pendência. Pagamentos e aulas anteriores são preservados. O retorno utiliza o fluxo
+  de reativação do RF-001.6, disponível após a conclusão da isenção.
 - **RF-052** Pagamentos avulsos (aula, diária, pacote, seminário, evento, exame, produto).
 - **RF-053** Wellhub/TotalPass podem combinar vínculo externo com plano mensal interno por modalidade.
 - **RF-053.1** Divisão de receita de mensalidade interna: cada modalidade define o valor de repasse do
@@ -379,6 +389,10 @@ RN-030 correções retroativas e invalidações recalculam ofensiva atual e máx
 pode sustentar recorde.
 RN-031 o ranking de ofensivas ignora integralmente check-ins anteriores a 31/08/2026; a partir desse marco,
 mantém as mesmas regras de dia ativo, quebra, deduplicação e independência por modalidade.
+
+RN-032 inadimplência de mensalidade interna superior a sete dias civis tranca automaticamente a
+matrícula no 8º dia de atraso (RF-051.1). O vencimento é o dia zero; o primeiro dia de atraso é o
+dia seguinte. A reativação segue o fluxo existente, sem liberação pela simples geração da cobrança.
 
 ## 8. Requisitos não funcionais (RNF)
 

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   senha: vi.fn(),
   criarSessao: vi.fn(),
   trancar: vi.fn(),
+  trancarInadimplentes: vi.fn(),
 }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
 vi.mock("next/navigation", () => ({
@@ -14,7 +15,7 @@ vi.mock("next/navigation", () => ({
   },
 }))
 vi.mock("@/lib/auth/dal", () => ({
-  HOME_POR_PAPEL: { ALUNO: "/aluno", GESTOR: "/gestao" },
+  HOME_POR_PAPEL: { ALUNO: "/aluno", GESTOR: "/gestao", PROFESSOR: "/professor" },
   ROTA_REATIVACAO_MATRICULA: "/reativar-matricula",
   exigirPapel: vi.fn(),
   getUsuarioAtual: vi.fn(),
@@ -28,6 +29,9 @@ vi.mock("@/lib/services/usuario.service", () => ({
 }))
 vi.mock("@/lib/services/matricula-trancada.service", () => ({
   trancarAvulsosExpirados: mocks.trancar,
+}))
+vi.mock("@/lib/services/trancamento-inadimplencia.service", () => ({
+  trancarAlunosInadimplentes: mocks.trancarInadimplentes,
 }))
 vi.mock("@/lib/db", () => ({
   db: { usuario: { findUnique: mocks.usuario }, aluno: { findUnique: mocks.aluno } },
@@ -55,6 +59,7 @@ beforeEach(() => {
   mocks.aluno.mockResolvedValue({ status: "TRANCADO" })
   mocks.senha.mockResolvedValue(true)
   mocks.trancar.mockResolvedValue({ trancados: 1 })
+  mocks.trancarInadimplentes.mockResolvedValue({ trancados: 0 })
 })
 
 describe("login de aluno avulso vencido", () => {
@@ -71,7 +76,29 @@ describe("login de aluno avulso vencido", () => {
     mocks.senha.mockResolvedValue(false)
     expect(await entrar(undefined, dados())).toEqual({ erro: "E-mail ou senha incorretos." })
     expect(mocks.trancar).not.toHaveBeenCalled()
+    expect(mocks.trancarInadimplentes).not.toHaveBeenCalled()
     expect(mocks.criarSessao).not.toHaveBeenCalled()
+  })
+  it("tranca por inadimplência após validar a senha e encaminha à reativação", async () => {
+    mocks.aluno.mockResolvedValue({ status: "ATIVO" })
+    mocks.trancarInadimplentes.mockImplementation(async () => {
+      mocks.aluno.mockResolvedValue({ status: "TRANCADO" })
+      return { trancados: 1 }
+    })
+
+    await expect(entrar(undefined, dados())).rejects.toThrow("redirect:/reativar-matricula")
+    expect(mocks.trancarInadimplentes).toHaveBeenCalledWith({ alunoId: "aluno-1" })
+    expect(mocks.senha.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.trancarInadimplentes.mock.invocationCallOrder[0],
+    )
+    expect(mocks.criarSessao).toHaveBeenCalledOnce()
+  })
+  it("não executa trancamento por inadimplência no login do professor", async () => {
+    mocks.usuario.mockResolvedValue({ ...usuario, papel: "PROFESSOR", aluno: null })
+
+    await expect(entrar(undefined, dados())).rejects.toThrow("redirect:/professor")
+    expect(mocks.trancarInadimplentes).not.toHaveBeenCalled()
+    expect(mocks.aluno).not.toHaveBeenCalled()
   })
   it("aluno operacional continua entrando normalmente", async () => {
     mocks.aluno.mockResolvedValue({ status: "ATIVO" })
@@ -83,5 +110,6 @@ describe("login de aluno avulso vencido", () => {
       erro: "Matrícula cancelada. Procure a gestão.",
     })
     expect(mocks.criarSessao).not.toHaveBeenCalled()
+    expect(mocks.trancarInadimplentes).not.toHaveBeenCalled()
   })
 })

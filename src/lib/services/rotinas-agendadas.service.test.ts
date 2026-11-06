@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   gerarLembretesFinanceiros: vi.fn(),
   sincronizarValoresAdimplencia: vi.fn(),
   vencerMensalidadesAtrasadas: vi.fn(),
+  trancarAlunosInadimplentes: vi.fn(),
   expurgarNotificacoesAntigas: vi.fn(),
   gerarLembretesAluguelGestores: vi.fn(),
   gerarLembretesAniversario: vi.fn(),
@@ -30,6 +31,9 @@ vi.mock("@/lib/services/notificacao.service", () => ({
   expurgarNotificacoesAntigas: mocks.expurgarNotificacoesAntigas,
   gerarLembretesAluguelGestores: mocks.gerarLembretesAluguelGestores,
   gerarLembretesAniversario: mocks.gerarLembretesAniversario,
+}))
+vi.mock("@/lib/services/trancamento-inadimplencia.service", () => ({
+  trancarAlunosInadimplentes: mocks.trancarAlunosInadimplentes,
 }))
 vi.mock("@/lib/services/tarefa-agendada.service", () => ({
   executarTarefaAgendada: mocks.executarTarefaAgendada,
@@ -97,10 +101,28 @@ describe("etapas independentes das rotinas", () => {
     expect(mocks.vencerMensalidadesAtrasadas).toHaveBeenCalledWith(undefined, {
       notificarAlunos: false,
     })
+    expect(mocks.trancarAlunosInadimplentes).toHaveBeenCalledOnce()
+    expect(mocks.vencerMensalidadesAtrasadas.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.trancarAlunosInadimplentes.mock.invocationCallOrder[0],
+    )
     expect(mocks.gerarLembretesAniversario).not.toHaveBeenCalled()
     expect(mocks.gerarLembretesAluguelGestores).not.toHaveBeenCalled()
     expect(mocks.gerarMensalidadesRecorrentes).not.toHaveBeenCalled()
     expect(mocks.gerarLembretesFinanceiros).not.toHaveBeenCalled()
+  })
+
+  it("executa o trancamento mesmo quando a atualização dos vencimentos falha", async () => {
+    mocks.vencerMensalidadesAtrasadas.mockRejectedValueOnce(new Error("indisponível"))
+    mocks.trancarAlunosInadimplentes.mockResolvedValueOnce({ ok: true, trancados: 2 })
+
+    const resultado = await realizarManutencaoFinanceira()
+
+    expect(mocks.trancarAlunosInadimplentes).toHaveBeenCalledOnce()
+    expect(resultado).toMatchObject({
+      ok: false,
+      trancamentos: { ok: true, trancados: 2 },
+      erros: [{ etapa: "vencimentos", motivo: "Não foi possível concluir esta etapa." }],
+    })
   })
 
   it("gera as novas mensalidades antes dos avisos financeiros no processamento das 08h", async () => {

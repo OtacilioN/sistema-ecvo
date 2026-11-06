@@ -13,6 +13,7 @@ import { verificarSenha } from "@/lib/auth/senha"
 import { criarSessao, destruirSessao } from "@/lib/auth/session"
 import { db } from "@/lib/db"
 import { trancarAvulsosExpirados } from "@/lib/services/matricula-trancada.service"
+import { trancarAlunosInadimplentes } from "@/lib/services/trancamento-inadimplencia.service"
 import {
   alterarSenhaPropria,
   atualizarFotoUsuario,
@@ -64,6 +65,7 @@ export async function entrar(_anterior: EstadoLogin, formData: FormData): Promis
 
   if (usuario.papel === "ALUNO" && usuario.aluno) {
     await trancarAvulsosExpirados({ alunoId: usuario.aluno.id })
+    await trancarAlunosInadimplentes({ alunoId: usuario.aluno.id })
     const aluno = await db.aluno.findUnique({
       where: { id: usuario.aluno.id },
       select: { status: true },

@@ -7,6 +7,7 @@ import { autorizarSessaoDispositivo } from "@/lib/auth/sessao-dispositivo"
 import { lerSessao, type SessaoPayload } from "@/lib/auth/session"
 import { db } from "@/lib/db"
 import { trancarAvulsosExpirados } from "@/lib/services/matricula-trancada.service"
+import { trancarAlunosInadimplentes } from "@/lib/services/trancamento-inadimplencia.service"
 
 // Data Access Layer (DAL): camada central de autenticação/autorização.
 // Toda página, Server Action e Route Handler que toca dados protegidos DEVE
@@ -80,6 +81,7 @@ const carregarUsuarioAtual = cache(async () => {
   }
   if (usuario.papel === "ALUNO" && usuario.aluno) {
     await trancarAvulsosExpirados({ alunoId: usuario.aluno.id })
+    await trancarAlunosInadimplentes({ alunoId: usuario.aluno.id })
     const aluno = await db.aluno.findUnique({
       where: { id: usuario.aluno.id },
       select: { status: true },

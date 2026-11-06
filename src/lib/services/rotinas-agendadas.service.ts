@@ -19,6 +19,7 @@ import {
   executarTarefaAgendada,
   expurgarExecucoesTarefasAntigas,
 } from "@/lib/services/tarefa-agendada.service"
+import { trancarAlunosInadimplentes } from "@/lib/services/trancamento-inadimplencia.service"
 
 // Uma etapa indisponível não impede as outras; erro bruto nunca integra o histórico.
 export async function executarEtapasIndependentes(etapas: Record<string, () => Promise<unknown>>) {
@@ -47,6 +48,7 @@ export function realizarManutencaoFinanceira() {
   return executarEtapasIndependentes({
     precosAdimplencia: () => sincronizarValoresAdimplencia(),
     vencimentos: () => vencerMensalidadesAtrasadas(undefined, { notificarAlunos: false }),
+    trancamentos: () => trancarAlunosInadimplentes(),
   })
 }
 

@@ -23,6 +23,7 @@ const NOMES_CONTADORES = new Set([
   "cancelados",
   "trancados",
   "trancadas",
+  "isencoesPendentes",
   "removidas",
   "removidos",
   "excluidas",
@@ -83,6 +84,7 @@ const NOMES_ETAPAS = new Set([
   "limpeza",
   "notificacoes",
   "vencimentos",
+  "trancamentos",
 ])
 
 /** Extrai só métricas conhecidas; não persiste IDs, mensagens, arrays nem payloads. */

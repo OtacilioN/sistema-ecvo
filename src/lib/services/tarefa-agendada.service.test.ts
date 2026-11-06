@@ -351,11 +351,16 @@ describe("contadoresSegurosTarefa", () => {
         analisadas: Number.POSITIVE_INFINITY,
         criadas: -1,
         financeiro: { total: 5, alunoId: 123, erro: "senha", valor: 200 },
+        trancamentos: { trancados: 3, isencoesPendentes: 1, alunoId: 456 },
         "aluno-123": { total: 1 },
         mensagens: ["dados"],
         segredo: 8,
       }),
-    ).toEqual({ total: 2, financeiro: { total: 5 } })
+    ).toEqual({
+      total: 2,
+      financeiro: { total: 5 },
+      trancamentos: { trancados: 3, isencoesPendentes: 1 },
+    })
   })
 })
 
