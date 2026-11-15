@@ -80,6 +80,30 @@ a migration de recuperação de senha antes de disponibilizar o código e teste 
 uma conta de teste. Solicitações de matrícula ainda não aprovadas não possuem conta de aluno
 e não entram nesse fluxo.
 
+## Lembrete de pagamento por e-mail
+
+A rotina `/api/tarefas/lembretes-financeiros`, às 08h no fuso da academia, envia pelo
+Resend um lembrete cinco dias antes do vencimento das mensalidades em aberto de alunos
+operacionais com conta ativa. Usa as mesmas variáveis de e-mail da recuperação de senha.
+Quando há responsável financeiro com e-mail cadastrado, o aviso vai para ele; nos demais
+casos, vai para o aluno. O aviso identifica o aluno, a competência, o valor e o vencimento,
+com link para `/aluno/financeiro`. Quando a mensalidade possui desconto de adimplência,
+explica que é necessário pagar até a data limite para manter o valor promocional e informa
+o valor após esse prazo, usando os preços registrados na própria mensalidade.
+
+Mensalidades do próximo mês com vencimento em cinco dias são disponibilizadas antecipadamente
+para cobrir vencimentos entre os dias 1 e 5, sem emitir cobranças no Asaas. Registros pagos,
+isentos ou cancelados não recebem o lembrete, e a elegibilidade é revalidada antes do envio.
+
+Aplique a migration `20261115010000_lembrete_pagamento_email` antes de publicar.
+`LembretePagamentoEmail` mantém uma reserva por mensalidade, o conteúdo imutável e a
+confirmação de aceitação pelo Resend (não é confirmação de entrega na caixa de entrada).
+Falhas transitórias têm até três tentativas com a mesma chave de idempotência. Uma
+reexecução no mesmo dia retoma falhas sem repetir os envios confirmados. Tentativas incertas
+com mais de 23h exigem conferência manual para não ultrapassar a janela de idempotência de
+24h do provedor. Falhas e limites do Resend deixam a etapa pendente no monitor de tarefas;
+o histórico do cron contém somente contadores, sem endereços ou conteúdo de e-mail.
+
 ## Chamada rápida para professores
 
 `/gestao/checkin` mostra um único total de **Alunos presentes**: todos os check-ins válidos,

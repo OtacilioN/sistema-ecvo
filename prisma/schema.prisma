@@ -963,6 +963,7 @@ model Mensalidade {
   cobrancaQuitacaoAsaas   CobrancaAsaas?          @relation("QuitacaoMensalidadeAsaas", fields: [cobrancaQuitacaoAsaasId], references: [id], onDelete: SetNull)
   cobrancaQuitacaoAsaasId String?                 @unique
   cobrancaMatriculaAsaas  CobrancaMatriculaAsaas?
+  lembretePagamentoEmail LembretePagamentoEmail?
   criadoEm                DateTime                @default(now())
   atualizadoEm            DateTime                @updatedAt
 
@@ -970,6 +971,23 @@ model Mensalidade {
   @@unique([contratoPixAutomaticoId, numeroCicloPix])
   @@index([status])
   @@index([contratoPixAutomaticoId])
+}
+
+// Reserva persistente e conteúdo imutável para repetição segura no Resend.
+model LembretePagamentoEmail {
+  id                  String      @id
+  mensalidade         Mensalidade @relation(fields: [mensalidadeId], references: [id], onDelete: Cascade)
+  mensalidadeId       String      @unique
+  remetente           String
+  destinatario        String
+  assunto             String
+  texto               String
+  primeiraTentativaEm DateTime    @default(now())
+  reservadoAte        DateTime?
+  enviadoEm           DateTime?
+  resendId            String?
+  ultimoErro          String?
+  tentativas          Int         @default(0)
 }
 
 model CobrancaReativacaoAsaas {

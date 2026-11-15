@@ -71,6 +71,8 @@ const NOMES_ETAPAS = new Set([
   "aluguel",
   "avulsos",
   "mensalidades",
+  "mensalidadesAntecipadas",
+  "emailsPagamento",
   "precosAdimplencia",
   "adimplencia",
   "criacao",

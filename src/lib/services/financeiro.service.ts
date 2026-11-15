@@ -1517,6 +1517,47 @@ export async function gerarMensalidadesRecorrentes(params?: { competencia?: stri
   }
 }
 
+/** Disponibiliza só a próxima competência que já precisa do aviso de cinco dias. */
+export async function gerarMensalidadesParaLembrete(params?: { agora?: Date }) {
+  const agora = params?.agora ?? new Date()
+  const alvo = new Date(inicioDoDiaAcademia(agora).getTime() + 5 * 86_400_000)
+  const competencia = chaveCompetencia(alvo)
+  let criadas = 0
+  let existentes = 0
+  const puladas: Array<{ alunoId: string; motivo: string }> = []
+
+  // A rotina recorrente já disponibiliza o mês atual. Não antecipa todos os alunos.
+  if (competencia === chaveCompetencia(agora)) return { criadas, existentes, puladas }
+
+  const alunos = await db.aluno.findMany({
+    where: {
+      planoId: { not: null },
+      status: { in: [...STATUS_ALUNO_OPERACIONAIS] },
+      usuario: { ativo: true },
+      vencimentoMesSeguinte: false,
+    },
+    select: { id: true, diaVencimento: true, vencimentoMesSeguinte: true },
+    orderBy: { criadoEm: "asc" },
+  })
+  for (const aluno of alunos) {
+    const vencimento = vencimentoDaCompetencia(
+      competencia,
+      aluno.diaVencimento,
+      aluno.vencimentoMesSeguinte,
+    )
+    if (inicioDoDiaAcademia(vencimento).getTime() !== alvo.getTime()) continue
+    const resultado = await obterOuCriarMensalidade({
+      alunoId: aluno.id,
+      competencia,
+      somenteOperacional: true,
+    })
+    if (!resultado.ok) puladas.push({ alunoId: aluno.id, motivo: resultado.motivo })
+    else if (resultado.criada) criadas++
+    else existentes++
+  }
+  return { criadas, existentes, puladas }
+}
+
 export async function baixarMensalidade(params: {
   mensalidadeId: string
   formaPagamento?: string | null

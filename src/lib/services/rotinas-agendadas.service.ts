@@ -6,10 +6,12 @@ import {
 } from "@/lib/services/asaas.service"
 import {
   gerarLembretesFinanceiros,
+  gerarMensalidadesParaLembrete,
   gerarMensalidadesRecorrentes,
   sincronizarValoresAdimplencia,
   vencerMensalidadesAtrasadas,
 } from "@/lib/services/financeiro.service"
+import { enviarLembretesPagamentoEmail } from "@/lib/services/lembrete-pagamento-email.service"
 import {
   expurgarNotificacoesAntigas,
   gerarLembretesAluguelGestores,
@@ -53,10 +55,13 @@ export function realizarManutencaoFinanceira() {
 }
 
 export function gerarAvisosFinanceiros() {
+  const limiteExecucaoEm = Date.now() + 270_000
   return executarEtapasIndependentes({
     // A geração cria o aviso de nova mensalidade e envia push; permanece às 08h.
     mensalidades: () => gerarMensalidadesRecorrentes(),
+    mensalidadesAntecipadas: () => gerarMensalidadesParaLembrete(),
     financeiro: () => gerarLembretesFinanceiros(),
+    emailsPagamento: () => enviarLembretesPagamentoEmail({ limiteExecucaoEm }),
   })
 }
 

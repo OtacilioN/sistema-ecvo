@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   reconciliarPendenciasAsaas: vi.fn(),
   sincronizarCobrancasDescontoAdimplencia: vi.fn(),
   gerarMensalidadesRecorrentes: vi.fn(),
+  gerarMensalidadesParaLembrete: vi.fn(),
+  enviarLembretesPagamentoEmail: vi.fn(),
   gerarLembretesFinanceiros: vi.fn(),
   sincronizarValoresAdimplencia: vi.fn(),
   vencerMensalidadesAtrasadas: vi.fn(),
@@ -23,9 +25,13 @@ vi.mock("@/lib/services/asaas.service", () => ({
 }))
 vi.mock("@/lib/services/financeiro.service", () => ({
   gerarMensalidadesRecorrentes: mocks.gerarMensalidadesRecorrentes,
+  gerarMensalidadesParaLembrete: mocks.gerarMensalidadesParaLembrete,
   gerarLembretesFinanceiros: mocks.gerarLembretesFinanceiros,
   sincronizarValoresAdimplencia: mocks.sincronizarValoresAdimplencia,
   vencerMensalidadesAtrasadas: mocks.vencerMensalidadesAtrasadas,
+}))
+vi.mock("@/lib/services/lembrete-pagamento-email.service", () => ({
+  enviarLembretesPagamentoEmail: mocks.enviarLembretesPagamentoEmail,
 }))
 vi.mock("@/lib/services/notificacao.service", () => ({
   expurgarNotificacoesAntigas: mocks.expurgarNotificacoesAntigas,
@@ -131,6 +137,11 @@ describe("etapas independentes das rotinas", () => {
     expect(resultado.ok).toBe(true)
     expect(mocks.gerarMensalidadesRecorrentes).toHaveBeenCalledOnce()
     expect(mocks.gerarLembretesFinanceiros).toHaveBeenCalledOnce()
+    expect(mocks.gerarMensalidadesParaLembrete).toHaveBeenCalledOnce()
+    expect(mocks.enviarLembretesPagamentoEmail).toHaveBeenCalledOnce()
+    expect(mocks.gerarMensalidadesParaLembrete.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.enviarLembretesPagamentoEmail.mock.invocationCallOrder[0],
+    )
     expect(mocks.gerarMensalidadesRecorrentes.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.gerarLembretesFinanceiros.mock.invocationCallOrder[0],
     )
@@ -145,9 +156,21 @@ describe("etapas independentes das rotinas", () => {
 
     expect(resultado.ok).toBe(false)
     expect(mocks.gerarLembretesFinanceiros).toHaveBeenCalledOnce()
+    expect(mocks.enviarLembretesPagamentoEmail).toHaveBeenCalledOnce()
     expect(resultado.erros).toEqual([
       { etapa: "mensalidades", motivo: "Não foi possível concluir esta etapa." },
     ])
+  })
+
+  it("registra falha de e-mail sem impedir notificações ou expor dados do provedor", async () => {
+    mocks.enviarLembretesPagamentoEmail.mockRejectedValueOnce(new Error("chave-ou-email-privado"))
+    const resultado = await gerarAvisosFinanceiros()
+    expect(resultado.ok).toBe(false)
+    expect(mocks.gerarLembretesFinanceiros).toHaveBeenCalledOnce()
+    expect(resultado.erros).toEqual([
+      { etapa: "emailsPagamento", motivo: "Não foi possível concluir esta etapa." },
+    ])
+    expect(JSON.stringify(resultado)).not.toContain("chave-ou-email-privado")
   })
 
   it("mantém aniversário e aluguel independentes da manutenção e de falha entre avisos", async () => {

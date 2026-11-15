@@ -352,6 +352,8 @@ describe("contadoresSegurosTarefa", () => {
         criadas: -1,
         financeiro: { total: 5, alunoId: 123, erro: "senha", valor: 200 },
         trancamentos: { trancados: 3, isencoesPendentes: 1, alunoId: 456 },
+        mensalidadesAntecipadas: { criadas: 1, existentes: 2, puladas: [{ alunoId: "privado" }] },
+        emailsPagamento: { analisadas: 3, enviados: 2, falhas: 1, destinatario: "privado" },
         "aluno-123": { total: 1 },
         mensagens: ["dados"],
         segredo: 8,
@@ -360,6 +362,8 @@ describe("contadoresSegurosTarefa", () => {
       total: 2,
       financeiro: { total: 5 },
       trancamentos: { trancados: 3, isencoesPendentes: 1 },
+      mensalidadesAntecipadas: { criadas: 1, existentes: 2 },
+      emailsPagamento: { analisadas: 3, enviados: 2, falhas: 1 },
     })
   })
 })
