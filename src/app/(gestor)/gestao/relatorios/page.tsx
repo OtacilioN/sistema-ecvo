@@ -239,7 +239,11 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
       <CabecalhoPagina
         titulo="Relatórios"
         descricao="Indicadores operacionais, presença, horas, graduação, financeiro e conciliação."
-      />
+      >
+        <Button asChild variant="outline">
+          <Link href="/gestao/relatorios/evolucao-pagantes">Evolução de pagantes</Link>
+        </Button>
+      </CabecalhoPagina>
 
       <Card>
         <CardContent className="p-4 sm:p-5">

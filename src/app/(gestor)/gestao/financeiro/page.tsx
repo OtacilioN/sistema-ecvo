@@ -285,6 +285,9 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
         descricao="Acompanhe recebimentos, cobranças em aberto e inadimplência em um só lugar."
       >
         <Button asChild variant="outline">
+          <Link href="/gestao/relatorios/evolucao-pagantes">Evolução de pagantes</Link>
+        </Button>
+        <Button asChild variant="outline">
           <Link href="/gestao/financeiro/repasses">Repasses, custos e receitas</Link>
         </Button>
         {podeEditar && <AcoesFinanceiro alunos={alunosOpcao} />}
