@@ -29,7 +29,7 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
   const [medida, setMedida] = useState<"media" | "mediana">("media")
   const [diaSelecionado, setDiaSelecionado] = useState(dados.diaAtual)
   const comparativo = construirComparativoReceita(dados, { agrupamento, janela, medida })
-  const { pontos, resumo, mesesHistorico, temMesAnterior } = comparativo
+  const { pontos, resumo, mesesHistorico, temMesAnterior, projecao } = comparativo
   const indiceSelecionado = Math.max(
     0,
     pontos.findIndex((ponto) => ponto.dia >= diaSelecionado),
@@ -38,12 +38,17 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
   const ultimoDia = pontos.at(-1)?.dia ?? 31
   const maximo = Math.max(
     1,
-    ...pontos.flatMap((ponto) => [ponto.atual ?? 0, ponto.anterior, ponto.historico]),
+    ...pontos.flatMap((ponto) => [
+      ponto.atual ?? 0,
+      ponto.anterior,
+      ponto.historico,
+      ponto.projetado ?? 0,
+    ]),
   )
   const teto = Math.ceil(maximo / 4) * 4
   const x = (dia: number) => ((dia - 1) / Math.max(1, ultimoDia - 1)) * 1000
   const y = (valor: number) => 245 - (valor / teto) * 230
-  const caminho = (campo: "atual" | "anterior" | "historico") =>
+  const caminho = (campo: "atual" | "anterior" | "historico" | "projetado") =>
     pontos
       .filter((ponto) => ponto[campo] !== null)
       .map(
@@ -51,6 +56,8 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
           `${indice === 0 ? "M" : "L"}${x(ponto.dia).toFixed(2)},${y(ponto[campo] ?? 0).toFixed(2)}`,
       )
       .join(" ")
+  // Parte do recebido real de hoje, inclusive quando ainda há vencimentos neste dia.
+  const caminhoProjecao = `M${x(dados.diaAtual).toFixed(2)},${y(resumo.atual).toFixed(2)} ${caminho("projetado").replace(/^M/, "L")}`
   const nomeHistorico = medida === "media" ? "Média" : "Mediana"
   const mesAtual = formatarCompetencia(dados.competenciaAtual)
   const indiceAtual = dados.meses.findIndex((mes) => mes.competencia === dados.competenciaAtual)
@@ -89,11 +96,19 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
           ...new Set(
             pontos
               .map((ponto) => ponto.dia)
-              .filter((dia) => dia !== dados.diaAtual || dia % 7 === 0 || dia === ultimoDia),
+              .filter(
+                (dia) =>
+                  (dia !== dados.diaAtual || dia % 7 === 0 || dia === ultimoDia) &&
+                  (dia === ultimoDia || ultimoDia - dia >= 3),
+              ),
           ),
         ]
   const temRecebimento = pontos.some(
-    (ponto) => (ponto.atual ?? 0) > 0 || ponto.anterior > 0 || ponto.historico > 0,
+    (ponto) =>
+      (ponto.atual ?? 0) > 0 ||
+      ponto.anterior > 0 ||
+      ponto.historico > 0 ||
+      (ponto.projetado ?? 0) > 0,
   )
 
   return (
@@ -182,6 +197,31 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
           </div>
         </div>
 
+        <div className="flex flex-col gap-3 rounded-md border border-dashed border-primary/40 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <span
+                aria-hidden="true"
+                className="w-6 shrink-0 border-t-2 border-dashed border-primary"
+              />
+              Projeção com pagamentos em dia
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {projecao.quantidadeMensalidades > 0
+                ? `${formatarBRL(projecao.aReceber)} em ${projecao.quantidadeMensalidades} mensalidade${projecao.quantidadeMensalidades === 1 ? "" : "s"} a vencer, incluindo hoje.`
+                : "Nenhuma mensalidade em aberto a vencer até o fim do mês."}
+            </p>
+          </div>
+          <div className="shrink-0 sm:text-right">
+            <p className="text-xs text-muted-foreground">
+              Total previsto até o dia {projecao.diasNoMes}
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-primary">
+              {formatarBRL(projecao.total)}
+            </p>
+          </div>
+        </div>
+
         {temRecebimento ? (
           <div>
             <div className="mb-2 text-xs text-muted-foreground">Receita acumulada (R$)</div>
@@ -223,8 +263,8 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
                 >
                   <title id={`${id}-titulo`}>Comparativo da receita acumulada</title>
                   <desc id={`${id}-descricao`}>
-                    Mês vigente até hoje, mês anterior e referência histórica. Consulte os valores
-                    pelo seletor abaixo.
+                    Mês vigente até hoje, projeção tracejada de pagamentos em dia até o fim do mês,
+                    mês anterior e referência histórica. Consulte os valores pelo seletor abaixo.
                   </desc>
                   {[1, 0.75, 0.5, 0.25, 0].map((fracao) => (
                     <line
@@ -238,6 +278,15 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
                       strokeDasharray="3 5"
                     />
                   ))}
+                  <path
+                    d={caminhoProjecao}
+                    fill="none"
+                    stroke="currentColor"
+                    className="text-primary"
+                    strokeWidth="3"
+                    strokeDasharray="8 5"
+                    vectorEffect="non-scaling-stroke"
+                  />
                   {series
                     .filter((serie) => serie.disponivel)
                     .toReversed()
@@ -310,12 +359,12 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
               </div>
             </div>
             <p className="text-right text-xs text-muted-foreground">
-              Dia do mês · linha vigente encerra hoje ({dados.diaAtual})
+              Dia do mês · recebido até hoje ({dados.diaAtual}); tracejado = projeção
             </p>
           </div>
         ) : (
           <p className="rounded-md border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-            Nenhum recebimento registrado nos períodos comparados.
+            Nenhum recebimento ou mensalidade a vencer nos períodos comparados.
           </p>
         )}
 
@@ -341,7 +390,7 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
               onChange={(evento) => setDiaSelecionado(pontos[Number(evento.target.value)].dia)}
               className="my-3 block w-full accent-primary"
             />
-            <dl aria-live="polite" className="grid gap-3 text-sm sm:grid-cols-3">
+            <dl aria-live="polite" className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
               {series.map((serie) => (
                 <div key={serie.chave}>
                   <dt className="text-xs text-muted-foreground">{serie.nome}</dt>
@@ -354,6 +403,16 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
                   </dd>
                 </div>
               ))}
+              <div>
+                <dt className="text-xs text-muted-foreground">Projeção com pagamentos em dia</dt>
+                <dd className="mt-1 font-medium tabular-nums text-primary">
+                  {selecionado.projetado !== null
+                    ? formatarBRL(selecionado.projetado)
+                    : selecionado.dia < dados.diaAtual
+                      ? "Projeção começa hoje"
+                      : "Fora do mês vigente"}
+                </dd>
+              </div>
             </dl>
           </div>
         ) : null}
@@ -362,6 +421,12 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
           <p>
             Mensalidades pagas e reativações recebidas, pela data do pagamento e antes de taxas. Não
             inclui Wellhub, TotalPass ou outras receitas lançadas apenas por competência.
+          </p>
+          <p>
+            O tracejado soma ao recebido as mensalidades já lançadas, em aberto, de matrículas
+            ativas, com vencimento de hoje até o fim do mês. Considera pagamento no vencimento, com
+            desconto de pontualidade quando aplicável. Não inclui atrasadas nem estima matrículas
+            futuras.
           </p>
           <p>
             {nomeHistorico} dos acumulados de cada mês anterior no mesmo dia.{" "}
@@ -373,8 +438,8 @@ export function EvolucaoReceita({ dados }: { dados: DadosEvolucaoReceita }) {
           </p>
           {agrupamento === "semana" ? (
             <p>
-              Semanas do mês: dias 1–7, 8–14, 15–21, 22–28 e 29 até o fim. A semana vigente é
-              parcial, até hoje.
+              Semanas do mês: dias 1–7, 8–14, 15–21, 22–28 e 29 até o fim. Na semana vigente, o
+              recebido considera apenas os pagamentos confirmados até hoje.
             </p>
           ) : null}
         </div>

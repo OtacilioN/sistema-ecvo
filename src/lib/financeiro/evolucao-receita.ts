@@ -9,6 +9,8 @@ export type DadosEvolucaoReceita = {
   diaAtual: number
   primeiraCompetenciaComRecebimento: string | null
   meses: MesEvolucaoReceita[]
+  previsaoPorDia: number[]
+  quantidadeMensalidadesPrevistas: number
 }
 
 export type OpcoesComparativoReceita = {
@@ -23,6 +25,7 @@ export type PontoComparativoReceita = {
   atual: number | null
   anterior: number
   historico: number
+  projetado: number | null
 }
 
 function acumuladoCentavos(mes: MesEvolucaoReceita | undefined, dia: number): number {
@@ -51,6 +54,7 @@ export function construirComparativoReceita(
 ) {
   const indiceAtual = dados.meses.findIndex((mes) => mes.competencia === dados.competenciaAtual)
   const atual = dados.meses[indiceAtual]
+  const diasNoMesAtual = atual?.diasNoMes ?? dados.previsaoPorDia.length
   const anterior = dados.meses[indiceAtual - 1]
   const historico = dados.meses
     .slice(Math.max(0, indiceAtual - opcoes.janela), indiceAtual)
@@ -71,7 +75,11 @@ export function construirComparativoReceita(
   )
   const dias = Array.from({ length: ultimoDia }, (_, indice) => indice + 1).filter(
     (dia) =>
-      opcoes.agrupamento === "dia" || dia % 7 === 0 || dia === ultimoDia || dia === dados.diaAtual,
+      opcoes.agrupamento === "dia" ||
+      dia % 7 === 0 ||
+      dia === ultimoDia ||
+      dia === diasNoMesAtual ||
+      dia === dados.diaAtual,
   )
   const valoresNoDia = (dia: number) => ({
     atual: acumuladoCentavos(atual, dia) / 100,
@@ -82,9 +90,15 @@ export function construirComparativoReceita(
         opcoes.medida,
       ) / 100,
   })
+  const recebidoAtualCentavos = acumuladoCentavos(atual, dados.diaAtual)
+  const previstoAteDiaCentavos = (dia: number) =>
+    dados.previsaoPorDia
+      .slice(dados.diaAtual - 1, Math.min(dia, diasNoMesAtual))
+      .reduce((total, valor) => total + Math.round(valor * 100), 0)
+  const aReceberCentavos = previstoAteDiaCentavos(diasNoMesAtual)
 
   const pontos: PontoComparativoReceita[] = dias.map((dia) => {
-    const parcial = dia === dados.diaAtual && dia % 7 !== 0 && dia !== ultimoDia
+    const parcial = dia === dados.diaAtual && dia % 7 !== 0 && dia !== diasNoMesAtual
     const inicioSemana = Math.floor((dia - 1) / 7) * 7 + 1
     return {
       dia,
@@ -94,6 +108,10 @@ export function construirComparativoReceita(
           : `${inicioSemana}–${dia}${parcial ? " (parcial)" : ""}`,
       ...valoresNoDia(dia),
       atual: dia <= dados.diaAtual ? valoresNoDia(dia).atual : null,
+      projetado:
+        dia >= dados.diaAtual && dia <= diasNoMesAtual
+          ? (recebidoAtualCentavos + previstoAteDiaCentavos(dia)) / 100
+          : null,
     }
   })
 
@@ -102,5 +120,11 @@ export function construirComparativoReceita(
     resumo: valoresNoDia(dados.diaAtual),
     mesesHistorico: historico.length,
     temMesAnterior,
+    projecao: {
+      total: (recebidoAtualCentavos + aReceberCentavos) / 100,
+      aReceber: aReceberCentavos / 100,
+      quantidadeMensalidades: dados.quantidadeMensalidadesPrevistas,
+      diasNoMes: diasNoMesAtual,
+    },
   }
 }

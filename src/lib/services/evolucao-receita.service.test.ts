@@ -6,8 +6,11 @@ import {
 } from "@/lib/financeiro/evolucao-receita"
 
 const mocks = vi.hoisted(() => ({
+  $transaction: vi.fn(),
   mensalidade: { findMany: vi.fn(), findFirst: vi.fn() },
   cobrancaReativacaoAsaas: { findMany: vi.fn(), findFirst: vi.fn() },
+  mensalidadesPagas: vi.fn(),
+  mensalidadesPrevistas: vi.fn(),
 }))
 vi.mock("@/lib/db", () => ({ db: mocks }))
 
@@ -31,6 +34,8 @@ function dados(meses: MesEvolucaoReceita[], diaAtual = 16): DadosEvolucaoReceita
     primeiraCompetenciaComRecebimento: meses[0].competencia,
     diaAtual,
     meses,
+    previsaoPorDia: Array(meses[meses.length - 1].diasNoMes).fill(0),
+    quantidadeMensalidadesPrevistas: 0,
   }
 }
 
@@ -133,13 +138,14 @@ describe("comparativo de receita acumulada", () => {
       dados([mes("2026-10", { 15: 100, 18: 900 }), mes("2026-11", { 15: 50 })], 16),
       { ...opcoes, agrupamento: "semana" },
     )
-    expect(resultado.pontos.map((ponto) => ponto.dia)).toEqual([7, 14, 16, 21, 28, 31])
+    expect(resultado.pontos.map((ponto) => ponto.dia)).toEqual([7, 14, 16, 21, 28, 30, 31])
     expect(resultado.pontos[2]).toEqual({
       dia: 16,
       rotulo: "15–16 (parcial)",
       atual: 50,
       anterior: 100,
       historico: 100,
+      projetado: 50,
     })
     expect(resultado.pontos[3]).toMatchObject({ atual: null, anterior: 1000 })
   })
@@ -153,12 +159,98 @@ describe("comparativo de receita acumulada", () => {
       expect(resultado.pontos.filter((ponto) => ponto.dia === diaAtual)).toHaveLength(1)
     }
   })
+
+  it("projeta o recebido mais vencimentos pontuais de hoje em diante, sem alterar os comparativos", () => {
+    const fonte = dados([mes("2026-10", { 1: 300 }), mes("2026-11", { 1: 100, 16: 25 })])
+    fonte.previsaoPorDia[0] = 999 // Previsões anteriores a hoje nunca entram.
+    fonte.previsaoPorDia[15] = 100
+    fonte.previsaoPorDia[19] = 200
+    fonte.previsaoPorDia[29] = 0.1
+    fonte.quantidadeMensalidadesPrevistas = 3
+    const copia = structuredClone(fonte)
+    const resultado = construirComparativoReceita(fonte, opcoes)
+
+    expect(resultado.resumo).toEqual({ atual: 125, anterior: 300, historico: 300 })
+    expect(resultado.pontos[14].projetado).toBeNull()
+    expect(resultado.pontos[15]).toMatchObject({ atual: 125, projetado: 225 })
+    expect(resultado.pontos[19]).toMatchObject({ atual: null, projetado: 425 })
+    expect(resultado.pontos[29]).toMatchObject({ atual: null, projetado: 425.1 })
+    expect(resultado.projecao).toEqual({
+      total: 425.1,
+      aReceber: 300.1,
+      quantidadeMensalidades: 3,
+      diasNoMes: 30,
+    })
+    expect(fonte).toEqual(copia)
+  })
+
+  it("mantém o mesmo cenário futuro ao trocar média por mediana ou o agrupamento", () => {
+    const fonte = dados([
+      mes("2026-08", { 1: 100 }),
+      mes("2026-09", { 1: 500 }),
+      mes("2026-10", { 1: 9000 }),
+      mes("2026-11", { 1: 50 }),
+    ])
+    fonte.previsaoPorDia[20] = 200
+    fonte.quantidadeMensalidadesPrevistas = 1
+    const diario = construirComparativoReceita(fonte, opcoes)
+    const semanal = construirComparativoReceita(fonte, {
+      ...opcoes,
+      agrupamento: "semana",
+      medida: "mediana",
+    })
+    expect(semanal.projecao).toEqual(diario.projecao)
+    expect(semanal.pontos.find((ponto) => ponto.dia === 21)).toMatchObject({
+      atual: null,
+      projetado: 250,
+      historico: 500,
+    })
+    expect(semanal.resumo.atual).toBe(50)
+  })
+
+  it("encerra a projeção no último dia do mês atual, inclusive na visualização semanal", () => {
+    const fonte = dados([mes("2026-10"), mes("2026-11", { 1: 50 })], 30)
+    fonte.previsaoPorDia[29] = 200
+    fonte.quantidadeMensalidadesPrevistas = 1
+    const resultado = construirComparativoReceita(fonte, { ...opcoes, agrupamento: "semana" })
+    expect(resultado.pontos.find((ponto) => ponto.dia === 30)).toMatchObject({
+      atual: 50,
+      projetado: 250,
+      rotulo: "29–30",
+    })
+    expect(resultado.pontos.find((ponto) => ponto.dia === 31)).toMatchObject({
+      atual: null,
+      projetado: null,
+    })
+    expect(resultado.pontos.filter((ponto) => ponto.dia === 30)).toHaveLength(1)
+  })
+
+  it("permite prever recebimentos mesmo sem histórico e mantém o recebido quando não há pendências", () => {
+    const fonte = dados([mes("2026-11")], 1)
+    fonte.primeiraCompetenciaComRecebimento = null
+    fonte.previsaoPorDia[29] = 100
+    fonte.quantidadeMensalidadesPrevistas = 1
+    const resultado = construirComparativoReceita(fonte, opcoes)
+    expect(resultado.resumo.atual).toBe(0)
+    expect(resultado.mesesHistorico).toBe(0)
+    expect(resultado.projecao.total).toBe(100)
+    expect(resultado.pontos[29].projetado).toBe(100)
+
+    const semPendencias = construirComparativoReceita(dados([mes("2026-11", { 1: 75 })]), opcoes)
+    expect(semPendencias.projecao).toMatchObject({ total: 75, aReceber: 0 })
+    expect(semPendencias.pontos[29].projetado).toBe(75)
+  })
 })
 
 describe("consulta da receita do painel", () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    mocks.mensalidade.findMany.mockResolvedValue([])
+    mocks.$transaction.mockImplementation(async (consultas) => Promise.all(consultas))
+    mocks.mensalidadesPagas.mockResolvedValue([])
+    mocks.mensalidadesPrevistas.mockResolvedValue([])
+    mocks.mensalidade.findMany.mockImplementation(({ where }) =>
+      where.status === "EM_ABERTO" ? mocks.mensalidadesPrevistas() : mocks.mensalidadesPagas(),
+    )
     mocks.cobrancaReativacaoAsaas.findMany.mockResolvedValue([])
     mocks.mensalidade.findFirst.mockResolvedValue(null)
     mocks.cobrancaReativacaoAsaas.findFirst.mockResolvedValue(null)
@@ -186,6 +278,27 @@ describe("consulta da receita do painel", () => {
       orderBy: { recebidaEmAsaas: "asc" },
       select: { recebidaEmAsaas: true },
     })
+    expect(mocks.mensalidade.findMany).toHaveBeenCalledWith({
+      where: {
+        status: "EM_ABERTO",
+        pagoEm: null,
+        vencimento: {
+          gte: new Date("2026-11-16T03:00:00Z"),
+          lt: new Date("2026-12-01T03:00:00Z"),
+        },
+        aluno: { status: { in: ["ATIVO", "INADIMPLENTE"] } },
+      },
+      select: {
+        status: true,
+        vencimento: true,
+        valor: true,
+        valorBase: true,
+        valorComDesconto: true,
+      },
+    })
+    expect(mocks.$transaction).toHaveBeenCalledWith(expect.any(Array), {
+      isolationLevel: "RepeatableRead",
+    })
     expect(resultado.meses.map((item) => item.competencia)).toEqual([
       "2026-05",
       "2026-06",
@@ -199,7 +312,7 @@ describe("consulta da receita do painel", () => {
   })
 
   it("agrupa pela data do recebimento no fuso da academia e soma fontes em centavos", async () => {
-    mocks.mensalidade.findMany.mockResolvedValue([
+    mocks.mensalidadesPagas.mockResolvedValue([
       { valor: "0.10", pagoEm: new Date("2026-11-01T02:59:59Z") },
       { valor: "0.10", pagoEm: new Date("2026-11-01T03:00:00Z") },
       { valor: "999", pagoEm: null },
@@ -225,5 +338,62 @@ describe("consulta da receita do painel", () => {
     expect(resultado.diaAtual).toBe(31)
     expect(resultado.meses[0].competencia).toBe("2026-07")
     expect(resultado.meses[6].diasNoMes).toBe(31)
+  })
+
+  it("prevê pelo desconto pontual persistido e pelo valor legado, somando apenas hoje e futuros no mês", async () => {
+    const pendente = (vencimento: string, valor: string) => ({
+      status: "EM_ABERTO" as const,
+      vencimento: new Date(vencimento),
+      valor,
+      valorBase: null,
+      valorComDesconto: null,
+    })
+    mocks.mensalidadesPrevistas.mockResolvedValue([
+      {
+        ...pendente("2026-11-16T03:00:00Z", "120.00"),
+        valorBase: "120.00",
+        valorComDesconto: "100.00",
+      },
+      pendente("2026-11-16T12:00:00Z", "0.10"),
+      {
+        ...pendente("2026-11-20T12:00:00Z", "200.00"),
+        valorBase: "200.00",
+        valorComDesconto: "150.00",
+      },
+      pendente("2026-12-01T02:59:59Z", "0.20"), // Dia 30 local.
+      pendente("2026-11-16T02:59:59Z", "999.00"), // Ainda dia 15 local.
+      pendente("2026-12-01T03:00:00Z", "999.00"), // Outro mês.
+      ...(["PAGA", "VENCIDA", "ISENTA", "CANCELADA"] as const).map((status) => ({
+        ...pendente("2026-11-20T12:00:00Z", "999.00"),
+        status,
+      })),
+    ])
+    const resultado = await obterEvolucaoReceita(new Date("2026-11-16T18:00:00Z"))
+    expect(resultado.previsaoPorDia).toHaveLength(30)
+    expect(resultado.previsaoPorDia[15]).toBe(100.1)
+    expect(resultado.previsaoPorDia[19]).toBe(150)
+    expect(resultado.previsaoPorDia[29]).toBe(0.2)
+    expect(resultado.previsaoPorDia.slice(0, 15).every((valor) => valor === 0)).toBe(true)
+    expect(resultado.quantidadeMensalidadesPrevistas).toBe(4)
+    expect(construirComparativoReceita(resultado, opcoes).projecao).toMatchObject({
+      total: 250.3,
+      aReceber: 250.3,
+    })
+    expect(resultado.meses[6].recebidoPorDia.every((valor) => valor === 0)).toBe(true)
+  })
+
+  it("limita a consulta às pendências do último dia local na virada do ano", async () => {
+    await obterEvolucaoReceita(new Date("2027-01-01T02:30:00Z"))
+    expect(mocks.mensalidade.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "EM_ABERTO",
+          vencimento: {
+            gte: new Date("2026-12-31T03:00:00Z"),
+            lt: new Date("2027-01-01T03:00:00Z"),
+          },
+        }),
+      }),
+    )
   })
 })
