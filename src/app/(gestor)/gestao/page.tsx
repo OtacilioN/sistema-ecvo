@@ -14,13 +14,16 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import type { CSSProperties } from "react"
+import { EvolucaoReceita } from "@/components/gestao/evolucao-receita"
 import { LembreteAtivarNotificacoes } from "@/components/lembrete-ativar-notificacoes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CabecalhoPagina } from "@/components/ui/cabecalho-pagina"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { alunoContaOperacionalmente, STATUS_ALUNO_OPERACIONAIS } from "@/lib/alunos/status"
+import { exigirGestao } from "@/lib/auth/dal"
 import { db } from "@/lib/db"
+import { obterEvolucaoReceita } from "@/lib/services/evolucao-receita.service"
 import { statusMensalidadeEfetivo } from "@/lib/services/financeiro.service"
 import { cn } from "@/lib/utils"
 import {
@@ -125,6 +128,7 @@ function hrefPessoaAniversario(papel: keyof typeof rotulosPapelAniversario) {
 }
 
 export default async function GestaoInicio() {
+  await exigirGestao()
   const hoje = new Date()
   const inicioHoje = inicioDoDiaAcademia(hoje)
   const inicioSemana = obterInicioSemana(hoje)
@@ -143,6 +147,7 @@ export default async function GestaoInicio() {
     reativacoesRecebidasSemana,
     reativacoesRecebidasMes,
     usuariosComNascimento,
+    evolucaoReceita,
   ] = await Promise.all([
     db.aluno.findMany({
       where: { status: { in: statusMonitorados } },
@@ -209,6 +214,7 @@ export default async function GestaoInicio() {
         professor: { select: { ativo: true } },
       },
     }),
+    obterEvolucaoReceita(hoje),
   ])
 
   const mensalidadesComStatus = mensalidadesPendentes.map((mensalidade) => ({
@@ -481,6 +487,8 @@ export default async function GestaoInicio() {
           </CardContent>
         </Card>
       </div>
+
+      <EvolucaoReceita dados={evolucaoReceita} />
 
       <div className="grid gap-4 xl:grid-cols-[1fr_0.85fr]">
         <Card>

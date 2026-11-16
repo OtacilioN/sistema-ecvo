@@ -197,6 +197,78 @@ describe("consulta do relatório", () => {
     expect(resultado.resumo.retencao).toBeNull()
   })
 
+  it("aplica a mesma modalidade atual aos meses, ao primeiro pagamento e ao início do histórico", async () => {
+    await consultarEvolucaoPagantes("2026-10", agora, "jiu-jitsu")
+    const aluno = { modalidades: { some: { id: "jiu-jitsu" } } }
+    expect(mocks.mensalidade.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { aluno, competencia: { gte: "2025-10", lte: "2026-10" } },
+      }),
+    )
+    expect(mocks.mensalidade.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { aluno, status: "PAGA", competencia: { lte: "2026-10" } },
+      }),
+    )
+    expect(mocks.mensalidade.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { aluno, competencia: { lte: "2026-11" } },
+      }),
+    )
+  })
+
+  it("mantém os grupos e a reconciliação ao receber o recorte de uma modalidade", async () => {
+    mocks.mensalidade.findMany.mockResolvedValue([
+      {
+        alunoId: "recorrente",
+        competencia: "2026-09",
+        status: "PAGA",
+        aluno: { usuario: { nome: "Ana" } },
+      },
+      {
+        alunoId: "recorrente",
+        competencia: "2026-10",
+        status: "PAGA",
+        aluno: { usuario: { nome: "Ana" } },
+      },
+      {
+        alunoId: "saida",
+        competencia: "2026-09",
+        status: "PAGA",
+        aluno: { usuario: { nome: "Bia" } },
+      },
+      {
+        alunoId: "saida",
+        competencia: "2026-10",
+        status: "ISENTA",
+        aluno: { usuario: { nome: "Bia" } },
+      },
+      {
+        alunoId: "retorno",
+        competencia: "2026-10",
+        status: "PAGA",
+        aluno: { usuario: { nome: "Caio" } },
+      },
+    ])
+    mocks.mensalidade.groupBy.mockResolvedValue([
+      { alunoId: "recorrente", _min: { competencia: "2026-09" } },
+      { alunoId: "saida", _min: { competencia: "2026-09" } },
+      { alunoId: "retorno", _min: { competencia: "2024-01" } },
+    ])
+    mocks.mensalidade.aggregate.mockResolvedValue({ _min: { competencia: "2024-01" } })
+    const resultado = await consultarEvolucaoPagantes("2026-10", agora, "jiu-jitsu")
+    expect(resultado.resumo).toMatchObject({
+      pagantesAnterior: 2,
+      pagantesAtual: 2,
+      saidas: 1,
+      recorrentes: 1,
+      novos: 0,
+      retornos: 1,
+      saldo: 0,
+    })
+    expect(resultado.historico.at(-1)).toMatchObject(resultado.resumo)
+  })
+
   it("mantém uma competência consultável sem histórico de mensalidades", async () => {
     const resultado = await consultarEvolucaoPagantes(undefined, agora)
     expect(resultado.primeiraCompetenciaDisponivel).toBeNull()

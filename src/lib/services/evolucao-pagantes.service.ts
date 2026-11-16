@@ -157,20 +157,29 @@ export function classificarEvolucaoPagantes(
   }
 }
 
-export async function consultarEvolucaoPagantes(competencia?: string, agora = new Date()) {
+export async function consultarEvolucaoPagantes(
+  competencia?: string,
+  agora = new Date(),
+  modalidadeId?: string,
+) {
   const competenciaAtual = competenciaAtualPagantes(agora)
   const selecionada = competencia ?? competenciaPadraoPagantes(agora)
   if (!validarCompetencia(selecionada) || selecionada > competenciaAtual) {
     throw new Error("Selecione uma competência válida até o mês atual.")
   }
   const inicioJanela = deslocarCompetencia(selecionada, -12)
+  // Recorte cadastral atual, não atribuição histórica da cobrança por modalidade.
+  // Não filtrar status: alunos trancados/cancelados também compõem as saídas.
+  const filtroModalidade: Prisma.MensalidadeWhereInput = modalidadeId
+    ? { aluno: { modalidades: { some: { id: modalidadeId } } } }
+    : {}
 
   // Uma única fotografia dos dados: o recebimento de uma mensalidade durante a
   // consulta não pode deixar os totais, as listas e o histórico divergentes.
   const [mensalidades, primeirasPagas, inicioHistorico] = await db.$transaction(
     [
       db.mensalidade.findMany({
-        where: { competencia: { gte: inicioJanela, lte: selecionada } },
+        where: { ...filtroModalidade, competencia: { gte: inicioJanela, lte: selecionada } },
         select: {
           alunoId: true,
           competencia: true,
@@ -181,11 +190,11 @@ export async function consultarEvolucaoPagantes(competencia?: string, agora = ne
       db.mensalidade.groupBy({
         by: ["alunoId"],
         orderBy: { alunoId: "asc" },
-        where: { status: "PAGA", competencia: { lte: selecionada } },
+        where: { ...filtroModalidade, status: "PAGA", competencia: { lte: selecionada } },
         _min: { competencia: true },
       }),
       db.mensalidade.aggregate({
-        where: { competencia: { lte: competenciaAtual } },
+        where: { ...filtroModalidade, competencia: { lte: competenciaAtual } },
         _min: { competencia: true },
       }),
     ],

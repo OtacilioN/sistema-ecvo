@@ -987,7 +987,7 @@ export async function atualizarStatusTipoAluno(params: {
   alunoId: string
   tipo?: TipoAluno
   status: StatusAluno
-  autorId: string
+  autorId: string | null
   confirmacaoTrancamento?: ConfirmacaoTrancamento
 }) {
   const aluno = await db.aluno.findUnique({

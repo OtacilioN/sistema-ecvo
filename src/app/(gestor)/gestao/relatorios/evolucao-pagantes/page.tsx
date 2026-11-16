@@ -15,6 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { exigirGestao } from "@/lib/auth/dal"
+import { db } from "@/lib/db"
 import {
   competenciaAtualPagantes,
   consultarEvolucaoPagantes,
@@ -50,6 +51,14 @@ export default async function Page({
   await exigirGestao()
   const params = await searchParams
   const solicitado = Array.isArray(params.competencia) ? params.competencia[0] : params.competencia
+  const modalidadeSolicitada = Array.isArray(params.modalidadeId)
+    ? params.modalidadeId[0]
+    : params.modalidadeId
+  const modalidades = await db.modalidade.findMany({
+    select: { id: true, nome: true, ativa: true },
+    orderBy: { nome: "asc" },
+  })
+  const modalidade = modalidades.find((item) => item.id === modalidadeSolicitada)
   const agora = new Date()
   const competencia =
     solicitado &&
@@ -58,7 +67,7 @@ export default async function Page({
     solicitado <= competenciaAtualPagantes(agora)
       ? solicitado
       : undefined
-  const dados = await consultarEvolucaoPagantes(competencia, agora)
+  const dados = await consultarEvolucaoPagantes(competencia, agora, modalidade?.id)
   const { resumo } = dados
   const periodo = mesLegivel(dados.competencia)
   const anterior = mesLegivel(dados.competenciaAnterior)
@@ -82,7 +91,10 @@ export default async function Page({
       <Card>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <form className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <form
+              key={`${dados.competencia}:${modalidade?.id ?? "todas"}`}
+              className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end"
+            >
               <div className="space-y-2">
                 <Label htmlFor="competencia">Competência</Label>
                 <Select
@@ -94,6 +106,23 @@ export default async function Page({
                   {dados.competenciasDisponiveis.map((mes) => (
                     <option key={mes} value={mes}>
                       {mesLegivel(mes)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="modalidadeId">Modalidade atual do cadastro</Label>
+                <Select
+                  id="modalidadeId"
+                  name="modalidadeId"
+                  defaultValue={modalidade?.id ?? ""}
+                  className="sm:w-60"
+                >
+                  <option value="">Todas as modalidades</option>
+                  {modalidades.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.nome}
+                      {item.ativa ? "" : " (inativa)"}
                     </option>
                   ))}
                 </Select>
@@ -115,6 +144,19 @@ export default async function Page({
             data. Isenções não contam. Os resultados acompanham pagamentos e correções registrados
             posteriormente.
           </p>
+          {modalidade && (
+            <p className="text-sm text-muted-foreground">
+              Modalidade: <strong className="font-medium text-foreground">{modalidade.nome}</strong>
+              . Considera os vínculos atuais do cadastro, inclusive de alunos trancados ou
+              cancelados. Mudanças anteriores de modalidade não são reconstruídas. Alunos com várias
+              modalidades contam uma vez neste recorte.
+            </p>
+          )}
+          {modalidadeSolicitada && !modalidade && (
+            <p role="status" className="text-sm text-warning">
+              A modalidade informada não foi encontrada. Exibindo todas as modalidades.
+            </p>
+          )}
           {solicitado && solicitado !== dados.competencia && (
             <p role="status" className="text-sm text-warning">
               A competência informada não está disponível. Exibindo {periodo}.
@@ -228,11 +270,12 @@ export default async function Page({
       </div>
 
       <ListasPagantes
-        key={dados.competencia}
+        key={`${dados.competencia}:${modalidade?.id ?? "todas"}`}
         listas={dados.listas}
         periodo={periodo}
         anterior={anterior}
         parcial={dados.mesEmAndamento}
+        modalidadeNome={modalidade?.nome}
       />
 
       <Card>
@@ -277,7 +320,7 @@ export default async function Page({
                     >
                       <th scope="row" className="py-3 pr-4 text-left font-medium">
                         <Link
-                          href={`?competencia=${mes.competencia}`}
+                          href={`?${new URLSearchParams({ competencia: mes.competencia, ...(modalidade ? { modalidadeId: modalidade.id } : {}) })}`}
                           className="inline-flex items-center gap-2 underline-offset-4 hover:underline"
                         >
                           {mesCurto(mes.competencia)}
@@ -342,7 +385,7 @@ export default async function Page({
         {dados.primeiraCompetenciaDisponivel
           ? ` desde ${mesLegivel(dados.primeiraCompetenciaDisponivel)}`
           : ""}
-        . A situação atual do cadastro do aluno não altera o histórico deste relatório.
+        . O status atual do aluno não altera seus pagamentos históricos.
       </p>
     </div>
   )

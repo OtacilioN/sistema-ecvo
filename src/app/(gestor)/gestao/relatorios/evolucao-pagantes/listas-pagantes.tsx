@@ -56,11 +56,13 @@ export function ListasPagantes({
   periodo,
   anterior,
   parcial,
+  modalidadeNome,
 }: {
   listas: Listas
   periodo: string
   anterior: string
   parcial: boolean
+  modalidadeNome?: string
 }) {
   const [grupo, setGrupo] = useState<Grupo>("saidas")
   const [busca, setBusca] = useState("")
@@ -72,6 +74,11 @@ export function ListasPagantes({
   const texto = [
     `*${selecionado.titulo} — ${periodo}*`,
     `${alunos.length} aluno(s)${busca.trim() ? " na busca" : ""}. Comparação com ${anterior}.`,
+    ...(modalidadeNome
+      ? [
+          `Modalidade atual do cadastro: ${modalidadeNome}. Não reconstrói trocas anteriores de modalidade.`,
+        ]
+      : []),
     selecionado.descricao,
     "Isenção considerada como não pagamento.",
     ...(parcial ? ["Resultado parcial: mês em andamento."] : []),
