@@ -111,6 +111,16 @@ RF-053.3 a RF-053.5 é uma extensão posterior incorporada ao produto.
   a matrícula: somente o recebimento efetivo (`PAYMENT_RECEIVED` ou consulta autenticada com
   status `RECEIVED`) baixa a mensalidade e reativa a conta na mesma transação. A mesma mensalidade
   e cobrança são reutilizadas em visitas repetidas; matrículas canceladas não entram nesse fluxo.
+- **RF-001.7** O gestor pode destrancar um mensalista com plano mensal ativo e individual
+  registrando um pagamento recebido fora do Asaas: valor efetivamente recebido, data no mês
+  atual, forma de pagamento (ou não informada) e observação obrigatória. O recebimento da
+  competência atual e a mudança de `TRANCADO` para `ATIVO` são atômicos e auditados.
+  A mensalidade atual pode passar de `ISENTA` para `PAGA`, preservando a isenção anterior
+  na auditoria e as demais competências. Cobranças Asaas/contratos pendentes, recebimentos
+  já conciliados, isenção em processamento e outras mensalidades anteriores ou vencidas
+  impedem a operação até a regularização, evitando duplicação de receita e novo trancamento.
+  A ação está em **Alunos → Trancados → Ações → Destrancar com pagamento**; planos família
+  exigem conciliação coletiva.
 - **RF-002** Status: Ativo, Inativo, Suspenso, Cancelado, Inadimplente, Trancado.
 - **RF-003** Perfil do aluno (dados, tipo, status, modalidades, plano, situação financeira, históricos de
   agendamento/check-in/invalidações/presença, horas gerais e por modalidade, graduações e histórico,

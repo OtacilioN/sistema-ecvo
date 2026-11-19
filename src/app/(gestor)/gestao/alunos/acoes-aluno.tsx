@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  UnlockKeyhole,
   WalletCards,
 } from "lucide-react"
 import { useRouter } from "next/navigation"
@@ -27,6 +28,7 @@ import { FormBaixaMensalidadeAluno } from "../financeiro/forms-financeiro"
 import { FormAjusteHoras } from "./form-ajuste-horas"
 import { FormAluno } from "./form-aluno"
 import { FormDadosAluno } from "./form-dados-aluno"
+import { FormDestrancamento } from "./form-destrancamento"
 import { FormDocumentoAluno } from "./form-documento-aluno"
 
 type Modalidade = { id: string; nome: string }
@@ -36,6 +38,7 @@ type Plano = {
   valor: number
   periodicidade: string
   ativo: boolean
+  familia?: boolean
 }
 
 type TipoAluno = "MENSALISTA" | "WELLHUB" | "TOTALPASS" | "AVULSO"
@@ -146,6 +149,7 @@ type Painel =
   | "pagamento"
   | "documento"
   | "trancar"
+  | "destrancar"
   | "excluir"
   | null
 
@@ -231,6 +235,17 @@ export function AcoesAluno({
                   Anexar documento
                 </ItemMenu>
                 <SeparadorMenu />
+                {aluno.status === "TRANCADO" && aluno.tipo === "MENSALISTA" && (
+                  <ItemMenu
+                    icone={UnlockKeyhole}
+                    onClick={() => {
+                      fecharMenu()
+                      setPainel("destrancar")
+                    }}
+                  >
+                    Destrancar com pagamento
+                  </ItemMenu>
+                )}
                 {aluno.status !== "TRANCADO" && (
                   <ItemMenu
                     icone={LockKeyhole}
@@ -345,6 +360,24 @@ export function AcoesAluno({
       </Dialog>
 
       {painel === "trancar" && <DialogTrancarAluno aluno={aluno} aoFechar={fechar} />}
+
+      {painel === "destrancar" && podeAdministrar && (
+        <Dialog aberto aoFechar={fechar} titulo="Destrancar com pagamento" descricao={aluno.nome}>
+          <FormDestrancamento
+            alunoId={aluno.id}
+            competenciaAtual={competenciaAtual}
+            valorSugerido={aluno.mensalidadeAtual?.valor ?? aluno.planoValor}
+            planoDisponivel={planos.some(
+              (plano) =>
+                plano.id === aluno.planoId &&
+                plano.ativo &&
+                plano.periodicidade === "MENSAL" &&
+                !plano.familia,
+            )}
+            aoConcluir={fechar}
+          />
+        </Dialog>
+      )}
 
       <DialogoConfirmacao
         aberto={painel === "excluir"}
