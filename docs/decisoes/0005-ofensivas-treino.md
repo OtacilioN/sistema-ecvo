@@ -20,6 +20,9 @@ dia. O mesmo aluno também pode praticar várias modalidades com calendários in
   treinou, o dia é neutro para todos.
 - A falta é consolidada somente depois do fim do dia. Isso impede que o primeiro check-in da manhã quebre
   temporariamente a ofensiva de um aluno que ainda treinará à noite.
+- Exceção pontual: em **20/11/2026**, feriado com aula facultativa de kickboxing, faltas não quebram
+  ofensivas de nenhuma modalidade, mesmo com check-ins de outros alunos. Presenças continuam contando
+  normalmente. A data permanece protegida nos recálculos futuros; dias ativos posteriores seguem a regra usual.
 - `OfensivaTreino` é um resumo materializado e recalculável, com ofensiva atual e máxima histórica. Check-in,
   invalidação e uma tarefa diária idempotente mantêm o resumo sincronizado.
 - O ciclo vigente do ranking começa em 31/08/2026. O histórico anterior permanece íntegro para presença

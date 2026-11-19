@@ -45,6 +45,10 @@ const UM_DIA_MS = 86_400_000
 // mas não formam dias ativos, ofensivas ou recordes neste novo ciclo.
 export const INICIO_RANKING_OFENSIVAS = "2026-08-31"
 
+// Feriado com treino facultativo: presenças contam, mas ausências não quebram a sequência.
+// Manter o histórico destas datas para preservar a proteção em recálculos futuros.
+const DIAS_COM_FALTAS_PROTEGIDAS = new Set(["2026-11-20"])
+
 function ordinalDia(dia: string): number {
   const [ano, mes, data] = dia.split("-").map(Number)
   return Date.UTC(ano, mes - 1, data) / UM_DIA_MS
@@ -111,7 +115,7 @@ export function calcularOfensivas(
         ultimoTreino = dia
         diasAtuais = diasInclusivos(inicioAtual, dia)
         maximoDias = Math.max(maximoDias, diasAtuais)
-      } else if (dia < hoje) {
+      } else if (dia < hoje && !DIAS_COM_FALTAS_PROTEGIDAS.has(dia)) {
         inicioAtual = null
         diasAtuais = 0
       }

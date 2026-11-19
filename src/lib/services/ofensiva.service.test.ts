@@ -86,6 +86,78 @@ describe("calcularOfensivas", () => {
     expect(resultado).toMatchObject({ diasAtuais: 3, maximoDias: 3 })
   })
 
+  it.each([
+    "kickboxing",
+    "jiu-jitsu",
+  ])("protege a falta no feriado de 20/11/2026 em %s mesmo com outros alunos treinando", (modalidadeId) => {
+    const resultado = calcularOfensivas(
+      [presenca("ana", "2026-11-18", modalidadeId), presenca("bia", "2026-11-20", modalidadeId)],
+      "2026-11-21",
+    ).find((item) => item.alunoId === "ana")
+
+    expect(resultado).toMatchObject({
+      diasAtuais: 1,
+      maximoDias: 1,
+      inicioAtual: "2026-11-18",
+      ultimoTreino: "2026-11-18",
+    })
+  })
+
+  it("mantém a sequência ao voltar a treinar depois do feriado protegido", () => {
+    const resultado = calcularOfensivas(
+      [presenca("ana", "2026-11-18"), presenca("bia", "2026-11-20"), presenca("ana", "2026-11-23")],
+      "2026-12-01",
+    ).find((item) => item.alunoId === "ana")
+
+    expect(resultado).toMatchObject({
+      diasAtuais: 6,
+      maximoDias: 6,
+      inicioAtual: "2026-11-18",
+      ultimoTreino: "2026-11-23",
+    })
+  })
+
+  it("conta normalmente a presença de quem treina no feriado protegido", () => {
+    const [resultado] = calcularOfensivas(
+      [presenca("ana", "2026-11-18"), presenca("ana", "2026-11-20")],
+      "2026-11-21",
+    )
+
+    expect(resultado).toMatchObject({
+      diasAtuais: 3,
+      maximoDias: 3,
+      inicioAtual: "2026-11-18",
+      ultimoTreino: "2026-11-20",
+    })
+  })
+
+  it.each([
+    "2026-11-19",
+    "2026-11-23",
+    "2027-11-20",
+  ])("continua quebrando a sequência por falta no dia ativo não protegido %s", (diaFalta) => {
+    const resultado = calcularOfensivas(
+      [presenca("ana", "2026-11-18"), presenca("bia", "2026-11-20"), presenca("bia", diaFalta)],
+      "2027-11-21",
+    ).find((item) => item.alunoId === "ana")
+
+    expect(resultado).toMatchObject({ diasAtuais: 0, maximoDias: 1, inicioAtual: null })
+  })
+
+  it("não recupera no feriado uma sequência já quebrada por falta anterior", () => {
+    const resultado = calcularOfensivas(
+      [presenca("ana", "2026-11-16"), presenca("bia", "2026-11-18"), presenca("ana", "2026-11-20")],
+      "2026-11-21",
+    ).find((item) => item.alunoId === "ana")
+
+    expect(resultado).toMatchObject({
+      diasAtuais: 1,
+      maximoDias: 1,
+      inicioAtual: "2026-11-20",
+      ultimoTreino: "2026-11-20",
+    })
+  })
+
   it("não quebra a ofensiva de quem ainda pode treinar mais tarde no dia atual", () => {
     const resultadoHoje = calcularOfensivas(
       [presenca("ana", "2026-09-07"), presenca("bia", "2026-09-09")],
